@@ -10,7 +10,11 @@ export async function ensureSchema(env) {
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS radar_state (id INTEGER PRIMARY KEY CHECK(id=1), cursor INTEGER NOT NULL DEFAULT 0, symbols_json TEXT NOT NULL DEFAULT '[]', updated_at INTEGER NOT NULL DEFAULT 0)`),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS push_subscriptions (endpoint TEXT PRIMARY KEY, subscription_json TEXT NOT NULL, user_agent TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS push_test_access (endpoint TEXT PRIMARY KEY, test_token TEXT NOT NULL, last_test_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL)`),
-    env.DB.prepare(`CREATE TABLE IF NOT EXISTS portfolio_positions (symbol TEXT PRIMARY KEY, entry_price REAL NOT NULL, shares REAL NOT NULL, bought_at INTEGER NOT NULL, notes TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`)
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS portfolio_positions (symbol TEXT PRIMARY KEY, entry_price REAL NOT NULL, shares REAL NOT NULL, bought_at INTEGER NOT NULL, notes TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS weekly_research (week_key TEXT NOT NULL, symbol TEXT NOT NULL, score INTEGER NOT NULL, strategy_state TEXT NOT NULL, analysis_json TEXT NOT NULL, strategy_json TEXT NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY(week_key,symbol))`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS weekly_research_state (week_key TEXT PRIMARY KEY, cursor INTEGER NOT NULL DEFAULT 0, universe_size INTEGER NOT NULL DEFAULT 0, completed_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL)`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS portfolio_strategy_state (symbol TEXT PRIMARY KEY, state TEXT NOT NULL, reason TEXT NOT NULL, strategy_json TEXT NOT NULL, updated_at INTEGER NOT NULL)`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS portfolio_strategy_events (id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT NOT NULL, previous_state TEXT, state TEXT NOT NULL, reason TEXT NOT NULL, strategy_json TEXT NOT NULL, created_at INTEGER NOT NULL)`)
   ]);
 }
 
@@ -135,5 +139,41 @@ export async function upsertPortfolioPosition(env,{symbol,entryPrice,shares,boug
 }
 
 export async function deletePortfolioPosition(env,symbol) { await env.DB.prepare(`DELETE FROM portfolio_positions WHERE symbol=?`).bind(symbol).run(); }
+
+export async function getWeeklyResearchState(env,weekKey) {
+  const row=await env.DB.prepare(`SELECT week_key AS weekKey,cursor,universe_size AS universeSize,completed_at AS completedAt,updated_at AS updatedAt FROM weekly_research_state WHERE week_key=?`).bind(weekKey).first();
+  return row?{...row,cursor:Number(row.cursor)||0,universeSize:Number(row.universeSize)||0,completedAt:Number(row.completedAt)||0,updatedAt:Number(row.updatedAt)||0}:{weekKey,cursor:0,universeSize:0,completedAt:0,updatedAt:0};
+}
+
+export async function putWeeklyResearchState(env,{weekKey,cursor,universeSize,completed=false}) {
+  const now=Date.now(), completedAt=completed?now:0;
+  await env.DB.prepare(`INSERT INTO weekly_research_state(week_key,cursor,universe_size,completed_at,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(week_key) DO UPDATE SET cursor=excluded.cursor,universe_size=excluded.universe_size,completed_at=CASE WHEN excluded.completed_at>0 THEN excluded.completed_at ELSE weekly_research_state.completed_at END,updated_at=excluded.updated_at`).bind(weekKey,cursor,universeSize,completedAt,now).run();
+  return {weekKey,cursor,universeSize,completedAt,updatedAt:now};
+}
+
+export async function putWeeklyResearch(env,{weekKey,symbol,analysis,strategy}) {
+  const now=Date.now(), score=Number(strategy?.opportunityScore)||0, state=String(strategy?.state||'WATCH');
+  await env.DB.prepare(`INSERT INTO weekly_research(week_key,symbol,score,strategy_state,analysis_json,strategy_json,updated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(week_key,symbol) DO UPDATE SET score=excluded.score,strategy_state=excluded.strategy_state,analysis_json=excluded.analysis_json,strategy_json=excluded.strategy_json,updated_at=excluded.updated_at`).bind(weekKey,symbol,score,state,JSON.stringify(analysis),JSON.stringify(strategy),now).run();
+  return now;
+}
+
+export async function listWeeklyResearch(env,weekKey) {
+  const rows=await env.DB.prepare(`SELECT symbol,score,strategy_state AS strategyState,analysis_json AS analysisJson,strategy_json AS strategyJson,updated_at AS updatedAt FROM weekly_research WHERE week_key=? ORDER BY score DESC,symbol`).bind(weekKey).all();
+  return (rows.results||[]).map(row=>{try{return {symbol:row.symbol,score:Number(row.score)||0,strategyState:row.strategyState,analysis:JSON.parse(row.analysisJson),strategy:JSON.parse(row.strategyJson),updatedAt:Number(row.updatedAt)||0};}catch{return null;}}).filter(Boolean);
+}
+
+export async function latestWeeklyResearchState(env) {
+  const row=await env.DB.prepare(`SELECT week_key AS weekKey,cursor,universe_size AS universeSize,completed_at AS completedAt,updated_at AS updatedAt FROM weekly_research_state ORDER BY week_key DESC LIMIT 1`).first();
+  return row?{...row,cursor:Number(row.cursor)||0,universeSize:Number(row.universeSize)||0,completedAt:Number(row.completedAt)||0,updatedAt:Number(row.updatedAt)||0}:null;
+}
+
+export async function recordPortfolioStrategy(env,symbol,strategy) {
+  const now=Date.now();
+  const previous=await env.DB.prepare(`SELECT state FROM portfolio_strategy_state WHERE symbol=?`).bind(symbol).first();
+  await env.DB.prepare(`INSERT INTO portfolio_strategy_state(symbol,state,reason,strategy_json,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(symbol) DO UPDATE SET state=excluded.state,reason=excluded.reason,strategy_json=excluded.strategy_json,updated_at=excluded.updated_at`).bind(symbol,strategy.state,strategy.reason,JSON.stringify(strategy),now).run();
+  if(previous?.state===strategy.state) return {changed:false,previousState:previous.state,now};
+  await env.DB.prepare(`INSERT INTO portfolio_strategy_events(symbol,previous_state,state,reason,strategy_json,created_at) VALUES(?,?,?,?,?,?)`).bind(symbol,previous?.state||null,strategy.state,strategy.reason,JSON.stringify(strategy),now).run();
+  return {changed:true,previousState:previous?.state||null,now};
+}
 
 function clampInt(value,min,max,fallback){const n=Number.parseInt(value,10);return Number.isFinite(n)?Math.min(max,Math.max(min,n)):fallback;}
