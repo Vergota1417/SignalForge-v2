@@ -17,6 +17,7 @@
   loadModuleCss('/push.css','sf-push');
   loadModuleScript('/push-ui.js','sf-push');
   loadModuleScript('/alert-history.js','sf-alert-history');
+  loadModuleScript('/stock-meta.js','sf-stock-meta');
 
   const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
   if (installBtn && isStandalone) installBtn.hidden = true;
