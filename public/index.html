@@ -32,8 +32,8 @@
       </nav>
       <div class="top-actions">
         <label class="symbol-search">
-          <span class="sr-only">Ticker</span>
-          <input id="symbolInput" type="text" value="XOM" maxlength="6" autocomplete="off" aria-label="Ticker symbol" />
+          <span class="sr-only">Ticker or company</span>
+          <input id="symbolInput" type="text" value="XOM" autocomplete="off" aria-label="Ticker or company name" placeholder="Ticker or company" />
         </label>
         <button id="loadSymbolBtn" class="btn ghost" type="button">Load</button>
         <button id="installAppBtn" class="btn ghost pwa-install-btn" type="button">Install SignalForge</button>
@@ -47,7 +47,7 @@
             <div class="eyebrow">Watchlist</div>
             <h2>Market radar</h2>
           </div>
-          <button id="scanBtn" class="icon-btn" type="button" title="Run local scan">↻</button>
+          <button id="scanBtn" class="icon-btn" type="button" title="Refresh saved scanner results">↻</button>
         </div>
         <div id="watchlist" class="watchlist" aria-live="polite"></div>
         <div class="mini-note">
@@ -64,7 +64,7 @@
               <div>
                 <div class="eyebrow">Selected symbol</div>
                 <h1 id="stockTitle">XOM</h1>
-                <div class="muted" id="stockSubtitle">Demo market feed</div>
+                <div class="muted" id="stockSubtitle">Loading market feed</div>
               </div>
             </div>
             <div class="price-row">
@@ -100,7 +100,7 @@
             </div>
             <div class="chart-meta">
               <span id="candleResolution">Resolution: —</span>
-              <span id="chartDataSource">Data: demo</span>
+              <span id="chartDataSource">Data: —</span>
             </div>
             <div class="canvas-wrap">
               <canvas id="priceChart" aria-label="Price chart with preferred entry, overextension and thesis break levels"></canvas>
@@ -183,6 +183,7 @@
   </div>
 
   <script src="config.js"></script>
+  <script src="chart-inspector.js"></script>
   <script src="app.js"></script>
   <script src="pwa.js"></script>
 </body>
