@@ -3,7 +3,7 @@
 
   const CONFIG=window.SIGNALFORGE_CONFIG||{API_BASE_URL:window.location.origin};
   const TIMEFRAMES={
-    '1D':{resolution:'5-minute candles'},'5D':{resolution:'15-minute candles'},'1M':{resolution:'1-hour candles'},
+    '1D':{resolution:'5-minute candles · latest regular session'},'5D':{resolution:'15-minute candles · latest 5 regular sessions'},'1M':{resolution:'1-hour candles'},
     '3M':{resolution:'Daily candles'},'6M':{resolution:'Daily candles'},'1Y':{resolution:'Daily candles'},'2Y':{resolution:'Weekly candles'}
   };
   const WATCHLIST=['XOM','NVDA','MSFT','AAPL','AMZN','TSLA'];
@@ -11,7 +11,7 @@
   const $=id=>document.getElementById(id);
   const canvas=$('priceChart');
   const ctx=canvas.getContext('2d');
-  const state={symbol:'XOM',timeframe:'6M',candles:[],analysis:null,meta:null,watchAnalyses:{},watchMeta:{},recent:loadRecent(),searchCache:new Map(),searchTimer:null,searchAbort:null};
+  const state={symbol:'XOM',timeframe:'6M',candles:[],analysis:null,meta:null,watchAnalyses:{},watchUpdated:{},watchMeta:{},recent:loadRecent(),searchCache:new Map(),searchTimer:null,searchAbort:null};
 
   function apiBase(){return String(CONFIG.API_BASE_URL||window.location.origin).replace(/\/$/,'');}
   async function apiGet(path){
@@ -26,6 +26,7 @@
   }
   function sanitizeSymbol(value){const s=String(value||'').trim().toUpperCase().replace(/[^A-Z.]/g,'').slice(0,6);return /^[A-Z]{1,5}(?:\.[A-Z])?$/.test(s)?s:'';}
   function fmtMoney(v){return new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(v)||0);}
+  function fmtScanTime(v){return Number(v)?new Date(Number(v)).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}):'';}
   function statusClass(status){if(status==='BUY NOW')return'status-buy';if(status==='SETUP — READY SOON')return'status-setup';if(status==='WAIT FOR PULLBACK')return'status-pullback';if(status==='WAIT — SETUP NOT READY')return'status-wait';if(status==='AVOID')return'status-avoid';return'status-sell';}
   function escapeHtml(v){return String(v??'').replace(/[&<>'"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));}
 
@@ -53,7 +54,9 @@
   async function refreshSavedSignals(){
     try{
       const payload=await apiGet('/api/signals');
-      for(const row of payload.signals||[]){if(row?.symbol&&row.analysis)state.watchAnalyses[row.symbol]=row.analysis;}
+      for(const row of payload.signals||[]){
+        if(row?.symbol&&row.analysis){state.watchAnalyses[row.symbol]=row.analysis;state.watchUpdated[row.symbol]=Number(row.updatedAt)||0;}
+      }
     }catch(err){console.warn('Saved signal state unavailable',err);}
     renderWatchlist();
   }
@@ -102,7 +105,6 @@
         if(saved)decisionAnalysis=saved;
         else decisionAnalysis=(await fetchMarket(symbol,'6M')).analysis;
       }else if(state.watchAnalyses[symbol]?.intradayConfirmation){
-        // Prefer the scheduled Phase-2 result when it contains the selective 15m confirmation.
         decisionAnalysis=state.watchAnalyses[symbol];
       }
       if(!Array.isArray(chartPayload.candles)||!decisionAnalysis)throw new Error('SignalForge did not receive valid market data.');
@@ -125,7 +127,17 @@
 
   function renderAll(){const a=state.analysis;if(!a)return;renderHero(a);renderReadiness(a);renderWhy(a);renderEngines(a);renderLevels(a);renderTriggers(a);renderWatchlist();resizeCanvas();}
   function renderTimeframes(){const root=$('timeframeTabs');root.innerHTML='';Object.keys(TIMEFRAMES).forEach(tf=>{const b=document.createElement('button');b.type='button';b.className=`timeframe-btn ${tf===state.timeframe?'active':''}`;b.textContent=tf;b.setAttribute('role','tab');b.setAttribute('aria-selected',tf===state.timeframe?'true':'false');b.addEventListener('click',()=>{state.timeframe=tf;loadSymbol(state.symbol,state.meta);});root.appendChild(b);});}
-  function renderWatchlist(){const root=$('watchlist');root.innerHTML='';WATCHLIST.forEach(sym=>{const a=state.watchAnalyses[sym];const btn=document.createElement('button');btn.type='button';btn.className=`watch-item ${sym===state.symbol?'active':''}`;btn.innerHTML=`<div><div class="watch-symbol">${sym}</div><div class="watch-meta"><span class="watch-status ${a?statusClass(a.status):''}">${a?a.status.split(' — ')[0]:'Waiting for scanner'}</span></div></div><div class="watch-price">${a?fmtMoney(a.latest.close):'—'}<div class="${a&&a.changePct>=0?'price-change positive':'price-change negative'}">${a?`${(a.changePct*100).toFixed(2)}%`:'—'}</div></div>`;btn.addEventListener('click',()=>loadSymbol(sym,state.watchMeta[sym]||state.recent.find(x=>x.symbol===sym)||null));root.appendChild(btn);});}
+  function renderWatchlist(){
+    const root=$('watchlist');root.innerHTML='';
+    WATCHLIST.forEach(sym=>{
+      const a=state.watchAnalyses[sym],updated=state.watchUpdated[sym];
+      const btn=document.createElement('button');btn.type='button';btn.className=`watch-item ${sym===state.symbol?'active':''}`;
+      const status=a?a.status.split(' — ')[0]:'Not yet analyzed';
+      const scan=a&&updated?`<div class="watch-meta"><small>Last deep scan ${fmtScanTime(updated)}</small></div>`:'';
+      btn.innerHTML=`<div><div class="watch-symbol">${sym}</div><div class="watch-meta"><span class="watch-status ${a?statusClass(a.status):''}">${status}</span></div>${scan}</div><div class="watch-price">${a?fmtMoney(a.latest.close):'—'}<div class="${a&&a.changePct>=0?'price-change positive':'price-change negative'}">${a?`${(a.changePct*100).toFixed(2)}%`:'—'}</div></div>`;
+      btn.addEventListener('click',()=>loadSymbol(sym,state.watchMeta[sym]||state.recent.find(x=>x.symbol===sym)||null));root.appendChild(btn);
+    });
+  }
   function renderRecent(){const root=$('recentViewed');if(!root)return;if(!state.recent.length){root.innerHTML='<div class="muted recent-empty">Stocks you open will appear here.</div>';return;}root.innerHTML=state.recent.map(r=>`<button type="button" class="recent-item" data-symbol="${escapeHtml(r.symbol)}"><strong>${escapeHtml(r.symbol)}</strong><span>${escapeHtml(r.name||r.symbol)}</span></button>`).join('');root.querySelectorAll('.recent-item').forEach(btn=>btn.addEventListener('click',()=>{const meta=state.recent.find(r=>r.symbol===btn.dataset.symbol);loadSymbol(btn.dataset.symbol,meta);}));}
   function renderHero(a){$('tickerBadge').textContent=a.symbol;$('stockTitle').textContent=state.meta?.name?`${a.symbol} · ${state.meta.name}`:a.symbol;$('chartTitle').textContent=`${a.symbol} chart`;$('priceValue').textContent=fmtMoney(a.latest.close);$('priceChange').textContent=`${a.changePct>=0?'+':''}${(a.changePct*100).toFixed(2)}%`;$('priceChange').className=`price-change ${a.changePct>0?'positive':a.changePct<0?'negative':'neutral'}`;$('statusBadge').textContent=a.status;$('statusBadge').className=`status-badge ${statusClass(a.status)}`;$('statusReason').textContent=a.reason;}
   function renderReadiness(a){$('readinessValue').textContent=`${a.readiness}%`;$('readinessLabel').textContent=a.status==='BUY NOW'?'Confirmed':a.status==='SETUP — READY SOON'?'Ready soon':a.status==='WAIT FOR PULLBACK'?'Overextended':a.status==='AVOID'?'Avoid':'Not ready';$('readinessGauge').style.setProperty('--pct',`${a.readiness}%`);$('checkSummary').textContent=`${a.passed} / ${a.total} checks passed`;$('gateSummary').textContent=a.criticalFailed?.length?`${a.criticalFailed.length} critical gate${a.criticalFailed.length>1?'s':''} blocking BUY: ${a.criticalFailed.join(', ')}`:a.intradayConfirmation?.pass?'All higher-timeframe gates + 15m confirmation passed.':a.dailyGatesReady?'Higher-timeframe gates passed; waiting for selective 15m confirmation.':'All four critical gates are ready.';}
@@ -135,9 +147,41 @@
   function renderTriggers(a){const rows=[['BUY NOW','All four higher-timeframe gates plus selective 15-minute confirmation.',a.status==='BUY NOW'],['READY SOON','Higher-timeframe setup is close or complete but BUY confirmation is not final.',a.status==='SETUP — READY SOON'],['PULLBACK',`Price moves back under ${fmtMoney(a.overextension)} without breaking the thesis.`,a.latest.close<=a.overextension],['SELL / EXIT',`Price breaks the thesis area near ${fmtMoney(a.thesisBreak)}.`,a.latest.close<=a.thesisBreak]];$('triggerMap').innerHTML=rows.map(([l,d,on])=>`<div class="trigger-row"><div class="trigger-label">${l}</div><div class="trigger-desc">${d}</div><div class="trigger-state ${on?'status-buy':'status-wait'}">${on?'ACTIVE':'INACTIVE'}</div></div>`).join('');}
 
   function resizeCanvas(){const rect=canvas.getBoundingClientRect();const dpr=Math.min(window.devicePixelRatio||1,2);canvas.width=Math.max(300,Math.floor(rect.width*dpr));canvas.height=Math.floor(360*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);drawChart();}
-  function drawChart(){if(!state.analysis||!state.candles.length)return;const a=state.analysis,candles=state.candles,w=canvas.getBoundingClientRect().width,h=360;ctx.clearRect(0,0,w,h);ctx.fillStyle='#08111f';ctx.fillRect(0,0,w,h);const pad={l:52,r:70,t:18,b:28};const highs=candles.map(c=>c.high),lows=candles.map(c=>c.low);const min=Math.min(...lows,a.thesisBreak)*.995,max=Math.max(...highs,a.overextension)*1.005;const y=v=>pad.t+(max-v)/(max-min)*(h-pad.t-pad.b),x=i=>pad.l+i/(candles.length-1)*(w-pad.l-pad.r);ctx.strokeStyle='#17283c';ctx.lineWidth=1;ctx.font='10px system-ui';ctx.fillStyle='#7790ad';for(let i=0;i<=5;i++){const yy=pad.t+i*(h-pad.t-pad.b)/5;ctx.beginPath();ctx.moveTo(pad.l,yy);ctx.lineTo(w-pad.r,yy);ctx.stroke();ctx.fillText((max-i*(max-min)/5).toFixed(2),w-pad.r+8,yy+3);}const entryY1=y(a.preferredEntryHigh),entryY2=y(a.preferredEntryLow);ctx.fillStyle='rgba(47,209,139,.12)';ctx.fillRect(pad.l,Math.min(entryY1,entryY2),w-pad.l-pad.r,Math.abs(entryY2-entryY1));drawLevel(a.overextension,'#f4a340','Overextension');drawLevel(a.thesisBreak,'#ef6262','Thesis Break');drawLevel((a.preferredEntryLow+a.preferredEntryHigh)/2,'#2fd18b','Preferred Entry');const step=(w-pad.l-pad.r)/candles.length,body=Math.max(1.5,Math.min(5,step*.55));candles.forEach((c,i)=>{const xx=x(i),yo=y(c.open),yc=y(c.close),yh=y(c.high),yl=y(c.low),up=c.close>=c.open;ctx.strokeStyle=up?'#2fd18b':'#ef6262';ctx.fillStyle=ctx.strokeStyle;ctx.beginPath();ctx.moveTo(xx,yh);ctx.lineTo(xx,yl);ctx.stroke();ctx.fillRect(xx-body/2,Math.min(yo,yc),body,Math.max(1,Math.abs(yc-yo)));});const last=candles.at(-1),py=y(last.close);ctx.setLineDash([4,4]);ctx.strokeStyle='#7ebcff';ctx.beginPath();ctx.moveTo(pad.l,py);ctx.lineTo(w-pad.r,py);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle='#7ebcff';ctx.fillText(last.close.toFixed(2),w-pad.r+8,py+3);function drawLevel(v,color,label){const yy=y(v);ctx.setLineDash([6,5]);ctx.strokeStyle=color;ctx.globalAlpha=.85;ctx.beginPath();ctx.moveTo(pad.l,yy);ctx.lineTo(w-pad.r,yy);ctx.stroke();ctx.setLineDash([]);ctx.globalAlpha=1;ctx.fillStyle=color;ctx.fillText(label,pad.l+8,yy-5);}}
+  function drawChart(){
+    if(!state.analysis||!state.candles.length)return;
+    const a=state.analysis,candles=state.candles,w=canvas.getBoundingClientRect().width,h=360;
+    ctx.clearRect(0,0,w,h);ctx.fillStyle='#08111f';ctx.fillRect(0,0,w,h);
+    const pad={l:52,r:70,t:18,b:28};
+    const highs=candles.map(c=>Number(c.high)),lows=candles.map(c=>Number(c.low));
+    const shortTerm=state.timeframe==='1D'||state.timeframe==='5D';
+    const candleMin=Math.min(...lows),candleMax=Math.max(...highs);
+    let min,max;
+    if(shortTerm){
+      const span=Math.max(candleMax-candleMin,Number(candles.at(-1)?.close||1)*.002);
+      const margin=span*.08;
+      min=candleMin-margin;max=candleMax+margin;
+    }else{
+      min=Math.min(candleMin,a.thesisBreak)*.995;max=Math.max(candleMax,a.overextension)*1.005;
+    }
+    if(!(max>min)){min=candleMin*.995;max=candleMax*1.005;}
+    const y=v=>pad.t+(max-v)/(max-min)*(h-pad.t-pad.b),x=i=>pad.l+i/Math.max(1,candles.length-1)*(w-pad.l-pad.r);
+    ctx.strokeStyle='#17283c';ctx.lineWidth=1;ctx.font='10px system-ui';ctx.fillStyle='#7790ad';
+    for(let i=0;i<=5;i++){const yy=pad.t+i*(h-pad.t-pad.b)/5;ctx.beginPath();ctx.moveTo(pad.l,yy);ctx.lineTo(w-pad.r,yy);ctx.stroke();ctx.fillText((max-i*(max-min)/5).toFixed(2),w-pad.r+8,yy+3);}
+    if(!shortTerm){
+      const entryY1=y(a.preferredEntryHigh),entryY2=y(a.preferredEntryLow);ctx.fillStyle='rgba(47,209,139,.12)';ctx.fillRect(pad.l,Math.min(entryY1,entryY2),w-pad.l-pad.r,Math.abs(entryY2-entryY1));
+    }
+    drawLevel(a.overextension,'#f4a340','Overextension');drawLevel(a.thesisBreak,'#ef6262','Thesis Break');drawLevel((a.preferredEntryLow+a.preferredEntryHigh)/2,'#2fd18b','Preferred Entry');
+    const step=(w-pad.l-pad.r)/candles.length,body=Math.max(1.5,Math.min(5,step*.55));
+    candles.forEach((c,i)=>{const xx=x(i),yo=y(c.open),yc=y(c.close),yh=y(c.high),yl=y(c.low),up=c.close>=c.open;ctx.strokeStyle=up?'#2fd18b':'#ef6262';ctx.fillStyle=ctx.strokeStyle;ctx.beginPath();ctx.moveTo(xx,yh);ctx.lineTo(xx,yl);ctx.stroke();ctx.fillRect(xx-body/2,Math.min(yo,yc),body,Math.max(1,Math.abs(yc-yo)));});
+    const last=candles.at(-1),py=y(last.close);ctx.setLineDash([4,4]);ctx.strokeStyle='#7ebcff';ctx.beginPath();ctx.moveTo(pad.l,py);ctx.lineTo(w-pad.r,py);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle='#7ebcff';ctx.fillText(last.close.toFixed(2),w-pad.r+8,py+3);
+    if(shortTerm){ctx.fillStyle='#7790ad';ctx.fillText('Auto-scaled to visible candles',pad.l+8,h-10);}
+    function drawLevel(v,color,label){if(!Number.isFinite(Number(v))||v<min||v>max)return;const yy=y(v);ctx.setLineDash([6,5]);ctx.strokeStyle=color;ctx.globalAlpha=.85;ctx.beginPath();ctx.moveTo(pad.l,yy);ctx.lineTo(w-pad.r,yy);ctx.stroke();ctx.setLineDash([]);ctx.globalAlpha=1;ctx.fillStyle=color;ctx.fillText(label,pad.l+8,yy-5);}
+  }
 
   function bindSearch(){const input=$('symbolInput');$('loadSymbolBtn').addEventListener('click',()=>resolveAndLoad(input.value));input.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();resolveAndLoad(input.value);}if(e.key==='Escape'&&$('symbolSuggestions'))$('symbolSuggestions').hidden=true;});input.addEventListener('input',()=>{clearTimeout(state.searchTimer);const q=input.value.trim();if(q.length<2){if($('symbolSuggestions'))$('symbolSuggestions').hidden=true;return;}state.searchTimer=setTimeout(async()=>{try{renderSearchResults(await searchSymbols(q));}catch(err){console.warn('Symbol preview unavailable',err);}},650);});document.addEventListener('click',e=>{if(!e.target.closest('.symbol-search-wrap')&&$('symbolSuggestions'))$('symbolSuggestions').hidden=true;});}
 
-  ensureSearchUi();bindSearch();renderTimeframes();renderRecent();renderWatchlist();refreshSavedSignals().then(()=>loadSymbol('XOM',state.recent.find(x=>x.symbol==='XOM')||null));window.addEventListener('resize',()=>{clearTimeout(window.__sfResize);window.__sfResize=setTimeout(resizeCanvas,120);});
+  ensureSearchUi();bindSearch();renderTimeframes();renderRecent();renderWatchlist();refreshSavedSignals().then(()=>{
+    const urlSymbol=sanitizeSymbol(new URLSearchParams(location.search).get('symbol'));
+    loadSymbol(urlSymbol||'XOM',state.recent.find(x=>x.symbol===(urlSymbol||'XOM'))||null);
+  });window.addEventListener('resize',()=>{clearTimeout(window.__sfResize);window.__sfResize=setTimeout(resizeCanvas,120);});
 })();
