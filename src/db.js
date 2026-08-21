@@ -9,7 +9,8 @@ export async function ensureSchema(env) {
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS radar_quotes (symbol TEXT PRIMARY KEY, price REAL NOT NULL, change_pct REAL NOT NULL, volume REAL NOT NULL, average_volume REAL NOT NULL, relative_volume REAL NOT NULL, score REAL NOT NULL, payload TEXT NOT NULL, updated_at INTEGER NOT NULL)`),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS radar_state (id INTEGER PRIMARY KEY CHECK(id=1), cursor INTEGER NOT NULL DEFAULT 0, symbols_json TEXT NOT NULL DEFAULT '[]', updated_at INTEGER NOT NULL DEFAULT 0)`),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS push_subscriptions (endpoint TEXT PRIMARY KEY, subscription_json TEXT NOT NULL, user_agent TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`),
-    env.DB.prepare(`CREATE TABLE IF NOT EXISTS push_test_access (endpoint TEXT PRIMARY KEY, test_token TEXT NOT NULL, last_test_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL)`)
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS push_test_access (endpoint TEXT PRIMARY KEY, test_token TEXT NOT NULL, last_test_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL)`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS portfolio_positions (symbol TEXT PRIMARY KEY, entry_price REAL NOT NULL, shares REAL NOT NULL, bought_at INTEGER NOT NULL, notes TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`)
   ]);
 }
 
@@ -142,6 +143,21 @@ export async function recordSignal(env, analysis) {
   if (previous?.status===analysis.status) return { changed:false, previousStatus:previous.status, now };
   await env.DB.prepare(`INSERT INTO signal_events(symbol,previous_status,status,readiness,price,reason,analysis_json,created_at) VALUES(?,?,?,?,?,?,?,?)`).bind(analysis.symbol,previous?.status||null,analysis.status,analysis.readiness,analysis.latest.close,analysis.reason,JSON.stringify(analysis),now).run();
   return { changed:true, previousStatus:previous?.status||null, now };
+}
+
+export async function listPortfolioPositions(env) {
+  const rows=await env.DB.prepare(`SELECT symbol,entry_price AS entryPrice,shares,bought_at AS boughtAt,notes,created_at AS createdAt,updated_at AS updatedAt FROM portfolio_positions ORDER BY bought_at DESC`).all();
+  return rows.results||[];
+}
+
+export async function upsertPortfolioPosition(env,{symbol,entryPrice,shares,boughtAt,notes=''}) {
+  const now=Date.now();
+  await env.DB.prepare(`INSERT INTO portfolio_positions(symbol,entry_price,shares,bought_at,notes,created_at,updated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(symbol) DO UPDATE SET entry_price=excluded.entry_price,shares=excluded.shares,bought_at=excluded.bought_at,notes=excluded.notes,updated_at=excluded.updated_at`).bind(symbol,entryPrice,shares,boughtAt,String(notes||'').slice(0,500),now,now).run();
+  return now;
+}
+
+export async function deletePortfolioPosition(env,symbol) {
+  await env.DB.prepare(`DELETE FROM portfolio_positions WHERE symbol=?`).bind(symbol).run();
 }
 
 function clampInt(value,min,max,fallback){const n=Number.parseInt(value,10);return Number.isFinite(n)?Math.min(max,Math.max(min,n)):fallback;}
