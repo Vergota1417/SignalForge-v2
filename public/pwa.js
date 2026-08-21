@@ -12,6 +12,13 @@
     symbolInput.setAttribute('aria-label','Ticker or company name');
   }
 
+  if (!document.querySelector('link[data-sf-radar]')) {
+    const link=document.createElement('link');link.rel='stylesheet';link.href='/radar.css';link.dataset.sfRadar='1';document.head.appendChild(link);
+  }
+  if (!document.querySelector('script[data-sf-radar]')) {
+    const script=document.createElement('script');script.src='/radar-ui.js';script.defer=true;script.dataset.sfRadar='1';document.head.appendChild(script);
+  }
+
   const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
   if (installBtn && isStandalone) installBtn.hidden = true;
 
