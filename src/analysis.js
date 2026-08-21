@@ -70,7 +70,24 @@ function engineState(name, metrics, needed) {
   return { name, metrics, passes, total: metrics.length, ready, state: ready ? 'PASS' : passes >= needed - 1 ? 'WARN' : 'FAIL' };
 }
 
-export function analyze(candles, symbol) {
+function benchmarkState(candles) {
+  if (!Array.isArray(candles) || candles.length < 50) return null;
+  const closes = candles.map(c => c.close);
+  const latest = closes.at(-1);
+  const s20 = sma(closes, 20), s50 = sma(closes, 50);
+  const momentum20 = closes.length > 20 ? latest / closes[closes.length - 21] - 1 : 0;
+  return {
+    symbol: 'SPY',
+    latest,
+    sma20: s20,
+    sma50: s50,
+    momentum20,
+    bull: Boolean(s20 && s50 && latest > s50 && s20 > s50),
+    riskOff: Boolean(s20 && s50 && latest < s50 && s20 < s50)
+  };
+}
+
+export function analyze(candles, symbol, context = {}) {
   const closes = candles.map(c => c.close);
   const latest = candles.at(-1), previous = candles.at(-2) || latest;
   const s20 = sma(closes, 20) || latest.close, s50 = sma(closes, 50) || s20;
@@ -79,7 +96,9 @@ export function analyze(candles, symbol) {
   const recentMax = Math.max(...closes.slice(-20));
   const pullbackDepth = recentMax ? (recentMax - latest.close) / recentMax : 0;
   const extensionPct = (latest.close - s20) / s20, trendStrength = (s20 - s50) / s50;
-  const relativeStrengthProxy = momentum20 - average(closes.slice(-10).map((v, i, a) => i ? v / a[i - 1] - 1 : 0));
+  const benchmark = benchmarkState(context.benchmarkCandles);
+  const relativeStrength20 = benchmark ? momentum20 - benchmark.momentum20 : null;
+  const legacyRelativeStrengthProxy = momentum20 - average(closes.slice(-10).map((v, i, a) => i ? v / a[i - 1] - 1 : 0));
 
   const preferredEntryLow = Math.max(.01, s20 - .40 * a14);
   const preferredEntryHigh = s20 + .18 * a14;
@@ -93,19 +112,23 @@ export function analyze(candles, symbol) {
     { name:'50-period trend', value:`Price ${latest.close >= s50 ? 'above' : 'below'} 50-period trend`, pass:latest.close > s50 },
     { name:'Trend alignment', value:`20-period ${s20 >= s50 ? 'above' : 'below'} 50-period`, pass:s20 > s50 },
     { name:'Momentum', value:`${(momentum20*100).toFixed(1)}% over lookback`, pass:momentum20 > 0 },
-    { name:'Relative strength proxy', value:relativeStrengthProxy >= 0 ? 'Positive' : 'Lagging', pass:relativeStrengthProxy >= -.0015 }
+    benchmark
+      ? { name:'Relative strength vs SPY', value:`${relativeStrength20 >= 0 ? '+' : ''}${(relativeStrength20*100).toFixed(1)}% vs SPY`, pass:relativeStrength20 > 0 }
+      : { name:'Relative strength proxy', value:legacyRelativeStrengthProxy >= 0 ? 'Positive' : 'Lagging', pass:legacyRelativeStrengthProxy >= -.0015, warn:true }
   ];
   const entryMetrics = [
     { name:'Extension vs 20', value:`${(extensionPct*100).toFixed(1)}%`, pass:latest.close <= overextension, warn:latest.close > preferredEntryHigh },
     { name:'Pullback depth', value:`${(pullbackDepth*100).toFixed(1)}%`, pass:pullbackDepth >= .008 && pullbackDepth <= .08, warn:pullbackDepth < .008 },
     { name:'RSI (14)', value:r14.toFixed(1), pass:r14 >= 42 && r14 <= 69, warn:r14 > 69 && r14 < 76 },
-    { name:'Entry zone', value:latest.close >= preferredEntryLow && latest.close <= preferredEntryHigh ? 'Inside preferred zone' : latest.close > preferredEntryHigh ? 'Above preferred zone' : 'Below preferred zone', pass:latest.close >= preferredEntryLow && latest.close <= preferredEntryHigh, warn:latest.close > preferredEntryHigh }
+    { name:'Entry zone', value: latest.close >= preferredEntryLow && latest.close <= preferredEntryHigh ? 'Inside preferred zone' : latest.close > preferredEntryHigh ? 'Above preferred zone' : 'Below preferred zone', pass:latest.close >= preferredEntryLow && latest.close <= preferredEntryHigh, warn:latest.close > preferredEntryHigh }
   ];
+  const regimePass = benchmark ? !benchmark.riskOff : trendStrength > 0;
+  const regimeValue = benchmark ? (benchmark.bull ? 'SPY bull trend' : benchmark.riskOff ? 'SPY risk-off' : 'SPY mixed/neutral') : (trendStrength > .005 ? 'Bull trend' : trendStrength > -.005 ? 'Neutral' : 'Bearish');
   const probabilityMetrics = [
     { name:'Walk-forward win rate', value:`${(wf.winRate*100).toFixed(0)}% (${wf.sample} samples)`, pass:wf.sample >= 5 && wf.winRate >= .57, warn:wf.sample < 5 || (wf.winRate >= .52 && wf.winRate < .57) },
     { name:'Forward expectancy', value:`${(wf.avgReturn*100).toFixed(2)}% avg`, pass:wf.sample >= 5 && wf.avgReturn > 0, warn:wf.sample < 5 },
     { name:'Pattern sample quality', value:wf.sample >= 12 ? 'Good' : wf.sample >= 5 ? 'Limited' : 'Insufficient', pass:wf.sample >= 12, warn:wf.sample >= 5 },
-    { name:'Regime alignment', value:trendStrength > .005 ? 'Bull trend' : trendStrength > -.005 ? 'Neutral' : 'Bearish', pass:trendStrength > 0, warn:trendStrength > -.005 }
+    { name:'Market regime', value:regimeValue, pass:regimePass, warn:benchmark ? !benchmark.bull : trendStrength > -.005 }
   ];
   const rrMetrics = [
     { name:'Stop distance', value:`${(risk/latest.close*100).toFixed(1)}%`, pass:risk/latest.close <= .08, warn:risk/latest.close <= .12 },
@@ -126,6 +149,7 @@ export function analyze(candles, symbol) {
   let status, reason;
   if (latest.close <= thesisBreak) { status='SELL / EXIT'; reason='Price broke the thesis level. The original setup is invalid until a new base forms.'; }
   else if (!engines.trend.ready) { status='AVOID'; reason='Trend quality is not strong enough to justify an entry setup.'; }
+  else if (benchmark?.riskOff && !engines.probability.ready) { status='WAIT — SETUP NOT READY'; reason='The stock setup is improving, but the broad-market regime is currently risk-off.'; }
   else if (latest.close > overextension || r14 >= 76) { status='WAIT FOR PULLBACK'; reason='Trend is strong, but price is too extended to chase at the current level.'; }
   else if (engines.trend.ready && engines.entry.ready && engines.probability.ready && engines.riskReward.ready) { status='BUY NOW'; reason='All four critical gates cleared: trend, entry, probability, and risk/reward.'; }
   else if (engines.trend.ready && nearEntry && (engines.probability.ready || engines.riskReward.ready)) { status='SETUP — READY SOON'; reason='Price is near the preferred entry zone, but one critical confirmation is still missing.'; }
@@ -137,5 +161,5 @@ export function analyze(candles, symbol) {
   if (status==='WAIT FOR PULLBACK') readiness=Math.min(readiness,68);
 
   return { symbol, latest, changePct:previous.close ? latest.close/previous.close-1 : 0, sma20:s20, sma50:s50, atr:a14, rsi:r14, momentum20,
-    preferredEntryLow, preferredEntryHigh, overextension, thesisBreak, target, rr, wf, engines, passed, total, criticalFailed, status, reason, readiness };
+    relativeStrength20, benchmark, preferredEntryLow, preferredEntryHigh, overextension, thesisBreak, target, rr, wf, engines, passed, total, criticalFailed, status, reason, readiness };
 }

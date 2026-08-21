@@ -15,7 +15,13 @@ export default {
       if (url.pathname==='/api/market-data') {
         const symbol=sanitizeSymbol(url.searchParams.get('symbol')), timeframe=sanitizeTimeframe(url.searchParams.get('timeframe'));
         if (!symbol) return json({error:'Invalid symbol.'},400);
-        const market=await getMarketData(env,symbol,timeframe,false), analysis=analyze(market.candles,symbol);
+        const market=await getMarketData(env,symbol,timeframe,false);
+        let benchmarkCandles=null;
+        if (symbol!=='SPY' && timeframe==='6M') {
+          try { benchmarkCandles=(await getMarketData(env,'SPY','6M',false)).candles; }
+          catch(error) { console.error(JSON.stringify({event:'benchmark_fetch_error',message:error?.message||String(error)})); }
+        }
+        const analysis=analyze(market.candles,symbol,{benchmarkCandles});
         return json({symbol,timeframe,candles:market.candles,analysis,source:market.source,cached:market.cached,fetchedAt:market.fetchedAt});
       }
       if (url.pathname==='/api/alerts') return json({alerts:await listAlerts(env,clampInt(url.searchParams.get('limit'),1,50,12))});
@@ -33,9 +39,15 @@ async function runScheduledScan(env,scheduledTime) {
   try {
     await ensureSchema(env);
     if (!env.TWELVE_DATA_API_KEY || !isUsMarketWindow(new Date(scheduledTime||Date.now()))) return;
+
+    let benchmarkCandles=null;
+    try { benchmarkCandles=(await getMarketData(env,'SPY','6M',false)).candles; }
+    catch(error) { console.error(JSON.stringify({event:'benchmark_fetch_error',message:error?.message||String(error)})); }
+
     for (const symbol of watchlist(env)) {
       try {
-        const market=await getMarketData(env,symbol,'6M',false), analysis=analyze(market.candles,symbol);
+        const market=await getMarketData(env,symbol,'6M',false);
+        const analysis=analyze(market.candles,symbol,{benchmarkCandles});
         const event=await recordSignal(env,analysis);
         if (event.changed) await sendWebhook(env,analysis,event.previousStatus,event.now);
       } catch(error) { console.error(JSON.stringify({event:'scan_symbol_error',symbol,message:error?.message||String(error)})); }
@@ -51,7 +63,7 @@ async function sendWebhook(env,analysis,previousStatus,now) {
   if (!response.ok) console.error(JSON.stringify({event:'alert_webhook_error',status:response.status}));
 }
 
-function watchlist(env){const raw=String(env.WATCHLIST||'').trim();const list=raw?raw.split(',').map(sanitizeSymbol).filter(Boolean):DEFAULT_WATCHLIST;return [...new Set(list)].slice(0,20);}
+function watchlist(env){const raw=String(env.WATCHLIST||'').trim();const list=raw?raw.split(',').map(sanitizeSymbol).filter(Boolean):DEFAULT_WATCHLIST;return [...new Set(list.filter(symbol=>symbol!=='SPY'))].slice(0,20);}
 function sanitizeSymbol(v){const s=String(v||'').trim().toUpperCase().replace(/[^A-Z.]/g,'').slice(0,6);return /^[A-Z]{1,5}(?:\.[A-Z])?$/.test(s)?s:'';}
 function sanitizeTimeframe(v){const t=String(v||'6M').toUpperCase();return TIMEFRAMES[t]?t:'6M';}
 function clampInt(v,min,max,fallback){const n=Number.parseInt(v,10);return Number.isFinite(n)?Math.min(max,Math.max(min,n)):fallback;}
