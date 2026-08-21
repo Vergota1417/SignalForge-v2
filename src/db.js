@@ -7,7 +7,8 @@ export async function ensureSchema(env) {
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS provider_usage (day_key TEXT PRIMARY KEY, requests INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL)`),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS symbol_search_cache (query TEXT PRIMARY KEY, fetched_at INTEGER NOT NULL, payload TEXT NOT NULL)`),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS radar_quotes (symbol TEXT PRIMARY KEY, price REAL NOT NULL, change_pct REAL NOT NULL, volume REAL NOT NULL, average_volume REAL NOT NULL, relative_volume REAL NOT NULL, score REAL NOT NULL, payload TEXT NOT NULL, updated_at INTEGER NOT NULL)`),
-    env.DB.prepare(`CREATE TABLE IF NOT EXISTS radar_state (id INTEGER PRIMARY KEY CHECK(id=1), cursor INTEGER NOT NULL DEFAULT 0, symbols_json TEXT NOT NULL DEFAULT '[]', updated_at INTEGER NOT NULL DEFAULT 0)`)
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS radar_state (id INTEGER PRIMARY KEY CHECK(id=1), cursor INTEGER NOT NULL DEFAULT 0, symbols_json TEXT NOT NULL DEFAULT '[]', updated_at INTEGER NOT NULL DEFAULT 0)`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS push_subscriptions (endpoint TEXT PRIMARY KEY, subscription_json TEXT NOT NULL, user_agent TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`)
   ]);
 }
 
@@ -65,6 +66,30 @@ export async function putRadarState(env, cursor, symbols) {
   const now=Date.now();
   await env.DB.prepare(`INSERT INTO radar_state(id,cursor,symbols_json,updated_at) VALUES(1,?,?,?) ON CONFLICT(id) DO UPDATE SET cursor=excluded.cursor,symbols_json=excluded.symbols_json,updated_at=excluded.updated_at`).bind(cursor,JSON.stringify(symbols),now).run();
   return now;
+}
+
+export async function upsertPushSubscription(env, subscription, userAgent='') {
+  const endpoint=String(subscription?.endpoint||'').trim();
+  if(!endpoint) throw new Error('Push subscription endpoint is required.');
+  const now=Date.now();
+  await env.DB.prepare(`INSERT INTO push_subscriptions(endpoint,subscription_json,user_agent,created_at,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(endpoint) DO UPDATE SET subscription_json=excluded.subscription_json,user_agent=excluded.user_agent,updated_at=excluded.updated_at`).bind(endpoint,JSON.stringify(subscription),String(userAgent||'').slice(0,500),now,now).run();
+  return now;
+}
+
+export async function deletePushSubscription(env, endpoint) {
+  const value=String(endpoint||'').trim();
+  if(!value) return;
+  await env.DB.prepare(`DELETE FROM push_subscriptions WHERE endpoint=?`).bind(value).run();
+}
+
+export async function listPushSubscriptions(env) {
+  const rows=await env.DB.prepare(`SELECT endpoint,subscription_json AS subscriptionJson FROM push_subscriptions ORDER BY updated_at DESC`).all();
+  return (rows.results||[]).map(row=>{try{return {endpoint:row.endpoint,subscription:JSON.parse(row.subscriptionJson)};}catch{return null;}}).filter(Boolean);
+}
+
+export async function countPushSubscriptions(env) {
+  const row=await env.DB.prepare(`SELECT COUNT(*) AS count FROM push_subscriptions`).first();
+  return Number(row?.count)||0;
 }
 
 export async function listAlerts(env, limit) {
