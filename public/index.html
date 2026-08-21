@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#09111f" />
+  <title>SignalForge — Trading Decision Dashboard</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand-wrap">
+        <div class="brand-mark" aria-hidden="true">SF</div>
+        <div>
+          <div class="brand">SignalForge</div>
+          <div class="brand-sub">Decision engine</div>
+        </div>
+      </div>
+      <nav class="topnav" aria-label="Primary">
+        <button class="nav-btn active" type="button">Dashboard</button>
+        <button class="nav-btn" type="button" disabled title="Coming next">Screener</button>
+        <button class="nav-btn" type="button" disabled title="Coming next">Alerts</button>
+      </nav>
+      <div class="top-actions">
+        <label class="symbol-search">
+          <span class="sr-only">Ticker</span>
+          <input id="symbolInput" type="text" value="XOM" maxlength="6" autocomplete="off" aria-label="Ticker symbol" />
+        </label>
+        <button id="loadSymbolBtn" class="btn ghost" type="button">Load</button>
+      </div>
+    </header>
+
+    <div class="page-grid">
+      <aside class="sidebar">
+        <div class="sidebar-head">
+          <div>
+            <div class="eyebrow">Watchlist</div>
+            <h2>Market radar</h2>
+          </div>
+          <button id="scanBtn" class="icon-btn" type="button" title="Run local scan">↻</button>
+        </div>
+        <div id="watchlist" class="watchlist" aria-live="polite"></div>
+        <div class="mini-note">
+          <strong>Decision rule</strong>
+          <span>A high pass count does not override a failed critical gate.</span>
+        </div>
+      </aside>
+
+      <main class="main-content">
+        <section class="hero-card">
+          <div class="hero-left">
+            <div class="stock-ident">
+              <div class="ticker-badge" id="tickerBadge">XOM</div>
+              <div>
+                <div class="eyebrow">Selected symbol</div>
+                <h1 id="stockTitle">XOM</h1>
+                <div class="muted" id="stockSubtitle">Demo market feed</div>
+              </div>
+            </div>
+            <div class="price-row">
+              <div class="price" id="priceValue">—</div>
+              <div id="priceChange" class="price-change neutral">—</div>
+            </div>
+          </div>
+          <div class="hero-right">
+            <div class="status-caption">CURRENT STATUS</div>
+            <div id="statusBadge" class="status-badge status-wait">WAIT — SETUP NOT READY</div>
+            <div id="statusReason" class="status-reason">Analyzing critical gates…</div>
+          </div>
+        </section>
+
+        <section class="status-strip" aria-label="Status legend">
+          <span class="legend-label">STATUS LEGEND</span>
+          <span class="pill buy">BUY NOW</span>
+          <span class="pill setup">SETUP — READY SOON</span>
+          <span class="pill pullback">WAIT FOR PULLBACK</span>
+          <span class="pill wait">WAIT — SETUP NOT READY</span>
+          <span class="pill avoid">AVOID</span>
+          <span class="pill sell">SELL / EXIT</span>
+        </section>
+
+        <section class="content-grid">
+          <div class="chart-card">
+            <div class="chart-toolbar">
+              <div class="timeframes" id="timeframeButtons" aria-label="Chart timeframe">
+                <button type="button" data-timeframe="1D">1D</button>
+                <button type="button" data-timeframe="5D">5D</button>
+                <button type="button" data-timeframe="1M">1M</button>
+                <button type="button" data-timeframe="3M">3M</button>
+                <button type="button" class="active" data-timeframe="6M">6M</button>
+                <button type="button" data-timeframe="1Y">1Y</button>
+                <button type="button" data-timeframe="2Y">2Y</button>
+              </div>
+              <div class="toolbar-meta" id="intervalLabel">Daily candles</div>
+            </div>
+            <div class="chart-wrap">
+              <canvas id="priceChart" width="1100" height="510" aria-label="Price chart"></canvas>
+              <div class="chart-legend">
+                <span><i class="swatch entry"></i>Preferred Entry</span>
+                <span><i class="swatch extension"></i>Overextension / Don’t Chase</span>
+                <span><i class="swatch stop"></i>Thesis Break / Stop</span>
+              </div>
+            </div>
+          </div>
+
+          <aside class="decision-card">
+            <div class="readiness-head">
+              <div>
+                <div class="eyebrow">Confidence / readiness</div>
+                <div class="readiness-value" id="readinessValue">—</div>
+              </div>
+              <div class="readiness-ring" id="readinessRing"><span id="readinessRingText">—</span></div>
+            </div>
+            <div id="passSummary" class="pass-summary">Analyzing…</div>
+            <div class="divider"></div>
+            <h3>Why this is not a BUY yet</h3>
+            <div id="whyList" class="why-list"></div>
+            <div class="divider"></div>
+            <h3>Key levels</h3>
+            <div class="level-list">
+              <div><span class="dot entry-dot"></span><span>Preferred entry</span><strong id="entryLevel">—</strong></div>
+              <div><span class="dot extension-dot"></span><span>Overextension</span><strong id="extensionLevel">—</strong></div>
+              <div><span class="dot stop-dot"></span><span>Thesis break / stop</span><strong id="stopLevel">—</strong></div>
+              <div><span class="dot current-dot"></span><span>Current</span><strong id="currentLevel">—</strong></div>
+            </div>
+          </aside>
+        </section>
+
+        <section class="engine-grid" id="engineGrid" aria-label="Decision engines"></section>
+
+        <section class="explain-card">
+          <div>
+            <div class="eyebrow">Critical-gate model</div>
+            <h2>Pass count is context. Gates make the decision.</h2>
+          </div>
+          <p id="gateExplanation">A setup cannot become BUY NOW unless Trend, Entry, Probability, and Risk / Reward all clear their critical thresholds.</p>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
