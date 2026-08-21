@@ -5,7 +5,9 @@ export async function ensureSchema(env) {
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS signal_state (symbol TEXT PRIMARY KEY, status TEXT NOT NULL, readiness INTEGER NOT NULL, price REAL NOT NULL, reason TEXT NOT NULL, analysis_json TEXT NOT NULL, updated_at INTEGER NOT NULL)`),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS signal_events (id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT NOT NULL, previous_status TEXT, status TEXT NOT NULL, readiness INTEGER NOT NULL, price REAL NOT NULL, reason TEXT NOT NULL, analysis_json TEXT NOT NULL, created_at INTEGER NOT NULL)`),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS provider_usage (day_key TEXT PRIMARY KEY, requests INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL)`),
-    env.DB.prepare(`CREATE TABLE IF NOT EXISTS symbol_search_cache (query TEXT PRIMARY KEY, fetched_at INTEGER NOT NULL, payload TEXT NOT NULL)`)
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS symbol_search_cache (query TEXT PRIMARY KEY, fetched_at INTEGER NOT NULL, payload TEXT NOT NULL)`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS radar_quotes (symbol TEXT PRIMARY KEY, price REAL NOT NULL, change_pct REAL NOT NULL, volume REAL NOT NULL, average_volume REAL NOT NULL, relative_volume REAL NOT NULL, score REAL NOT NULL, payload TEXT NOT NULL, updated_at INTEGER NOT NULL)`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS radar_state (id INTEGER PRIMARY KEY CHECK(id=1), cursor INTEGER NOT NULL DEFAULT 0, symbols_json TEXT NOT NULL DEFAULT '[]', updated_at INTEGER NOT NULL DEFAULT 0)`)
   ]);
 }
 
@@ -38,6 +40,30 @@ export async function getCachedSymbolSearch(env, query, maxAgeMs=86_400_000) {
 export async function putCachedSymbolSearch(env, query, results) {
   const now=Date.now();
   await env.DB.prepare(`INSERT INTO symbol_search_cache(query,fetched_at,payload) VALUES(?,?,?) ON CONFLICT(query) DO UPDATE SET fetched_at=excluded.fetched_at,payload=excluded.payload`).bind(query,now,JSON.stringify(results)).run();
+  return now;
+}
+
+export async function putRadarQuote(env, quote) {
+  const now=Date.now();
+  await env.DB.prepare(`INSERT INTO radar_quotes(symbol,price,change_pct,volume,average_volume,relative_volume,score,payload,updated_at) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(symbol) DO UPDATE SET price=excluded.price,change_pct=excluded.change_pct,volume=excluded.volume,average_volume=excluded.average_volume,relative_volume=excluded.relative_volume,score=excluded.score,payload=excluded.payload,updated_at=excluded.updated_at`).bind(quote.symbol,quote.price,quote.changePct,quote.volume,quote.averageVolume,quote.relativeVolume,quote.score,JSON.stringify(quote),now).run();
+}
+
+export async function listRadarQuotes(env, maxAgeMs=14_400_000, limit=24) {
+  const cutoff=Date.now()-maxAgeMs;
+  const rows=await env.DB.prepare(`SELECT payload,updated_at AS updatedAt FROM radar_quotes WHERE updated_at>=? ORDER BY score DESC LIMIT ?`).bind(cutoff,limit).all();
+  return (rows.results||[]).map(row=>{try{return {...JSON.parse(row.payload),updatedAt:Number(row.updatedAt)||0};}catch{return null;}}).filter(Boolean);
+}
+
+export async function getRadarState(env) {
+  const row=await env.DB.prepare(`SELECT cursor,symbols_json AS symbolsJson,updated_at AS updatedAt FROM radar_state WHERE id=1`).first();
+  if(!row) return {cursor:0,symbols:[],updatedAt:0};
+  let symbols=[];try{symbols=JSON.parse(row.symbolsJson)||[];}catch{}
+  return {cursor:Number(row.cursor)||0,symbols,updatedAt:Number(row.updatedAt)||0};
+}
+
+export async function putRadarState(env, cursor, symbols) {
+  const now=Date.now();
+  await env.DB.prepare(`INSERT INTO radar_state(id,cursor,symbols_json,updated_at) VALUES(1,?,?,?) ON CONFLICT(id) DO UPDATE SET cursor=excluded.cursor,symbols_json=excluded.symbols_json,updated_at=excluded.updated_at`).bind(cursor,JSON.stringify(symbols),now).run();
   return now;
 }
 
