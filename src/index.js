@@ -2,6 +2,7 @@ import { analyze, assessIntradayConfirmation } from './analysis.js';
 import { DEFAULT_WATCHLIST, TIMEFRAMES } from './constants.js';
 import { ensureSchema, listAlerts, listSignals, recordSignal } from './db.js';
 import { getMarketData, searchSymbols } from './market.js';
+import { getRadarSnapshot, getRadarSymbols, runRadarDiscovery } from './radar.js';
 
 export default {
   async fetch(request,env) {
@@ -11,7 +12,8 @@ export default {
       await ensureSchema(env);
       if (request.method!=='GET') return json({error:'Method not allowed.'},405);
 
-      if (url.pathname==='/api/health') return json({ok:true,service:'SignalForge-v2',marketDataConfigured:Boolean(env.TWELVE_DATA_API_KEY),databaseConfigured:Boolean(env.DB),watchlist:watchlist(env),phase2SelectiveConfirmation:true,symbolSearch:true});
+      if (url.pathname==='/api/health') return json({ok:true,service:'SignalForge-v2',marketDataConfigured:Boolean(env.TWELVE_DATA_API_KEY),databaseConfigured:Boolean(env.DB),watchlist:watchlist(env),phase2SelectiveConfirmation:true,symbolSearch:true,opportunityRadar:true});
+      if (url.pathname==='/api/opportunity-radar') return json({radar:await getRadarSnapshot(env)});
       if (url.pathname==='/api/symbol-search') {
         const query=String(url.searchParams.get('q')||'').trim();
         if (!query) return json({results:[],cached:true});
@@ -38,52 +40,67 @@ export default {
       return json({error:safeError(error)},500);
     }
   },
-  scheduled(controller,env,ctx) { ctx.waitUntil(runScheduledScan(env,controller.scheduledTime)); }
+  scheduled(controller,env,ctx) { ctx.waitUntil(runScheduledCycle(env,controller.scheduledTime)); }
 };
 
-async function runScheduledScan(env,scheduledTime) {
+async function runScheduledCycle(env,scheduledTime) {
   try {
     await ensureSchema(env);
-    if (!env.TWELVE_DATA_API_KEY || !isUsMarketWindow(new Date(scheduledTime||Date.now()))) return;
-
-    let benchmarkCandles=null;
-    try { benchmarkCandles=(await getMarketData(env,'SPY','6M',false)).candles; }
-    catch(error) { console.error(JSON.stringify({event:'benchmark_fetch_error',message:error?.message||String(error)})); }
-
-    const scans=[];
-    for (const symbol of watchlist(env)) {
-      try {
-        const market=await getMarketData(env,symbol,'6M',false);
-        const analysis=analyze(market.candles,symbol,{benchmarkCandles});
-        scans.push({symbol,market,analysis});
-      } catch(error) {
-        console.error(JSON.stringify({event:'scan_symbol_error',symbol,message:error?.message||String(error)}));
-      }
+    const now=new Date(scheduledTime||Date.now());
+    if (!env.TWELVE_DATA_API_KEY || !isUsMarketWindow(now)) return;
+    const minute=easternMinute(now);
+    if (minute===0 || minute===30) {
+      const result=await runRadarDiscovery(env,{batchSize:7});
+      console.log(JSON.stringify({event:'radar_discovery',scanned:result.scanned.map(x=>x.symbol),leaders:result.leaders.map(x=>x.symbol),cursor:result.cursor}));
+      return;
     }
-
-    const candidate=selectConfirmationCandidate(scans);
-    if (candidate) {
-      try {
-        const intradayMarket=await getMarketData(env,candidate.symbol,'5D',false);
-        const intradayConfirmation=assessIntradayConfirmation(intradayMarket.candles);
-        candidate.analysis=analyze(candidate.market.candles,candidate.symbol,{benchmarkCandles,intradayConfirmation});
-        console.log(JSON.stringify({event:'intraday_confirmation',symbol:candidate.symbol,state:intradayConfirmation.state,passes:intradayConfirmation.passes,total:intradayConfirmation.total,status:candidate.analysis.status}));
-      } catch(error) {
-        console.error(JSON.stringify({event:'intraday_confirmation_error',symbol:candidate.symbol,message:error?.message||String(error)}));
-      }
-    }
-
-    for (const scan of scans) {
-      try {
-        const event=await recordSignal(env,scan.analysis);
-        if (event.changed) await sendWebhook(env,scan.analysis,event.previousStatus,event.now);
-      } catch(error) {
-        console.error(JSON.stringify({event:'record_signal_error',symbol:scan.symbol,message:error?.message||String(error)}));
-      }
-    }
+    await runDeepScan(env);
   } catch(error) {
-    console.error(JSON.stringify({event:'scheduled_scan_error',message:error?.message||String(error)}));
+    console.error(JSON.stringify({event:'scheduled_cycle_error',message:error?.message||String(error)}));
   }
+}
+
+async function runDeepScan(env) {
+  let benchmarkCandles=null;
+  try { benchmarkCandles=(await getMarketData(env,'SPY','6M',false)).candles; }
+  catch(error) { console.error(JSON.stringify({event:'benchmark_fetch_error',message:error?.message||String(error)})); }
+
+  let symbols=await getRadarSymbols(env);
+  if(!symbols.length) symbols=watchlist(env).slice(0,6);
+  symbols=[...new Set(symbols.filter(symbol=>symbol!=='SPY'))].slice(0,6);
+
+  const scans=[];
+  for (const symbol of symbols) {
+    try {
+      const market=await getMarketData(env,symbol,'6M',false);
+      const analysis=analyze(market.candles,symbol,{benchmarkCandles});
+      scans.push({symbol,market,analysis});
+    } catch(error) {
+      console.error(JSON.stringify({event:'scan_symbol_error',symbol,message:error?.message||String(error)}));
+    }
+  }
+
+  const candidate=selectConfirmationCandidate(scans);
+  if (candidate) {
+    try {
+      const intradayMarket=await getMarketData(env,candidate.symbol,'5D',false);
+      const intradayConfirmation=assessIntradayConfirmation(intradayMarket.candles);
+      candidate.analysis=analyze(candidate.market.candles,candidate.symbol,{benchmarkCandles,intradayConfirmation});
+      console.log(JSON.stringify({event:'intraday_confirmation',symbol:candidate.symbol,state:intradayConfirmation.state,passes:intradayConfirmation.passes,total:intradayConfirmation.total,status:candidate.analysis.status}));
+    } catch(error) {
+      console.error(JSON.stringify({event:'intraday_confirmation_error',symbol:candidate.symbol,message:error?.message||String(error)}));
+    }
+  }
+
+  for (const scan of scans) {
+    try {
+      const event=await recordSignal(env,scan.analysis);
+      if (event.changed) await sendWebhook(env,scan.analysis,event.previousStatus,event.now);
+    } catch(error) {
+      console.error(JSON.stringify({event:'record_signal_error',symbol:scan.symbol,message:error?.message||String(error)}));
+    }
+  }
+  console.log(JSON.stringify({event:'radar_deep_scan',symbols,statuses:scans.map(x=>({symbol:x.symbol,status:x.analysis.status,readiness:x.analysis.readiness}))}));
 }
 
 function selectConfirmationCandidate(scans) {
@@ -116,4 +133,6 @@ function sanitizeTimeframe(v){const t=String(v||'6M').toUpperCase();return TIMEF
 function clampInt(v,min,max,fallback){const n=Number.parseInt(v,10);return Number.isFinite(n)?Math.min(max,Math.max(min,n)):fallback;}
 function safeError(error){const m=String(error?.message||'');if(/API key/i.test(m))return'Market-data service is not configured yet.';if(/quota/i.test(m))return'Market-data daily safety limit reached.';if(/429|too many requests/i.test(m))return'Market-data minute limit reached. Try again shortly.';if(/Twelve Data/i.test(m))return m.slice(0,180);return'SignalForge API request failed.';}
 function json(data,status=200){return new Response(JSON.stringify(data),{status,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'}});}
-function isUsMarketWindow(date){const parts=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',weekday:'short',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(date);const p=Object.fromEntries(parts.map(x=>[x.type,x.value]));if(p.weekday==='Sat'||p.weekday==='Sun')return false;const minutes=Number(p.hour)*60+Number(p.minute);return minutes>=570&&minutes<=960;}
+function easternParts(date){const parts=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',weekday:'short',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(date);return Object.fromEntries(parts.map(x=>[x.type,x.value]));}
+function easternMinute(date){return Number(easternParts(date).minute)||0;}
+function isUsMarketWindow(date){const p=easternParts(date);if(p.weekday==='Sat'||p.weekday==='Sun')return false;const minutes=Number(p.hour)*60+Number(p.minute);return minutes>=570&&minutes<=960;}
