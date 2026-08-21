@@ -25,7 +25,8 @@ export async function getMarketData(env, symbol, timeframe, forceRefresh=false) 
   })).filter(c=>Number.isFinite(c.time)&&c.open>0&&c.high>0&&c.low>0&&c.close>0);
 
   if(cfg.regularSessions) candles=trimToRegularSessions(candles,cfg.regularSessions);
-  if (candles.length<Math.min(20,cfg.outputsize)) throw new Error('Twelve Data candle payload failed validation.');
+  const minimumCandles=cfg.regularSessions===1?1:cfg.regularSessions===5?30:60;
+  if (candles.length<minimumCandles) throw new Error('Twelve Data candle payload failed validation.');
   const fetchedAt=await putCachedMarket(env,symbol,timeframe,'Twelve Data',candles);
   return { candles, source:'Twelve Data', cached:false, fetchedAt };
 }
