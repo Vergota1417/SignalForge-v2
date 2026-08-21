@@ -4,7 +4,8 @@ export async function ensureSchema(env) {
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS market_cache (symbol TEXT NOT NULL, timeframe TEXT NOT NULL, fetched_at INTEGER NOT NULL, source TEXT NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(symbol,timeframe))`),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS signal_state (symbol TEXT PRIMARY KEY, status TEXT NOT NULL, readiness INTEGER NOT NULL, price REAL NOT NULL, reason TEXT NOT NULL, analysis_json TEXT NOT NULL, updated_at INTEGER NOT NULL)`),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS signal_events (id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT NOT NULL, previous_status TEXT, status TEXT NOT NULL, readiness INTEGER NOT NULL, price REAL NOT NULL, reason TEXT NOT NULL, analysis_json TEXT NOT NULL, created_at INTEGER NOT NULL)`),
-    env.DB.prepare(`CREATE TABLE IF NOT EXISTS provider_usage (day_key TEXT PRIMARY KEY, requests INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL)`)
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS provider_usage (day_key TEXT PRIMARY KEY, requests INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL)`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS symbol_search_cache (query TEXT PRIMARY KEY, fetched_at INTEGER NOT NULL, payload TEXT NOT NULL)`)
   ]);
 }
 
@@ -28,14 +29,38 @@ export async function putCachedMarket(env, symbol, timeframe, source, candles) {
   return now;
 }
 
+export async function getCachedSymbolSearch(env, query, maxAgeMs=86_400_000) {
+  const row=await env.DB.prepare('SELECT fetched_at AS fetchedAt,payload FROM symbol_search_cache WHERE query=?').bind(query).first();
+  if (!row || Date.now()-Number(row.fetchedAt)>=maxAgeMs) return null;
+  return { results:JSON.parse(row.payload), cached:true, fetchedAt:Number(row.fetchedAt) };
+}
+
+export async function putCachedSymbolSearch(env, query, results) {
+  const now=Date.now();
+  await env.DB.prepare(`INSERT INTO symbol_search_cache(query,fetched_at,payload) VALUES(?,?,?) ON CONFLICT(query) DO UPDATE SET fetched_at=excluded.fetched_at,payload=excluded.payload`).bind(query,now,JSON.stringify(results)).run();
+  return now;
+}
+
 export async function listAlerts(env, limit) {
   const rows=await env.DB.prepare(`SELECT id,symbol,previous_status AS previousStatus,status,readiness,price,reason,created_at AS createdAt FROM signal_events ORDER BY id DESC LIMIT ?`).bind(limit).all();
   return rows.results || [];
 }
 
 export async function listSignals(env) {
-  const rows=await env.DB.prepare(`SELECT symbol,status,readiness,price,reason,updated_at AS updatedAt FROM signal_state ORDER BY symbol`).all();
-  return rows.results || [];
+  const rows=await env.DB.prepare(`SELECT symbol,status,readiness,price,reason,analysis_json AS analysisJson,updated_at AS updatedAt FROM signal_state ORDER BY symbol`).all();
+  return (rows.results || []).map(row=>{
+    let analysis=null;
+    try { analysis=row.analysisJson ? JSON.parse(row.analysisJson) : null; } catch {}
+    const {analysisJson,...rest}=row;
+    return {...rest,analysis};
+  });
+}
+
+export async function getSignalAnalysis(env, symbol) {
+  const row=await env.DB.prepare(`SELECT analysis_json AS analysisJson,updated_at AS updatedAt FROM signal_state WHERE symbol=?`).bind(symbol).first();
+  if (!row?.analysisJson) return null;
+  try { return {analysis:JSON.parse(row.analysisJson),updatedAt:Number(row.updatedAt)||0}; }
+  catch { return null; }
 }
 
 export async function recordSignal(env, analysis) {
