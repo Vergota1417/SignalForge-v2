@@ -31,11 +31,11 @@
   style.textContent = `
     .sf-volume-wrap{margin-top:.65rem;border-top:1px solid rgba(255,255,255,.08);padding-top:.6rem}
     .sf-volume-head{display:flex;justify-content:space-between;gap:.75rem;align-items:center;margin-bottom:.35rem;color:#8fa4bd;font-size:.78rem}
-    .sf-volume-canvas{display:block;width:100%;height:92px;background:#08111f;border-radius:8px;touch-action:none;cursor:crosshair}
+    .sf-volume-canvas{display:block;width:100%;height:110px;background:#08111f;border-radius:8px;touch-action:none;cursor:crosshair}
     .sf-candle-detail{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:.5rem;margin-top:.6rem;padding:.65rem .75rem;border:1px solid rgba(255,255,255,.08);border-radius:10px;background:rgba(12,22,37,.78)}
     .sf-candle-cell{min-width:0}.sf-candle-label{display:block;color:#6f86a1;font-size:.66rem;text-transform:uppercase;letter-spacing:.07em}.sf-candle-value{display:block;margin-top:.15rem;color:#e8eef6;font-size:.82rem;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .sf-candle-time{grid-column:span 2}
-    @media(max-width:760px){.sf-candle-detail{grid-template-columns:repeat(3,minmax(0,1fr))}.sf-candle-time{grid-column:span 3}.sf-volume-canvas{height:84px}}
+    @media(max-width:760px){.sf-candle-detail{grid-template-columns:repeat(3,minmax(0,1fr))}.sf-candle-time{grid-column:span 3}.sf-volume-canvas{height:104px}}
   `;
   document.head.appendChild(style);
 
@@ -54,8 +54,8 @@
     const wrap = document.createElement('div');
     wrap.className = 'sf-volume-wrap';
     wrap.innerHTML = `
-      <div class="sf-volume-head"><strong>Volume</strong><span>Tap/click any candle to inspect OHLCV</span></div>
-      <canvas id="sfVolumeChart" class="sf-volume-canvas" aria-label="Volume bars for loaded candles"></canvas>
+      <div class="sf-volume-head"><strong>Volume</strong><span>Scale shown at right · tap/click a candle for OHLCV</span></div>
+      <canvas id="sfVolumeChart" class="sf-volume-canvas" aria-label="Volume bars with numeric scale for loaded candles"></canvas>
       <div id="sfCandleDetail" class="sf-candle-detail" aria-live="polite"></div>`;
     canvasWrap.insertAdjacentElement('afterend', wrap);
     volumeCanvas = wrap.querySelector('#sfVolumeChart');
@@ -91,7 +91,7 @@
     const rect = sourceCanvas.getBoundingClientRect();
     const x = event.clientX - rect.left;
     const left = sourceCanvas.id === 'priceChart' ? 52 : 8;
-    const right = sourceCanvas.id === 'priceChart' ? 70 : 8;
+    const right = sourceCanvas.id === 'priceChart' ? 70 : 54;
     const usable = Math.max(1, rect.width - left - right);
     const ratio = Math.max(0, Math.min(1, (x-left)/usable));
     selectedIndex = Math.round(ratio * (payload.candles.length-1));
@@ -110,14 +110,26 @@
     if (!payload?.candles?.length) return;
 
     const candles = payload.candles;
-    const maxVol = Math.max(...candles.map(c => Number(c.volume)||0), 1);
-    const pad = {l:8,r:8,t:6,b:8};
-    const step = (w-pad.l-pad.r)/candles.length;
-    const barW = Math.max(1, Math.min(7, step*.72));
+    const maxRaw = Math.max(...candles.map(c => Number(c.volume)||0), 1);
+    const maxVol = niceVolumeCeiling(maxRaw);
+    const pad = {l:8,r:54,t:8,b:10};
+    const chartH = h-pad.t-pad.b;
+    const chartW = w-pad.l-pad.r;
+    volumeCtx.font='10px system-ui';
+    volumeCtx.lineWidth=1;
+    for(let i=0;i<=4;i++){
+      const value=maxVol*(1-i/4);
+      const y=pad.t+i*chartH/4;
+      volumeCtx.strokeStyle='rgba(119,144,173,.18)';
+      volumeCtx.beginPath();volumeCtx.moveTo(pad.l,y);volumeCtx.lineTo(w-pad.r,y);volumeCtx.stroke();
+      volumeCtx.fillStyle='#7790ad';volumeCtx.fillText(fmtVolume(value),w-pad.r+7,y+3);
+    }
 
+    const step = chartW/candles.length;
+    const barW = Math.max(1, Math.min(7, step*.72));
     candles.forEach((c,i) => {
       const volume = Number(c.volume)||0;
-      const barH = (volume/maxVol)*(h-pad.t-pad.b);
+      const barH = (volume/maxVol)*chartH;
       const x = pad.l + (i+.5)*step;
       const y = h-pad.b-barH;
       const up = Number(c.close) >= Number(c.open);
@@ -132,6 +144,14 @@
       }
     });
     volumeCtx.globalAlpha = 1;
+  }
+
+  function niceVolumeCeiling(value){
+    if(value<=0)return 1;
+    const power=Math.pow(10,Math.floor(Math.log10(value)));
+    const normalized=value/power;
+    const nice=normalized<=1?1:normalized<=2?2:normalized<=5?5:10;
+    return nice*power;
   }
 
   function renderDetail() {
@@ -166,7 +186,7 @@
   window.addEventListener('signalforge:market-data', () => setTimeout(refresh, 0));
   window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer=setTimeout(resizeVolumeCanvas,120); });
   document.addEventListener('click', event => {
-    if (event.target.closest('.timeframe-btn,.watch-item,.recent-item,.symbol-suggestion,#loadSymbolBtn')) setTimeout(refresh,250);
+    if (event.target.closest('.timeframe-btn,.watch-item,.recent-item,.symbol-suggestion,#loadSymbolBtn,.radar-item,.alert-history-row')) setTimeout(refresh,250);
   });
   window.addEventListener('load', refresh);
 })();
