@@ -1,9 +1,8 @@
-const CACHE_NAME='signalforge-shell-v1';
-const APP_SHELL=['/','/index.html','/styles.css','/config.js','/app.js','/pwa.js','/manifest.webmanifest','/icons/signalforge-icon.svg','/icons/signalforge-maskable.svg'];
+const CACHE_NAME='signalforge-shell-v2';
+const APP_SHELL=['/','/index.html','/styles.css','/pwa.css','/config.js','/app.js','/pwa.js','/manifest.webmanifest','/icons/signalforge-icon.svg','/icons/signalforge-maskable.svg'];
 
 self.addEventListener('install',event=>{
   event.waitUntil(caches.open(CACHE_NAME).then(cache=>cache.addAll(APP_SHELL)));
-  self.skipWaiting();
 });
 
 self.addEventListener('activate',event=>{
@@ -18,33 +17,24 @@ self.addEventListener('fetch',event=>{
   if (request.method!=='GET') return;
   const url=new URL(request.url);
 
-  // Never cache live API responses. Market data and signal state must remain network-fresh.
+  // Market data and signal state must never be served from an offline cache.
   if (url.origin===self.location.origin && url.pathname.startsWith('/api/')) {
     event.respondWith(fetch(request));
     return;
   }
 
-  if (request.mode==='navigate') {
-    event.respondWith(
-      fetch(request)
-        .then(response=>{
-          const copy=response.clone();
-          caches.open(CACHE_NAME).then(cache=>cache.put('/index.html',copy));
-          return response;
-        })
-        .catch(()=>caches.match('/index.html'))
-    );
-    return;
-  }
+  if (url.origin!==self.location.origin) return;
 
+  // Network-first keeps installed phones on the latest deployed UI while still
+  // allowing the shell to open offline if the network is temporarily unavailable.
   event.respondWith(
-    caches.match(request).then(cached=>cached||fetch(request).then(response=>{
-      if (response.ok && url.origin===self.location.origin) {
+    fetch(request).then(response=>{
+      if (response.ok) {
         const copy=response.clone();
-        caches.open(CACHE_NAME).then(cache=>cache.put(request,copy));
+        caches.open(CACHE_NAME).then(cache=>cache.put(request.mode==='navigate' ? '/index.html' : request,copy));
       }
       return response;
-    }))
+    }).catch(()=>request.mode==='navigate' ? caches.match('/index.html') : caches.match(request))
   );
 });
 
