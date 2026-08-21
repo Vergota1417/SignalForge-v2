@@ -13,7 +13,9 @@ export async function getMarketData(env, symbol, timeframe, forceRefresh=false) 
   const url=new URL('https://api.twelvedata.com/time_series');
   url.searchParams.set('symbol',symbol); url.searchParams.set('interval',cfg.interval);
   url.searchParams.set('outputsize',String(cfg.outputsize)); url.searchParams.set('order','asc');
-  url.searchParams.set('timezone','America/New_York'); url.searchParams.set('apikey',env.TWELVE_DATA_API_KEY);
+  // UTC keeps intraday timestamps unambiguous in the browser. Twelve Data ignores
+  // timezone for daily/weekly intervals, where date-only values still sort correctly.
+  url.searchParams.set('timezone','UTC'); url.searchParams.set('apikey',env.TWELVE_DATA_API_KEY);
   const response=await fetch(url,{headers:{accept:'application/json'}});
   if (!response.ok) throw new Error(`Twelve Data HTTP ${response.status}`);
   const payload=await response.json();
