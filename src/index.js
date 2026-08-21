@@ -95,9 +95,7 @@ async function runDeepScan(env) {
   try { benchmarkCandles=(await getMarketData(env,'SPY','6M',false)).candles; }
   catch(error) { console.error(JSON.stringify({event:'benchmark_fetch_error',message:error?.message||String(error)})); }
 
-  let symbols=await getRadarSymbols(env);
-  if(!symbols.length) symbols=watchlist(env).slice(0,5);
-  symbols=[...new Set(symbols.filter(symbol=>symbol!=='SPY'))].slice(0,5);
+  const symbols=await selectDeepScanSymbols(env);
 
   const scans=[];
   for (const symbol of symbols) {
@@ -139,6 +137,29 @@ async function runDeepScan(env) {
     }
   }
   console.log(JSON.stringify({event:'radar_deep_scan',symbols,statuses:scans.map(x=>({symbol:x.symbol,status:x.analysis.status,readiness:x.analysis.readiness}))}));
+}
+
+async function selectDeepScanSymbols(env) {
+  const radar=[...new Set((await getRadarSymbols(env)).filter(symbol=>symbol&&symbol!=='SPY'))];
+  const fixed=watchlist(env);
+  const saved=await listSignals(env);
+  const updatedAt=new Map(saved.map(row=>[row.symbol,Number(row.updatedAt)||0]));
+  const maintenance=[...fixed].sort((a,b)=>(updatedAt.get(a)||0)-(updatedAt.get(b)||0));
+  const selected=[];
+  const add=symbol=>{if(symbol&&symbol!=='SPY'&&!selected.includes(symbol)&&selected.length<5)selected.push(symbol);};
+
+  radar.slice(0,3).forEach(add);
+  maintenance.filter(symbol=>!selected.includes(symbol)).slice(0,2).forEach(add);
+  radar.forEach(add);
+  maintenance.forEach(add);
+
+  console.log(JSON.stringify({
+    event:'deep_scan_selection',
+    radarSlots:selected.filter(symbol=>radar.slice(0,3).includes(symbol)),
+    maintenancePriority:maintenance.slice(0,Math.min(5,maintenance.length)),
+    selected
+  }));
+  return selected;
 }
 
 function selectConfirmationCandidate(scans) {
