@@ -1,0 +1,50 @@
+export async function ensureSchema(env) {
+  if (!env.DB) throw new Error('D1 binding DB is not configured.');
+  await env.DB.batch([
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS market_cache (symbol TEXT NOT NULL, timeframe TEXT NOT NULL, fetched_at INTEGER NOT NULL, source TEXT NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(symbol,timeframe))`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS signal_state (symbol TEXT PRIMARY KEY, status TEXT NOT NULL, readiness INTEGER NOT NULL, price REAL NOT NULL, reason TEXT NOT NULL, analysis_json TEXT NOT NULL, updated_at INTEGER NOT NULL)`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS signal_events (id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT NOT NULL, previous_status TEXT, status TEXT NOT NULL, readiness INTEGER NOT NULL, price REAL NOT NULL, reason TEXT NOT NULL, analysis_json TEXT NOT NULL, created_at INTEGER NOT NULL)`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS provider_usage (day_key TEXT PRIMARY KEY, requests INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL)`)
+  ]);
+}
+
+export async function reserveProviderRequest(env) {
+  const max = clampInt(env.MAX_PROVIDER_REQUESTS_PER_DAY, 50, 5000, 700);
+  const dayKey = new Date().toISOString().slice(0,10), now = Date.now();
+  const row = await env.DB.prepare('SELECT requests FROM provider_usage WHERE day_key=?').bind(dayKey).first();
+  if (Number(row?.requests || 0) >= max) throw new Error('Provider quota safety limit reached.');
+  await env.DB.prepare(`INSERT INTO provider_usage(day_key,requests,updated_at) VALUES(?,1,?) ON CONFLICT(day_key) DO UPDATE SET requests=requests+1, updated_at=excluded.updated_at`).bind(dayKey,now).run();
+}
+
+export async function getCachedMarket(env, symbol, timeframe, maxAgeMs) {
+  const row = await env.DB.prepare('SELECT fetched_at AS fetchedAt, source, payload FROM market_cache WHERE symbol=? AND timeframe=?').bind(symbol,timeframe).first();
+  if (!row || Date.now()-Number(row.fetchedAt) >= maxAgeMs) return null;
+  return { candles:JSON.parse(row.payload), source:row.source, cached:true, fetchedAt:Number(row.fetchedAt) };
+}
+
+export async function putCachedMarket(env, symbol, timeframe, source, candles) {
+  const now=Date.now();
+  await env.DB.prepare(`INSERT INTO market_cache(symbol,timeframe,fetched_at,source,payload) VALUES(?,?,?,?,?) ON CONFLICT(symbol,timeframe) DO UPDATE SET fetched_at=excluded.fetched_at,source=excluded.source,payload=excluded.payload`).bind(symbol,timeframe,now,source,JSON.stringify(candles)).run();
+  return now;
+}
+
+export async function listAlerts(env, limit) {
+  const rows=await env.DB.prepare(`SELECT id,symbol,previous_status AS previousStatus,status,readiness,price,reason,created_at AS createdAt FROM signal_events ORDER BY id DESC LIMIT ?`).bind(limit).all();
+  return rows.results || [];
+}
+
+export async function listSignals(env) {
+  const rows=await env.DB.prepare(`SELECT symbol,status,readiness,price,reason,updated_at AS updatedAt FROM signal_state ORDER BY symbol`).all();
+  return rows.results || [];
+}
+
+export async function recordSignal(env, analysis) {
+  const now=Date.now();
+  const previous=await env.DB.prepare('SELECT status FROM signal_state WHERE symbol=?').bind(analysis.symbol).first();
+  await env.DB.prepare(`INSERT INTO signal_state(symbol,status,readiness,price,reason,analysis_json,updated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(symbol) DO UPDATE SET status=excluded.status,readiness=excluded.readiness,price=excluded.price,reason=excluded.reason,analysis_json=excluded.analysis_json,updated_at=excluded.updated_at`).bind(analysis.symbol,analysis.status,analysis.readiness,analysis.latest.close,analysis.reason,JSON.stringify(analysis),now).run();
+  if (previous?.status===analysis.status) return { changed:false, previousStatus:previous.status, now };
+  await env.DB.prepare(`INSERT INTO signal_events(symbol,previous_status,status,readiness,price,reason,analysis_json,created_at) VALUES(?,?,?,?,?,?,?,?)`).bind(analysis.symbol,previous?.status||null,analysis.status,analysis.readiness,analysis.latest.close,analysis.reason,JSON.stringify(analysis),now).run();
+  return { changed:true, previousStatus:previous?.status||null, now };
+}
+
+function clampInt(value,min,max,fallback){const n=Number.parseInt(value,10);return Number.isFinite(n)?Math.min(max,Math.max(min,n)):fallback;}
