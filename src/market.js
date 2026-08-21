@@ -20,10 +20,13 @@ export async function getMarketData(env, symbol, timeframe, forceRefresh=false) 
   if (payload?.status==='error') throw new Error(`Twelve Data: ${payload.message||'provider error'}`);
   if (!Array.isArray(payload?.values)||payload.values.length<60) throw new Error('Twelve Data returned insufficient candle history.');
 
-  const candles=payload.values.map(row=>({
+  let candles=payload.values.map(row=>({
     time:parseProviderTime(row.datetime), open:Number(row.open), high:Number(row.high), low:Number(row.low), close:Number(row.close), volume:Number(row.volume||0)
   })).filter(c=>Number.isFinite(c.time)&&c.open>0&&c.high>0&&c.low>0&&c.close>0);
-  if (candles.length<60) throw new Error('Twelve Data candle payload failed validation.');
+
+  if(cfg.regularSessions) candles=trimToRegularSessions(candles,cfg.regularSessions);
+  const minimumCandles=cfg.regularSessions===1?1:cfg.regularSessions===5?30:60;
+  if (candles.length<minimumCandles) throw new Error('Twelve Data candle payload failed validation.');
   const fetchedAt=await putCachedMarket(env,symbol,timeframe,'Twelve Data',candles);
   return { candles, source:'Twelve Data', cached:false, fetchedAt };
 }
@@ -65,6 +68,26 @@ export async function searchSymbols(env, query) {
 
   const fetchedAt=await putCachedSymbolSearch(env,cacheKey,results);
   return {results,cached:false,fetchedAt};
+}
+
+function trimToRegularSessions(candles,sessionCount){
+  const regular=candles.map(c=>({c,session:marketSession(c.time)})).filter(x=>x.session?.regular);
+  const keys=[];
+  for(let i=regular.length-1;i>=0;i--){
+    const key=regular[i].session.key;
+    if(!keys.includes(key)) keys.push(key);
+    if(keys.length>=sessionCount) break;
+  }
+  const allowed=new Set(keys);
+  return regular.filter(x=>allowed.has(x.session.key)).map(x=>x.c);
+}
+
+function marketSession(time){
+  const parts=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit',weekday:'short',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(new Date(time));
+  const p=Object.fromEntries(parts.map(x=>[x.type,x.value]));
+  if(p.weekday==='Sat'||p.weekday==='Sun') return {regular:false,key:''};
+  const minutes=Number(p.hour)*60+Number(p.minute);
+  return {regular:minutes>=570&&minutes<960,key:`${p.year}-${p.month}-${p.day}`};
 }
 
 function parseProviderTime(value) {
