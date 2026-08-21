@@ -2,7 +2,7 @@ import { analyze } from './analysis.js';
 import { DEFAULT_WATCHLIST, TIMEFRAMES } from './constants.js';
 import { authorizeDevice, authorizePushTest, countPushSubscriptions, deletePortfolioPosition, deletePushSubscription, ensureSchema, listAlerts, listPortfolioPositions, listSignals, upsertPortfolioPosition, upsertPushSubscription } from './db.js';
 import { getMarketData, searchSymbols } from './market.js';
-import { broadcastPortfolioStrategyPush, pushConfigured, sendTestPush } from './push.js';
+import { broadcastPortfolioStrategyPush, broadcastWeeklyOpportunityPush, pushConfigured, sendTestPush } from './push.js';
 import { getRadarSnapshot, runRadarDiscovery } from './radar.js';
 import { evaluateStrategy } from './strategy.js';
 import { getWeeklyStrategySnapshot, runPortfolioCloseReview, runWeeklyResearchBatch } from './weekly.js';
@@ -86,6 +86,10 @@ async function runScheduledCycle(env,scheduledTime){
     if(p.weekday==='Fri'&&minutes>=840&&minutes<=930&&minutes%15===0){
       const result=await runWeeklyResearchBatch(env,{batchSize:6,now});
       console.log(JSON.stringify({event:'weekly_research_batch',weekKey:result.weekKey,scanned:result.scanned,cursor:result.cursor,universeSize:result.universeSize,completed:result.completed}));
+      if(result.completed&&result.scanned.length){
+        const snapshot=await getWeeklyStrategySnapshot(env),top=snapshot.ranked[0];
+        if(top){try{const push=await broadcastWeeklyOpportunityPush(env,{weekKey:snapshot.weekKey,row:top,occurredAt:Date.now()});console.log(JSON.stringify({event:'weekly_opportunity_push',symbol:top.symbol,state:top.strategy?.state,...push}));}catch(error){console.error(JSON.stringify({event:'weekly_opportunity_push_error',message:error?.message||String(error)}));}}
+      }
       return;
     }
 
@@ -99,20 +103,15 @@ async function runScheduledCycle(env,scheduledTime){
       const result=await runPortfolioCloseReview(env,{maxPositions:6});
       for(const row of result.reviewed){
         if(!row.event?.changed)continue;
-        try{
-          const push=await broadcastPortfolioStrategyPush(env,{symbol:row.symbol,strategy:row.strategy,previousState:row.event.previousState,occurredAt:row.event.now});
-          console.log(JSON.stringify({event:'portfolio_strategy_push',symbol:row.symbol,state:row.strategy.state,...push}));
-        }catch(error){console.error(JSON.stringify({event:'portfolio_strategy_push_error',symbol:row.symbol,message:error?.message||String(error)}));}
+        try{const push=await broadcastPortfolioStrategyPush(env,{symbol:row.symbol,strategy:row.strategy,previousState:row.event.previousState,occurredAt:row.event.now});console.log(JSON.stringify({event:'portfolio_strategy_push',symbol:row.symbol,state:row.strategy.state,...push}));}
+        catch(error){console.error(JSON.stringify({event:'portfolio_strategy_push_error',symbol:row.symbol,message:error?.message||String(error)}));}
       }
       console.log(JSON.stringify({event:'portfolio_close_review',reviewed:result.reviewed.map(x=>({symbol:x.symbol,state:x.strategy.state})),skipped:result.skipped}));
     }
   }catch(error){console.error(JSON.stringify({event:'scheduled_cycle_error',message:error?.message||String(error)}));}
 }
 
-async function portfolioAuthorized(request,env,body=null){
-  const endpoint=String(request.headers.get('x-sf-endpoint')||body?.deviceEndpoint||'').trim(),token=String(request.headers.get('x-sf-token')||body?.deviceToken||'').trim();
-  if(!endpoint.startsWith('https://')||!validTestToken(token))return false;return authorizeDevice(env,endpoint,token);
-}
+async function portfolioAuthorized(request,env,body=null){const endpoint=String(request.headers.get('x-sf-endpoint')||body?.deviceEndpoint||'').trim(),token=String(request.headers.get('x-sf-token')||body?.deviceToken||'').trim();if(!endpoint.startsWith('https://')||!validTestToken(token))return false;return authorizeDevice(env,endpoint,token);}
 async function readJson(request){const text=await request.text();if(text.length>20_000)throw new Error('Request payload is too large.');try{return text?JSON.parse(text):{};}catch{throw new Error('Invalid JSON payload.');}}
 function validSubscription(subscription){const endpoint=String(subscription?.endpoint||'');return endpoint.startsWith('https://')&&endpoint.length<4096&&typeof subscription?.keys?.p256dh==='string'&&typeof subscription?.keys?.auth==='string';}
 function validTestToken(value){return /^[A-Za-z0-9_-]{32,128}$/.test(String(value||''));}
