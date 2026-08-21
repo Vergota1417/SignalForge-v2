@@ -1,5 +1,5 @@
-const CACHE_NAME='signalforge-shell-v4';
-const APP_SHELL=['/','/index.html','/styles.css','/pwa.css','/radar.css','/config.js','/app.js','/pwa.js','/radar-ui.js','/chart-inspector.js','/manifest.webmanifest','/icons/signalforge-icon.svg','/icons/signalforge-maskable.svg'];
+const CACHE_NAME='signalforge-shell-v5';
+const APP_SHELL=['/','/index.html','/styles.css','/pwa.css','/radar.css','/push.css','/config.js','/app.js','/pwa.js','/radar-ui.js','/push-ui.js','/chart-inspector.js','/manifest.webmanifest','/icons/signalforge-icon.svg','/icons/signalforge-maskable.svg'];
 
 self.addEventListener('install',event=>{
   event.waitUntil(caches.open(CACHE_NAME).then(cache=>cache.addAll(APP_SHELL)));
@@ -21,7 +21,6 @@ self.addEventListener('fetch',event=>{
     event.respondWith(fetch(request));
     return;
   }
-
   if (url.origin!==self.location.origin) return;
 
   event.respondWith(
@@ -33,6 +32,34 @@ self.addEventListener('fetch',event=>{
       return response;
     }).catch(()=>request.mode==='navigate' ? caches.match('/index.html') : caches.match(request))
   );
+});
+
+self.addEventListener('push',event=>{
+  let data={};
+  try{data=event.data?.json()||{};}catch{data={title:'SignalForge Alert',body:event.data?.text()||'A SignalForge status changed.'};}
+  const title=data.title||'SignalForge Alert';
+  const options={
+    body:data.body||'A SignalForge status changed.',
+    icon:'/icons/signalforge-icon.svg',
+    badge:'/icons/signalforge-icon.svg',
+    tag:data.symbol?`signalforge-${data.symbol}`:'signalforge-alert',
+    renotify:true,
+    data:{url:data.url||'/',symbol:data.symbol||null,status:data.status||null},
+    actions:[{action:'open',title:'Open SignalForge'}]
+  };
+  event.waitUntil(self.registration.showNotification(title,options));
+});
+
+self.addEventListener('notificationclick',event=>{
+  event.notification.close();
+  const target=new URL(event.notification.data?.url||'/',self.location.origin).href;
+  event.waitUntil((async()=>{
+    const windows=await clients.matchAll({type:'window',includeUncontrolled:true});
+    for(const client of windows){
+      if('focus'in client){await client.focus();if('navigate'in client)await client.navigate(target);return;}
+    }
+    if(clients.openWindow)return clients.openWindow(target);
+  })());
 });
 
 self.addEventListener('message',event=>{
