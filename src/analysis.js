@@ -77,13 +77,43 @@ function benchmarkState(candles) {
   const s20 = sma(closes, 20), s50 = sma(closes, 50);
   const momentum20 = closes.length > 20 ? latest / closes[closes.length - 21] - 1 : 0;
   return {
-    symbol: 'SPY',
-    latest,
-    sma20: s20,
-    sma50: s50,
-    momentum20,
-    bull: Boolean(s20 && s50 && latest > s50 && s20 > s50),
-    riskOff: Boolean(s20 && s50 && latest < s50 && s20 < s50)
+    symbol: 'SPY', latest, sma20:s20, sma50:s50, momentum20,
+    bull:Boolean(s20 && s50 && latest > s50 && s20 > s50),
+    riskOff:Boolean(s20 && s50 && latest < s50 && s20 < s50)
+  };
+}
+
+export function assessIntradayConfirmation(candles) {
+  if (!Array.isArray(candles) || candles.length < 30) {
+    return { pass:false, passes:0, total:5, state:'INSUFFICIENT', timeframe:'15m', reason:'Not enough completed 15-minute candles.' };
+  }
+
+  // Twelve Data can include the currently-forming bar. Confirmation deliberately uses
+  // the prior bar so partial volume/price cannot create a premature BUY signal.
+  const completed = candles.slice(0, -1);
+  const closes = completed.map(c => c.close);
+  const latest = completed.at(-1);
+  const s9 = sma(closes, 9) || latest.close;
+  const s20 = sma(closes, 20) || latest.close;
+  const r14 = rsi(closes, 14);
+  const momentum4 = closes.length > 4 ? latest.close / closes[closes.length - 5] - 1 : 0;
+  const priorVolumes = completed.slice(-21, -1).map(c => Number(c.volume || 0)).filter(v => v > 0);
+  const baselineVolume = average(priorVolumes);
+  const relativeVolume = baselineVolume > 0 ? Number(latest.volume || 0) / baselineVolume : 0;
+
+  const metrics = [
+    { name:'15m price trend', value:`Price ${latest.close > s20 ? 'above' : 'below'} 20-bar average`, pass:latest.close > s20 },
+    { name:'15m trend alignment', value:`9-bar ${s9 > s20 ? 'above' : 'below'} 20-bar`, pass:s9 > s20 },
+    { name:'1-hour momentum', value:`${(momentum4*100).toFixed(2)}%`, pass:momentum4 > 0 },
+    { name:'15m RSI', value:r14.toFixed(1), pass:r14 >= 45 && r14 <= 70, warn:r14 > 70 && r14 < 76 },
+    { name:'Completed-bar relative volume', value:`${relativeVolume.toFixed(2)}x`, pass:relativeVolume >= .80, warn:relativeVolume >= .60 }
+  ];
+  const passes = metrics.filter(m => m.pass).length;
+  const pass = passes >= 4;
+  return {
+    pass, passes, total:metrics.length, state:pass ? 'PASS' : passes === 3 ? 'WARN' : 'FAIL', timeframe:'15m',
+    latestTime:latest.time, latestPrice:latest.close, sma9:s9, sma20:s20, rsi:r14, momentum4, relativeVolume, metrics,
+    reason:pass ? '15-minute trend, momentum, and participation confirm the higher-timeframe setup.' : '15-minute confirmation is not strong enough yet.'
   };
 }
 
@@ -99,6 +129,7 @@ export function analyze(candles, symbol, context = {}) {
   const benchmark = benchmarkState(context.benchmarkCandles);
   const relativeStrength20 = benchmark ? momentum20 - benchmark.momentum20 : null;
   const legacyRelativeStrengthProxy = momentum20 - average(closes.slice(-10).map((v, i, a) => i ? v / a[i - 1] - 1 : 0));
+  const intradayConfirmation = context.intradayConfirmation || null;
 
   const preferredEntryLow = Math.max(.01, s20 - .40 * a14);
   const preferredEntryHigh = s20 + .18 * a14;
@@ -145,21 +176,25 @@ export function analyze(candles, symbol, context = {}) {
   const passed = allMetrics.filter(m => m.pass).length, total = allMetrics.length;
   const criticalFailed = Object.values(engines).filter(e => !e.ready).map(e => e.name);
   const nearEntry = latest.close >= preferredEntryLow*.99 && latest.close <= preferredEntryHigh*1.02;
+  const dailyGatesReady = engines.trend.ready && engines.entry.ready && engines.probability.ready && engines.riskReward.ready;
 
   let status, reason;
   if (latest.close <= thesisBreak) { status='SELL / EXIT'; reason='Price broke the thesis level. The original setup is invalid until a new base forms.'; }
   else if (!engines.trend.ready) { status='AVOID'; reason='Trend quality is not strong enough to justify an entry setup.'; }
   else if (benchmark?.riskOff && !engines.probability.ready) { status='WAIT — SETUP NOT READY'; reason='The stock setup is improving, but the broad-market regime is currently risk-off.'; }
   else if (latest.close > overextension || r14 >= 76) { status='WAIT FOR PULLBACK'; reason='Trend is strong, but price is too extended to chase at the current level.'; }
-  else if (engines.trend.ready && engines.entry.ready && engines.probability.ready && engines.riskReward.ready) { status='BUY NOW'; reason='All four critical gates cleared: trend, entry, probability, and risk/reward.'; }
-  else if (engines.trend.ready && nearEntry && (engines.probability.ready || engines.riskReward.ready)) { status='SETUP — READY SOON'; reason='Price is near the preferred entry zone, but one critical confirmation is still missing.'; }
+  else if (dailyGatesReady && intradayConfirmation?.pass) { status='BUY NOW'; reason='All four higher-timeframe gates cleared and the 15-minute confirmation also passed.'; }
+  else if (dailyGatesReady) { status='SETUP — READY SOON'; reason=intradayConfirmation ? 'All higher-timeframe gates cleared, but 15-minute confirmation is not strong enough yet.' : 'All higher-timeframe gates cleared; waiting for selective 15-minute confirmation before BUY NOW.'; }
+  else if (engines.trend.ready && nearEntry && (engines.probability.ready || engines.riskReward.ready)) { status='SETUP — READY SOON'; reason='Price is near the preferred entry zone, but one critical higher-timeframe gate is still missing.'; }
   else { status='WAIT — SETUP NOT READY'; reason='Several checks pass, but at least one critical gate is still blocking a BUY signal.'; }
 
   let readiness = Math.round((passed/total)*55 + ((4-criticalFailed.length)/4)*45);
-  if (status==='BUY NOW') readiness=Math.max(readiness,88);
+  if (dailyGatesReady && intradayConfirmation?.pass) readiness=Math.max(readiness,92);
+  else if (dailyGatesReady) readiness=Math.max(readiness,82);
   if (status==='AVOID' || status==='SELL / EXIT') readiness=Math.min(readiness,35);
   if (status==='WAIT FOR PULLBACK') readiness=Math.min(readiness,68);
 
   return { symbol, latest, changePct:previous.close ? latest.close/previous.close-1 : 0, sma20:s20, sma50:s50, atr:a14, rsi:r14, momentum20,
-    relativeStrength20, benchmark, preferredEntryLow, preferredEntryHigh, overextension, thesisBreak, target, rr, wf, engines, passed, total, criticalFailed, status, reason, readiness };
+    relativeStrength20, benchmark, intradayConfirmation, dailyGatesReady, preferredEntryLow, preferredEntryHigh, overextension, thesisBreak, target, rr, wf,
+    engines, passed, total, criticalFailed, status, reason, readiness };
 }
