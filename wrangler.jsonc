@@ -20,7 +20,9 @@
   "vars": {
     "WATCHLIST": "XOM,NVDA,MSFT,AAPL,AMZN,TSLA",
     "MAX_PROVIDER_REQUESTS_PER_DAY": "700",
-    "ALERT_STATUSES": "BUY NOW|SETUP — READY SOON|WAIT FOR PULLBACK|SELL / EXIT"
+    "ALERT_STATUSES": "BUY NOW|SETUP — READY SOON|WAIT FOR PULLBACK|SELL / EXIT",
+    "PUSH_ALERT_STATUSES": "SETUP — READY SOON|BUY NOW|SELL / EXIT",
+    "VAPID_SUBJECT": "https://signalforge-v2.mj23mgomez3.workers.dev"
   },
   "observability": {
     "enabled": true,

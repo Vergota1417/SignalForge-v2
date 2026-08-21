@@ -12,12 +12,10 @@
     symbolInput.setAttribute('aria-label','Ticker or company name');
   }
 
-  if (!document.querySelector('link[data-sf-radar]')) {
-    const link=document.createElement('link');link.rel='stylesheet';link.href='/radar.css';link.dataset.sfRadar='1';document.head.appendChild(link);
-  }
-  if (!document.querySelector('script[data-sf-radar]')) {
-    const script=document.createElement('script');script.src='/radar-ui.js';script.defer=true;script.dataset.sfRadar='1';document.head.appendChild(script);
-  }
+  loadModuleCss('/radar.css','sf-radar');
+  loadModuleScript('/radar-ui.js','sf-radar');
+  loadModuleCss('/push.css','sf-push');
+  loadModuleScript('/push-ui.js','sf-push');
 
   const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
   if (installBtn && isStandalone) installBtn.hidden = true;
@@ -74,4 +72,13 @@
       console.error('[SignalForge PWA] Service worker registration failed', error);
     }
   });
+
+  function loadModuleCss(href,key){
+    if(document.querySelector(`link[data-${key}]`))return;
+    const link=document.createElement('link');link.rel='stylesheet';link.href=href;link.setAttribute(`data-${key}`,'1');document.head.appendChild(link);
+  }
+  function loadModuleScript(src,key){
+    if(document.querySelector(`script[data-${key}]`))return;
+    const script=document.createElement('script');script.src=src;script.defer=true;script.setAttribute(`data-${key}`,'1');document.head.appendChild(script);
+  }
 })();
