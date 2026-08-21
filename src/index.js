@@ -66,8 +66,8 @@ async function runDeepScan(env) {
   catch(error) { console.error(JSON.stringify({event:'benchmark_fetch_error',message:error?.message||String(error)})); }
 
   let symbols=await getRadarSymbols(env);
-  if(!symbols.length) symbols=watchlist(env).slice(0,6);
-  symbols=[...new Set(symbols.filter(symbol=>symbol!=='SPY'))].slice(0,6);
+  if(!symbols.length) symbols=watchlist(env).slice(0,5);
+  symbols=[...new Set(symbols.filter(symbol=>symbol!=='SPY'))].slice(0,5);
 
   const scans=[];
   for (const symbol of symbols) {
