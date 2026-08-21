@@ -74,22 +74,15 @@ export async function upsertPushSubscription(env, subscription, userAgent='', te
   const endpoint=String(subscription?.endpoint||'').trim();
   if(!endpoint) throw new Error('Push subscription endpoint is required.');
   const now=Date.now();
-  const statements=[
-    env.DB.prepare(`INSERT INTO push_subscriptions(endpoint,subscription_json,user_agent,created_at,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(endpoint) DO UPDATE SET subscription_json=excluded.subscription_json,user_agent=excluded.user_agent,updated_at=excluded.updated_at`).bind(endpoint,JSON.stringify(subscription),String(userAgent||'').slice(0,500),now,now)
-  ];
+  const statements=[env.DB.prepare(`INSERT INTO push_subscriptions(endpoint,subscription_json,user_agent,created_at,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(endpoint) DO UPDATE SET subscription_json=excluded.subscription_json,user_agent=excluded.user_agent,updated_at=excluded.updated_at`).bind(endpoint,JSON.stringify(subscription),String(userAgent||'').slice(0,500),now,now)];
   const token=String(testToken||'').trim();
   if(token) statements.push(env.DB.prepare(`INSERT INTO push_test_access(endpoint,test_token,last_test_at,updated_at) VALUES(?,?,0,?) ON CONFLICT(endpoint) DO UPDATE SET test_token=excluded.test_token,updated_at=excluded.updated_at`).bind(endpoint,token,now));
-  await env.DB.batch(statements);
-  return now;
+  await env.DB.batch(statements);return now;
 }
 
 export async function deletePushSubscription(env, endpoint) {
-  const value=String(endpoint||'').trim();
-  if(!value) return;
-  await env.DB.batch([
-    env.DB.prepare(`DELETE FROM push_subscriptions WHERE endpoint=?`).bind(value),
-    env.DB.prepare(`DELETE FROM push_test_access WHERE endpoint=?`).bind(value)
-  ]);
+  const value=String(endpoint||'').trim();if(!value)return;
+  await env.DB.batch([env.DB.prepare(`DELETE FROM push_subscriptions WHERE endpoint=?`).bind(value),env.DB.prepare(`DELETE FROM push_test_access WHERE endpoint=?`).bind(value)]);
 }
 
 export async function listPushSubscriptions(env) {
@@ -97,67 +90,50 @@ export async function listPushSubscriptions(env) {
   return (rows.results||[]).map(row=>{try{return {endpoint:row.endpoint,subscription:JSON.parse(row.subscriptionJson)};}catch{return null;}}).filter(Boolean);
 }
 
-export async function countPushSubscriptions(env) {
-  const row=await env.DB.prepare(`SELECT COUNT(*) AS count FROM push_subscriptions`).first();
-  return Number(row?.count)||0;
+export async function countPushSubscriptions(env) { const row=await env.DB.prepare(`SELECT COUNT(*) AS count FROM push_subscriptions`).first();return Number(row?.count)||0; }
+
+export async function authorizeDevice(env,endpoint,testToken) {
+  const ep=String(endpoint||'').trim(), token=String(testToken||'').trim();if(!ep||!token)return false;
+  const row=await env.DB.prepare(`SELECT 1 AS ok FROM push_subscriptions s JOIN push_test_access a ON a.endpoint=s.endpoint WHERE s.endpoint=? AND a.test_token=?`).bind(ep,token).first();
+  return Boolean(row?.ok);
 }
 
 export async function authorizePushTest(env, endpoint, testToken, cooldownMs=60_000) {
-  const ep=String(endpoint||'').trim(), token=String(testToken||'').trim();
-  if(!ep || !token) return {authorized:false};
+  const ep=String(endpoint||'').trim(), token=String(testToken||'').trim();if(!ep||!token)return {authorized:false};
   const row=await env.DB.prepare(`SELECT s.subscription_json AS subscriptionJson,a.last_test_at AS lastTestAt FROM push_subscriptions s JOIN push_test_access a ON a.endpoint=s.endpoint WHERE s.endpoint=? AND a.test_token=?`).bind(ep,token).first();
-  if(!row?.subscriptionJson) return {authorized:false};
+  if(!row?.subscriptionJson)return {authorized:false};
   const now=Date.now(), lastTestAt=Number(row.lastTestAt)||0, retryAfterMs=Math.max(0,cooldownMs-(now-lastTestAt));
-  if(retryAfterMs>0) return {authorized:true,rateLimited:true,retryAfterMs};
+  if(retryAfterMs>0)return {authorized:true,rateLimited:true,retryAfterMs};
   await env.DB.prepare(`UPDATE push_test_access SET last_test_at=?,updated_at=? WHERE endpoint=? AND test_token=?`).bind(now,now,ep,token).run();
-  try{return {authorized:true,rateLimited:false,subscription:JSON.parse(row.subscriptionJson)};}
-  catch{return {authorized:false};}
+  try{return {authorized:true,rateLimited:false,subscription:JSON.parse(row.subscriptionJson)};}catch{return {authorized:false};}
 }
 
-export async function listAlerts(env, limit) {
-  const rows=await env.DB.prepare(`SELECT id,symbol,previous_status AS previousStatus,status,readiness,price,reason,created_at AS createdAt FROM signal_events ORDER BY id DESC LIMIT ?`).bind(limit).all();
-  return rows.results || [];
-}
+export async function listAlerts(env, limit) { const rows=await env.DB.prepare(`SELECT id,symbol,previous_status AS previousStatus,status,readiness,price,reason,created_at AS createdAt FROM signal_events ORDER BY id DESC LIMIT ?`).bind(limit).all();return rows.results||[]; }
 
 export async function listSignals(env) {
   const rows=await env.DB.prepare(`SELECT symbol,status,readiness,price,reason,analysis_json AS analysisJson,updated_at AS updatedAt FROM signal_state ORDER BY symbol`).all();
-  return (rows.results || []).map(row=>{
-    let analysis=null;
-    try { analysis=row.analysisJson ? JSON.parse(row.analysisJson) : null; } catch {}
-    const {analysisJson,...rest}=row;
-    return {...rest,analysis};
-  });
+  return (rows.results||[]).map(row=>{let analysis=null;try{analysis=row.analysisJson?JSON.parse(row.analysisJson):null;}catch{}const {analysisJson,...rest}=row;return {...rest,analysis};});
 }
 
 export async function getSignalAnalysis(env, symbol) {
-  const row=await env.DB.prepare(`SELECT analysis_json AS analysisJson,updated_at AS updatedAt FROM signal_state WHERE symbol=?`).bind(symbol).first();
-  if (!row?.analysisJson) return null;
-  try { return {analysis:JSON.parse(row.analysisJson),updatedAt:Number(row.updatedAt)||0}; }
-  catch { return null; }
+  const row=await env.DB.prepare(`SELECT analysis_json AS analysisJson,updated_at AS updatedAt FROM signal_state WHERE symbol=?`).bind(symbol).first();if(!row?.analysisJson)return null;
+  try{return {analysis:JSON.parse(row.analysisJson),updatedAt:Number(row.updatedAt)||0};}catch{return null;}
 }
 
 export async function recordSignal(env, analysis) {
-  const now=Date.now();
-  const previous=await env.DB.prepare('SELECT status FROM signal_state WHERE symbol=?').bind(analysis.symbol).first();
+  const now=Date.now();const previous=await env.DB.prepare('SELECT status FROM signal_state WHERE symbol=?').bind(analysis.symbol).first();
   await env.DB.prepare(`INSERT INTO signal_state(symbol,status,readiness,price,reason,analysis_json,updated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(symbol) DO UPDATE SET status=excluded.status,readiness=excluded.readiness,price=excluded.price,reason=excluded.reason,analysis_json=excluded.analysis_json,updated_at=excluded.updated_at`).bind(analysis.symbol,analysis.status,analysis.readiness,analysis.latest.close,analysis.reason,JSON.stringify(analysis),now).run();
-  if (previous?.status===analysis.status) return { changed:false, previousStatus:previous.status, now };
+  if(previous?.status===analysis.status)return {changed:false,previousStatus:previous.status,now};
   await env.DB.prepare(`INSERT INTO signal_events(symbol,previous_status,status,readiness,price,reason,analysis_json,created_at) VALUES(?,?,?,?,?,?,?,?)`).bind(analysis.symbol,previous?.status||null,analysis.status,analysis.readiness,analysis.latest.close,analysis.reason,JSON.stringify(analysis),now).run();
-  return { changed:true, previousStatus:previous?.status||null, now };
+  return {changed:true,previousStatus:previous?.status||null,now};
 }
 
-export async function listPortfolioPositions(env) {
-  const rows=await env.DB.prepare(`SELECT symbol,entry_price AS entryPrice,shares,bought_at AS boughtAt,notes,created_at AS createdAt,updated_at AS updatedAt FROM portfolio_positions ORDER BY bought_at DESC`).all();
-  return rows.results||[];
-}
+export async function listPortfolioPositions(env) { const rows=await env.DB.prepare(`SELECT symbol,entry_price AS entryPrice,shares,bought_at AS boughtAt,notes,created_at AS createdAt,updated_at AS updatedAt FROM portfolio_positions ORDER BY bought_at DESC`).all();return rows.results||[]; }
 
 export async function upsertPortfolioPosition(env,{symbol,entryPrice,shares,boughtAt,notes=''}) {
-  const now=Date.now();
-  await env.DB.prepare(`INSERT INTO portfolio_positions(symbol,entry_price,shares,bought_at,notes,created_at,updated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(symbol) DO UPDATE SET entry_price=excluded.entry_price,shares=excluded.shares,bought_at=excluded.bought_at,notes=excluded.notes,updated_at=excluded.updated_at`).bind(symbol,entryPrice,shares,boughtAt,String(notes||'').slice(0,500),now,now).run();
-  return now;
+  const now=Date.now();await env.DB.prepare(`INSERT INTO portfolio_positions(symbol,entry_price,shares,bought_at,notes,created_at,updated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(symbol) DO UPDATE SET entry_price=excluded.entry_price,shares=excluded.shares,bought_at=excluded.bought_at,notes=excluded.notes,updated_at=excluded.updated_at`).bind(symbol,entryPrice,shares,boughtAt,String(notes||'').slice(0,500),now,now).run();return now;
 }
 
-export async function deletePortfolioPosition(env,symbol) {
-  await env.DB.prepare(`DELETE FROM portfolio_positions WHERE symbol=?`).bind(symbol).run();
-}
+export async function deletePortfolioPosition(env,symbol) { await env.DB.prepare(`DELETE FROM portfolio_positions WHERE symbol=?`).bind(symbol).run(); }
 
 function clampInt(value,min,max,fallback){const n=Number.parseInt(value,10);return Number.isFinite(n)?Math.min(max,Math.max(min,n)):fallback;}
