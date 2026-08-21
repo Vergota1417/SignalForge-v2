@@ -3,6 +3,14 @@
   const installBtn = document.getElementById('installAppBtn');
   const updateBanner = document.getElementById('updateBanner');
   const updateBtn = document.getElementById('updateAppBtn');
+  const symbolInput = document.getElementById('symbolInput');
+
+  if (symbolInput) {
+    symbolInput.removeAttribute('maxlength');
+    symbolInput.setAttribute('maxlength','80');
+    symbolInput.setAttribute('placeholder','Ticker or company');
+    symbolInput.setAttribute('aria-label','Ticker or company name');
+  }
 
   const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
   if (installBtn && isStandalone) installBtn.hidden = true;
