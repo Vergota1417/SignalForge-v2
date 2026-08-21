@@ -1,4 +1,4 @@
-const CACHE_NAME='signalforge-shell-v2';
+const CACHE_NAME='signalforge-shell-v3';
 const APP_SHELL=['/','/index.html','/styles.css','/pwa.css','/config.js','/app.js','/pwa.js','/manifest.webmanifest','/icons/signalforge-icon.svg','/icons/signalforge-maskable.svg'];
 
 self.addEventListener('install',event=>{
