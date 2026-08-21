@@ -31,10 +31,11 @@ export async function runWeeklyResearchBatch(env,{batchSize=6,now=new Date()}={}
       scanned.push({symbol,state:strategy?.state||'WATCH',score:Number(strategy?.opportunityScore)||0});
     } catch(error) {
       console.error(JSON.stringify({event:'weekly_symbol_error',symbol,message:error?.message||String(error)}));
+      break;
     }
   }
 
-  const cursor=Math.min(universe.length,start+symbols.length);
+  const cursor=Math.min(universe.length,start+scanned.length);
   const completed=cursor>=universe.length;
   await putWeeklyResearchState(env,{weekKey,cursor,universeSize:universe.length,completed});
   return {weekKey,completed,cursor,universeSize:universe.length,scanned};
