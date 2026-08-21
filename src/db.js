@@ -8,7 +8,8 @@ export async function ensureSchema(env) {
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS symbol_search_cache (query TEXT PRIMARY KEY, fetched_at INTEGER NOT NULL, payload TEXT NOT NULL)`),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS radar_quotes (symbol TEXT PRIMARY KEY, price REAL NOT NULL, change_pct REAL NOT NULL, volume REAL NOT NULL, average_volume REAL NOT NULL, relative_volume REAL NOT NULL, score REAL NOT NULL, payload TEXT NOT NULL, updated_at INTEGER NOT NULL)`),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS radar_state (id INTEGER PRIMARY KEY CHECK(id=1), cursor INTEGER NOT NULL DEFAULT 0, symbols_json TEXT NOT NULL DEFAULT '[]', updated_at INTEGER NOT NULL DEFAULT 0)`),
-    env.DB.prepare(`CREATE TABLE IF NOT EXISTS push_subscriptions (endpoint TEXT PRIMARY KEY, subscription_json TEXT NOT NULL, user_agent TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`)
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS push_subscriptions (endpoint TEXT PRIMARY KEY, subscription_json TEXT NOT NULL, user_agent TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS push_test_access (endpoint TEXT PRIMARY KEY, test_token TEXT NOT NULL, last_test_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL)`)
   ]);
 }
 
@@ -68,18 +69,26 @@ export async function putRadarState(env, cursor, symbols) {
   return now;
 }
 
-export async function upsertPushSubscription(env, subscription, userAgent='') {
+export async function upsertPushSubscription(env, subscription, userAgent='', testToken='') {
   const endpoint=String(subscription?.endpoint||'').trim();
   if(!endpoint) throw new Error('Push subscription endpoint is required.');
   const now=Date.now();
-  await env.DB.prepare(`INSERT INTO push_subscriptions(endpoint,subscription_json,user_agent,created_at,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(endpoint) DO UPDATE SET subscription_json=excluded.subscription_json,user_agent=excluded.user_agent,updated_at=excluded.updated_at`).bind(endpoint,JSON.stringify(subscription),String(userAgent||'').slice(0,500),now,now).run();
+  const statements=[
+    env.DB.prepare(`INSERT INTO push_subscriptions(endpoint,subscription_json,user_agent,created_at,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(endpoint) DO UPDATE SET subscription_json=excluded.subscription_json,user_agent=excluded.user_agent,updated_at=excluded.updated_at`).bind(endpoint,JSON.stringify(subscription),String(userAgent||'').slice(0,500),now,now)
+  ];
+  const token=String(testToken||'').trim();
+  if(token) statements.push(env.DB.prepare(`INSERT INTO push_test_access(endpoint,test_token,last_test_at,updated_at) VALUES(?,?,0,?) ON CONFLICT(endpoint) DO UPDATE SET test_token=excluded.test_token,updated_at=excluded.updated_at`).bind(endpoint,token,now));
+  await env.DB.batch(statements);
   return now;
 }
 
 export async function deletePushSubscription(env, endpoint) {
   const value=String(endpoint||'').trim();
   if(!value) return;
-  await env.DB.prepare(`DELETE FROM push_subscriptions WHERE endpoint=?`).bind(value).run();
+  await env.DB.batch([
+    env.DB.prepare(`DELETE FROM push_subscriptions WHERE endpoint=?`).bind(value),
+    env.DB.prepare(`DELETE FROM push_test_access WHERE endpoint=?`).bind(value)
+  ]);
 }
 
 export async function listPushSubscriptions(env) {
@@ -90,6 +99,18 @@ export async function listPushSubscriptions(env) {
 export async function countPushSubscriptions(env) {
   const row=await env.DB.prepare(`SELECT COUNT(*) AS count FROM push_subscriptions`).first();
   return Number(row?.count)||0;
+}
+
+export async function authorizePushTest(env, endpoint, testToken, cooldownMs=60_000) {
+  const ep=String(endpoint||'').trim(), token=String(testToken||'').trim();
+  if(!ep || !token) return {authorized:false};
+  const row=await env.DB.prepare(`SELECT s.subscription_json AS subscriptionJson,a.last_test_at AS lastTestAt FROM push_subscriptions s JOIN push_test_access a ON a.endpoint=s.endpoint WHERE s.endpoint=? AND a.test_token=?`).bind(ep,token).first();
+  if(!row?.subscriptionJson) return {authorized:false};
+  const now=Date.now(), lastTestAt=Number(row.lastTestAt)||0, retryAfterMs=Math.max(0,cooldownMs-(now-lastTestAt));
+  if(retryAfterMs>0) return {authorized:true,rateLimited:true,retryAfterMs};
+  await env.DB.prepare(`UPDATE push_test_access SET last_test_at=?,updated_at=? WHERE endpoint=? AND test_token=?`).bind(now,now,ep,token).run();
+  try{return {authorized:true,rateLimited:false,subscription:JSON.parse(row.subscriptionJson)};}
+  catch{return {authorized:false};}
 }
 
 export async function listAlerts(env, limit) {

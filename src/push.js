@@ -19,7 +19,7 @@ export async function broadcastSignalPush(env, analysis, previousStatus, occurre
   if(!subscriptions.length) return {sent:0,failed:0,removed:0,skipped:true};
 
   const payload=JSON.stringify(buildSignalPayload(analysis,previousStatus,occurredAt));
-  const vapidDetails={subject:env.VAPID_SUBJECT,publicKey:env.VAPID_PUBLIC_KEY,privateKey:env.VAPID_PRIVATE_KEY};
+  const vapidDetails=vapid(env);
   let sent=0,failed=0,removed=0;
 
   await Promise.all(subscriptions.map(async row=>{
@@ -38,6 +38,30 @@ export async function broadcastSignalPush(env, analysis, previousStatus, occurre
   }));
   return {sent,failed,removed,skipped:false};
 }
+
+export async function sendTestPush(env, subscription) {
+  if(!pushConfigured(env)) throw new Error('Push notifications are not configured yet.');
+  const payload=JSON.stringify({
+    kind:'push-test',
+    title:'SignalForge Test Alert',
+    body:'Push notifications are working on this device.',
+    url:'/',
+    status:'TEST',
+    occurredAt:new Date().toISOString()
+  });
+  try{
+    await sendNotification(subscription,payload,{vapidDetails:vapid(env),TTL:120,urgency:'high',topic:'signalforge-test'});
+    return {sent:true};
+  }catch(error){
+    const statusCode=Number(error?.statusCode||error?.status||0);
+    if(statusCode===404 || statusCode===410) await deletePushSubscription(env,subscription?.endpoint||'');
+    const wrapped=new Error(error?.message||'Push test failed.');
+    wrapped.statusCode=statusCode;
+    throw wrapped;
+  }
+}
+
+function vapid(env){return {subject:env.VAPID_SUBJECT,publicKey:env.VAPID_PUBLIC_KEY,privateKey:env.VAPID_PRIVATE_KEY};}
 
 function buildSignalPayload(analysis,previousStatus,occurredAt){
   const price=Number(analysis?.latest?.close)||0;

@@ -1,8 +1,8 @@
 import { analyze, assessIntradayConfirmation } from './analysis.js';
 import { DEFAULT_WATCHLIST, TIMEFRAMES } from './constants.js';
-import { countPushSubscriptions, deletePushSubscription, ensureSchema, listAlerts, listSignals, recordSignal, upsertPushSubscription } from './db.js';
+import { authorizePushTest, countPushSubscriptions, deletePushSubscription, ensureSchema, listAlerts, listSignals, recordSignal, upsertPushSubscription } from './db.js';
 import { getMarketData, searchSymbols } from './market.js';
-import { broadcastSignalPush, pushConfigured } from './push.js';
+import { broadcastSignalPush, pushConfigured, sendTestPush } from './push.js';
 import { getRadarSnapshot, getRadarSymbols, runRadarDiscovery } from './radar.js';
 
 export default {
@@ -16,8 +16,10 @@ export default {
         if(!pushConfigured(env)) return json({error:'Push notifications are not configured yet.'},503);
         const body=await readJson(request);
         const subscription=body?.subscription;
+        const testToken=String(body?.testToken||'').trim();
         if(!validSubscription(subscription)) return json({error:'Invalid push subscription.'},400);
-        await upsertPushSubscription(env,subscription,request.headers.get('user-agent')||'');
+        if(testToken && !validTestToken(testToken)) return json({error:'Invalid push test token.'},400);
+        await upsertPushSubscription(env,subscription,request.headers.get('user-agent')||'',testToken);
         return json({ok:true});
       }
       if (url.pathname==='/api/push/subscribe' && request.method==='DELETE') {
@@ -26,10 +28,21 @@ export default {
         await deletePushSubscription(env,body.endpoint);
         return json({ok:true});
       }
+      if (url.pathname==='/api/push/test' && request.method==='POST') {
+        if(!pushConfigured(env)) return json({error:'Push notifications are not configured yet.'},503);
+        const body=await readJson(request);
+        const endpoint=String(body?.endpoint||'').trim(), testToken=String(body?.testToken||'').trim();
+        if(!endpoint.startsWith('https://') || !validTestToken(testToken)) return json({error:'Invalid push test request.'},400);
+        const auth=await authorizePushTest(env,endpoint,testToken,60_000);
+        if(!auth.authorized) return json({error:'This phone is not authorized for a push test. Re-enable alerts first.'},403);
+        if(auth.rateLimited) return json({error:'Test notification cooldown is active.',retryAfterMs:auth.retryAfterMs},429);
+        await sendTestPush(env,auth.subscription);
+        return json({ok:true,sent:true});
+      }
       if (request.method!=='GET') return json({error:'Method not allowed.'},405);
 
-      if (url.pathname==='/api/health') return json({ok:true,service:'SignalForge-v2',marketDataConfigured:Boolean(env.TWELVE_DATA_API_KEY),databaseConfigured:Boolean(env.DB),watchlist:watchlist(env),phase2SelectiveConfirmation:true,symbolSearch:true,opportunityRadar:true,pushConfigured:pushConfigured(env),pushSubscribers:await countPushSubscriptions(env)});
-      if (url.pathname==='/api/push/config') return json({configured:pushConfigured(env),publicKey:pushConfigured(env)?env.VAPID_PUBLIC_KEY:null,subscribers:await countPushSubscriptions(env),statuses:pushStatuses(env)});
+      if (url.pathname==='/api/health') return json({ok:true,service:'SignalForge-v2',marketDataConfigured:Boolean(env.TWELVE_DATA_API_KEY),databaseConfigured:Boolean(env.DB),watchlist:watchlist(env),phase2SelectiveConfirmation:true,symbolSearch:true,opportunityRadar:true,pushConfigured:pushConfigured(env),pushSubscribers:await countPushSubscriptions(env),pushTest:true});
+      if (url.pathname==='/api/push/config') return json({configured:pushConfigured(env),publicKey:pushConfigured(env)?env.VAPID_PUBLIC_KEY:null,subscribers:await countPushSubscriptions(env),statuses:pushStatuses(env),testEnabled:true});
       if (url.pathname==='/api/opportunity-radar') return json({radar:await getRadarSnapshot(env)});
       if (url.pathname==='/api/symbol-search') {
         const query=String(url.searchParams.get('q')||'').trim();
@@ -129,9 +142,7 @@ async function runDeepScan(env) {
 }
 
 function selectConfirmationCandidate(scans) {
-  const eligible=scans.filter(({analysis}) =>
-    analysis && analysis.engines?.trend?.ready && !['AVOID','SELL / EXIT','WAIT FOR PULLBACK'].includes(analysis.status)
-  );
+  const eligible=scans.filter(({analysis}) => analysis && analysis.engines?.trend?.ready && !['AVOID','SELL / EXIT','WAIT FOR PULLBACK'].includes(analysis.status));
   if (!eligible.length) return null;
   return eligible.sort((a,b)=>confirmationPriority(b.analysis)-confirmationPriority(a.analysis))[0];
 }
@@ -161,12 +172,13 @@ function validSubscription(subscription){
   const endpoint=String(subscription?.endpoint||'');
   return endpoint.startsWith('https://') && endpoint.length<4096 && typeof subscription?.keys?.p256dh==='string' && typeof subscription?.keys?.auth==='string';
 }
+function validTestToken(value){return /^[A-Za-z0-9_-]{32,128}$/.test(String(value||''));}
 function pushStatuses(env){return String(env.PUSH_ALERT_STATUSES||'SETUP — READY SOON|BUY NOW|SELL / EXIT').split('|').map(s=>s.trim()).filter(Boolean);}
 function watchlist(env){const raw=String(env.WATCHLIST||'').trim();const list=raw?raw.split(',').map(sanitizeSymbol).filter(Boolean):DEFAULT_WATCHLIST;return [...new Set(list.filter(symbol=>symbol!=='SPY'))].slice(0,20);}
 function sanitizeSymbol(v){const s=String(v||'').trim().toUpperCase().replace(/[^A-Z.]/g,'').slice(0,6);return /^[A-Z]{1,5}(?:\.[A-Z])?$/.test(s)?s:'';}
 function sanitizeTimeframe(v){const t=String(v||'6M').toUpperCase();return TIMEFRAMES[t]?t:'6M';}
 function clampInt(v,min,max,fallback){const n=Number.parseInt(v,10);return Number.isFinite(n)?Math.min(max,Math.max(min,n)):fallback;}
-function safeError(error){const m=String(error?.message||'');if(/API key/i.test(m))return'Market-data service is not configured yet.';if(/quota/i.test(m))return'Market-data daily safety limit reached.';if(/429|too many requests/i.test(m))return'Market-data minute limit reached. Try again shortly.';if(/Push notifications are not configured/i.test(m))return m;if(/Invalid JSON|payload is too large/i.test(m))return m;if(/Twelve Data/i.test(m))return m.slice(0,180);return'SignalForge API request failed.';}
+function safeError(error){const m=String(error?.message||'');if(/API key/i.test(m))return'Market-data service is not configured yet.';if(/quota/i.test(m))return'Market-data daily safety limit reached.';if(/429|too many requests/i.test(m))return'Market-data minute limit reached. Try again shortly.';if(/Push notifications are not configured/i.test(m))return m;if(/Invalid JSON|payload is too large|push test/i.test(m))return m;if(/Twelve Data/i.test(m))return m.slice(0,180);return'SignalForge API request failed.';}
 function json(data,status=200){return new Response(JSON.stringify(data),{status,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'}});}
 function easternParts(date){const parts=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',weekday:'short',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(date);return Object.fromEntries(parts.map(x=>[x.type,x.value]));}
 function easternMinute(date){return Number(easternParts(date).minute)||0;}

@@ -1,6 +1,7 @@
 (() => {
   'use strict';
   const $=id=>document.getElementById(id);
+  const TEST_TOKEN_KEY='signalforge_push_test_token_v1';
   const isStandalone=()=>window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone===true;
   const supported=()=>('serviceWorker'in navigator)&&('PushManager'in window)&&('Notification'in window);
 
@@ -11,6 +12,9 @@
     const btn=document.createElement('button');
     btn.id='pushAlertsBtn';btn.type='button';btn.className='btn ghost push-alert-btn';btn.textContent='Enable Alerts';
     actions.appendChild(btn);
+    const test=document.createElement('button');
+    test.id='pushTestBtn';test.type='button';test.className='btn ghost push-test-btn';test.textContent='Send Test Alert';test.hidden=true;
+    actions.appendChild(test);
     const note=document.createElement('div');note.id='pushAlertNote';note.className='push-alert-note';note.hidden=true;actions.appendChild(note);
     return btn;
   }
@@ -18,7 +22,7 @@
   async function api(path,options={}){
     const res=await fetch(path,{...options,headers:{'content-type':'application/json',accept:'application/json',...(options.headers||{})}});
     const body=await res.json().catch(()=>({}));
-    if(!res.ok) throw new Error(body.error||`HTTP ${res.status}`);
+    if(!res.ok){const err=new Error(body.error||`HTTP ${res.status}`);err.status=res.status;err.body=body;throw err;}
     return body;
   }
 
@@ -26,6 +30,14 @@
     const padding='='.repeat((4-value.length%4)%4);
     const base64=(value+padding).replace(/-/g,'+').replace(/_/g,'/');
     const raw=atob(base64);return Uint8Array.from([...raw].map(ch=>ch.charCodeAt(0)));
+  }
+
+  function testToken(){
+    let token=localStorage.getItem(TEST_TOKEN_KEY)||'';
+    if(/^[A-Za-z0-9_-]{32,128}$/.test(token))return token;
+    const bytes=new Uint8Array(32);crypto.getRandomValues(bytes);
+    token=btoa(String.fromCharCode(...bytes)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+    localStorage.setItem(TEST_TOKEN_KEY,token);return token;
   }
 
   function showNote(message,isError=false){
@@ -39,13 +51,20 @@
     return reg.pushManager.getSubscription();
   }
 
+  async function syncSubscription(sub){
+    if(!sub)return;
+    await api('/api/push/subscribe',{method:'POST',body:JSON.stringify({subscription:sub.toJSON(),testToken:testToken()})});
+  }
+
   async function refreshButton(config=null){
-    const btn=ensureUi();if(!btn)return;
-    if(!supported()){btn.hidden=true;return;}
+    const btn=ensureUi(),test=$('pushTestBtn');if(!btn)return;
+    if(!supported()){btn.hidden=true;if(test)test.hidden=true;return;}
     const cfg=config||await api('/api/push/config');
-    if(!cfg.configured){btn.textContent='Alerts Setup Needed';btn.disabled=true;return;}
+    if(!cfg.configured){btn.textContent='Alerts Setup Needed';btn.disabled=true;if(test)test.hidden=true;return;}
     const sub=await currentSubscription();
     btn.disabled=false;btn.textContent=sub?'Disable Alerts':'Enable Alerts';btn.dataset.enabled=sub?'1':'0';
+    if(test){test.hidden=!sub;test.disabled=false;}
+    if(sub) await syncSubscription(sub);
   }
 
   async function enableAlerts(){
@@ -60,8 +79,8 @@
     const reg=await navigator.serviceWorker.ready;
     let sub=await reg.pushManager.getSubscription();
     if(!sub) sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:decodeKey(config.publicKey)});
-    await api('/api/push/subscribe',{method:'POST',body:JSON.stringify({subscription:sub.toJSON()})});
-    showNote('Phone alerts enabled for SignalForge status changes.');
+    await syncSubscription(sub);
+    showNote('Phone alerts enabled. You can send a test alert now.');
   }
 
   async function disableAlerts(){
@@ -69,17 +88,34 @@
     if(!sub)return;
     await api('/api/push/subscribe',{method:'DELETE',body:JSON.stringify({endpoint:sub.endpoint})});
     await sub.unsubscribe();
+    localStorage.removeItem(TEST_TOKEN_KEY);
     showNote('SignalForge phone alerts disabled.');
   }
 
+  async function sendTest(){
+    const sub=await currentSubscription();
+    if(!sub) throw new Error('Enable alerts on this phone first.');
+    await syncSubscription(sub);
+    await api('/api/push/test',{method:'POST',body:JSON.stringify({endpoint:sub.endpoint,testToken:testToken()})});
+    showNote('Test alert sent. Your phone should receive it within a few seconds.');
+  }
+
   async function init(){
-    const btn=ensureUi();if(!btn)return;
-    try{await refreshButton();}catch(err){console.warn('[SignalForge Push] config unavailable',err);btn.hidden=true;return;}
+    const btn=ensureUi(),test=$('pushTestBtn');if(!btn)return;
+    try{await refreshButton();}catch(err){console.warn('[SignalForge Push] config unavailable',err);btn.hidden=true;if(test)test.hidden=true;return;}
     btn.addEventListener('click',async()=>{
       btn.disabled=true;
       try{if(btn.dataset.enabled==='1')await disableAlerts();else await enableAlerts();}
       catch(err){showNote(err.message||'Unable to change push alerts.',true);}
       finally{try{await refreshButton();}catch{btn.disabled=false;}}
+    });
+    test?.addEventListener('click',async()=>{
+      test.disabled=true;
+      try{await sendTest();}
+      catch(err){
+        if(err.status===429) showNote('Test cooldown is active. Try again in about one minute.',true);
+        else showNote(err.message||'Unable to send test notification.',true);
+      }finally{setTimeout(()=>{test.disabled=false;},1200);}
     });
   }
 

@@ -1,4 +1,4 @@
-const CACHE_NAME='signalforge-shell-v5';
+const CACHE_NAME='signalforge-shell-v6';
 const APP_SHELL=['/','/index.html','/styles.css','/pwa.css','/radar.css','/push.css','/config.js','/app.js','/pwa.js','/radar-ui.js','/push-ui.js','/chart-inspector.js','/manifest.webmanifest','/icons/signalforge-icon.svg','/icons/signalforge-maskable.svg'];
 
 self.addEventListener('install',event=>{
@@ -42,9 +42,9 @@ self.addEventListener('push',event=>{
     body:data.body||'A SignalForge status changed.',
     icon:'/icons/signalforge-icon.svg',
     badge:'/icons/signalforge-icon.svg',
-    tag:data.symbol?`signalforge-${data.symbol}`:'signalforge-alert',
+    tag:data.kind==='push-test'?'signalforge-test':data.symbol?`signalforge-${data.symbol}`:'signalforge-alert',
     renotify:true,
-    data:{url:data.url||'/',symbol:data.symbol||null,status:data.status||null},
+    data:{url:data.url||'/',symbol:data.symbol||null,status:data.status||null,kind:data.kind||null},
     actions:[{action:'open',title:'Open SignalForge'}]
   };
   event.waitUntil(self.registration.showNotification(title,options));
