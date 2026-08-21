@@ -1,7 +1,7 @@
 import { analyze, assessIntradayConfirmation } from './analysis.js';
 import { DEFAULT_WATCHLIST, TIMEFRAMES } from './constants.js';
 import { ensureSchema, listAlerts, listSignals, recordSignal } from './db.js';
-import { getMarketData } from './market.js';
+import { getMarketData, searchSymbols } from './market.js';
 
 export default {
   async fetch(request,env) {
@@ -11,7 +11,13 @@ export default {
       await ensureSchema(env);
       if (request.method!=='GET') return json({error:'Method not allowed.'},405);
 
-      if (url.pathname==='/api/health') return json({ok:true,service:'SignalForge-v2',marketDataConfigured:Boolean(env.TWELVE_DATA_API_KEY),databaseConfigured:Boolean(env.DB),watchlist:watchlist(env),phase2SelectiveConfirmation:true});
+      if (url.pathname==='/api/health') return json({ok:true,service:'SignalForge-v2',marketDataConfigured:Boolean(env.TWELVE_DATA_API_KEY),databaseConfigured:Boolean(env.DB),watchlist:watchlist(env),phase2SelectiveConfirmation:true,symbolSearch:true});
+      if (url.pathname==='/api/symbol-search') {
+        const query=String(url.searchParams.get('q')||'').trim();
+        if (!query) return json({results:[],cached:true});
+        if (query.length>80) return json({error:'Search query is too long.'},400);
+        return json(await searchSymbols(env,query));
+      }
       if (url.pathname==='/api/market-data') {
         const symbol=sanitizeSymbol(url.searchParams.get('symbol')), timeframe=sanitizeTimeframe(url.searchParams.get('timeframe'));
         if (!symbol) return json({error:'Invalid symbol.'},400);
@@ -108,6 +114,6 @@ function watchlist(env){const raw=String(env.WATCHLIST||'').trim();const list=ra
 function sanitizeSymbol(v){const s=String(v||'').trim().toUpperCase().replace(/[^A-Z.]/g,'').slice(0,6);return /^[A-Z]{1,5}(?:\.[A-Z])?$/.test(s)?s:'';}
 function sanitizeTimeframe(v){const t=String(v||'6M').toUpperCase();return TIMEFRAMES[t]?t:'6M';}
 function clampInt(v,min,max,fallback){const n=Number.parseInt(v,10);return Number.isFinite(n)?Math.min(max,Math.max(min,n)):fallback;}
-function safeError(error){const m=String(error?.message||'');if(/API key/i.test(m))return'Market-data service is not configured yet.';if(/quota/i.test(m))return'Market-data daily safety limit reached.';if(/Twelve Data/i.test(m))return m.slice(0,180);return'SignalForge API request failed.';}
+function safeError(error){const m=String(error?.message||'');if(/API key/i.test(m))return'Market-data service is not configured yet.';if(/quota/i.test(m))return'Market-data daily safety limit reached.';if(/429|too many requests/i.test(m))return'Market-data minute limit reached. Try again shortly.';if(/Twelve Data/i.test(m))return m.slice(0,180);return'SignalForge API request failed.';}
 function json(data,status=200){return new Response(JSON.stringify(data),{status,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'}});}
 function isUsMarketWindow(date){const parts=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',weekday:'short',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(date);const p=Object.fromEntries(parts.map(x=>[x.type,x.value]));if(p.weekday==='Sat'||p.weekday==='Sun')return false;const minutes=Number(p.hour)*60+Number(p.minute);return minutes>=570&&minutes<=960;}
