@@ -58,7 +58,7 @@ async function fetchQuote(env,symbol){
   const payload=await response.json();
   if(payload?.status==='error') throw new Error(`Twelve Data: ${payload.message||'provider error'}`);
   const price=number(payload.close??payload.price);
-  const changePct=normalizePercent(payload.percent_change);
+  const changePct=number(payload.percent_change);
   const volume=number(payload.volume);
   const averageVolume=number(payload.average_volume??payload.average_volume_10d??payload.average_volume_30d);
   const relativeVolume=averageVolume>0?volume/averageVolume:0;
@@ -79,5 +79,4 @@ function scoreQuote(q){
 
 function rankQuotes(quotes){return quotes.filter(q=>Number.isFinite(q.score)&&q.score>-100).sort((a,b)=>b.score-a.score);}
 function number(v){const n=Number(v);return Number.isFinite(n)?n:0;}
-function normalizePercent(v){const n=number(v);return Math.abs(n)<=1?n*100:n;}
 function sanitizeSymbol(v){const s=String(v||'').trim().toUpperCase().replace(/[^A-Z.]/g,'').slice(0,6);return /^[A-Z]{1,5}(?:\.[A-Z])?$/.test(s)?s:'';}
