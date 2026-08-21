@@ -1,9 +1,10 @@
 import { analyze, assessIntradayConfirmation } from './analysis.js';
 import { DEFAULT_WATCHLIST, TIMEFRAMES } from './constants.js';
-import { authorizePushTest, countPushSubscriptions, deletePushSubscription, ensureSchema, listAlerts, listSignals, recordSignal, upsertPushSubscription } from './db.js';
+import { authorizeDevice, authorizePushTest, countPushSubscriptions, deletePortfolioPosition, deletePushSubscription, ensureSchema, listAlerts, listPortfolioPositions, listSignals, recordSignal, upsertPortfolioPosition, upsertPushSubscription } from './db.js';
 import { getMarketData, searchSymbols } from './market.js';
 import { broadcastSignalPush, pushConfigured, sendTestPush } from './push.js';
 import { getRadarSnapshot, getRadarSymbols, runRadarDiscovery } from './radar.js';
+import { evaluateStrategy, rankOpportunities } from './strategy.js';
 
 export default {
   async fetch(request,env) {
@@ -39,11 +40,39 @@ export default {
         await sendTestPush(env,auth.subscription);
         return json({ok:true,sent:true});
       }
+      if (url.pathname==='/api/portfolio' && request.method==='POST') {
+        const body=await readJson(request);
+        if(!await portfolioAuthorized(request,env,body)) return json({error:'Portfolio access requires an authorized SignalForge phone.'},403);
+        const symbol=sanitizeSymbol(body?.symbol), entryPrice=Number(body?.entryPrice), shares=Number(body?.shares);
+        const boughtAt=Number(body?.boughtAt)||Date.now();
+        if(!symbol || !(entryPrice>0) || !(shares>0)) return json({error:'Symbol, entry price, and shares are required.'},400);
+        await upsertPortfolioPosition(env,{symbol,entryPrice,shares,boughtAt,notes:String(body?.notes||'')});
+        return json({ok:true,position:{symbol,entryPrice,shares,boughtAt}});
+      }
+      if (url.pathname==='/api/portfolio' && request.method==='DELETE') {
+        const body=await readJson(request);
+        if(!await portfolioAuthorized(request,env,body)) return json({error:'Portfolio access requires an authorized SignalForge phone.'},403);
+        const symbol=sanitizeSymbol(body?.symbol);
+        if(!symbol) return json({error:'Valid symbol is required.'},400);
+        await deletePortfolioPosition(env,symbol);
+        return json({ok:true,symbol});
+      }
       if (request.method!=='GET') return json({error:'Method not allowed.'},405);
 
-      if (url.pathname==='/api/health') return json({ok:true,service:'SignalForge-v2',marketDataConfigured:Boolean(env.TWELVE_DATA_API_KEY),databaseConfigured:Boolean(env.DB),watchlist:watchlist(env),phase2SelectiveConfirmation:true,symbolSearch:true,opportunityRadar:true,pushConfigured:pushConfigured(env),pushSubscribers:await countPushSubscriptions(env),pushTest:true});
+      if (url.pathname==='/api/health') return json({ok:true,service:'SignalForge-v2',marketDataConfigured:Boolean(env.TWELVE_DATA_API_KEY),databaseConfigured:Boolean(env.DB),watchlist:watchlist(env),phase2SelectiveConfirmation:true,symbolSearch:true,opportunityRadar:true,portfolioStrategy:true,pushConfigured:pushConfigured(env),pushSubscribers:await countPushSubscriptions(env),pushTest:true});
       if (url.pathname==='/api/push/config') return json({configured:pushConfigured(env),publicKey:pushConfigured(env)?env.VAPID_PUBLIC_KEY:null,subscribers:await countPushSubscriptions(env),statuses:pushStatuses(env),testEnabled:true});
       if (url.pathname==='/api/opportunity-radar') return json({radar:await getRadarSnapshot(env)});
+      if (url.pathname==='/api/portfolio') {
+        if(!await portfolioAuthorized(request,env)) return json({error:'Portfolio access requires an authorized SignalForge phone.'},403);
+        const [positions,signals]=await Promise.all([listPortfolioPositions(env),listSignals(env)]);
+        const signalMap=new Map(signals.map(row=>[row.symbol,row.analysis]));
+        return json({positions:positions.map(position=>({...position,strategy:evaluateStrategy(signalMap.get(position.symbol),position)}))});
+      }
+      if (url.pathname==='/api/strategy') {
+        if(!await portfolioAuthorized(request,env)) return json({error:'Strategy ranking requires an authorized SignalForge phone.'},403);
+        const [positions,signals]=await Promise.all([listPortfolioPositions(env),listSignals(env)]);
+        return json({ranked:rankOpportunities(signals,positions),positions});
+      }
       if (url.pathname==='/api/symbol-search') {
         const query=String(url.searchParams.get('q')||'').trim();
         if (!query) return json({results:[],cached:true});
@@ -60,7 +89,8 @@ export default {
           catch(error) { console.error(JSON.stringify({event:'benchmark_fetch_error',message:error?.message||String(error)})); }
         }
         const analysis=analyze(market.candles,symbol,{benchmarkCandles});
-        return json({symbol,timeframe,candles:market.candles,analysis,source:market.source,cached:market.cached,fetchedAt:market.fetchedAt});
+        const strategy=evaluateStrategy(analysis,null);
+        return json({symbol,timeframe,candles:market.candles,analysis,strategy,source:market.source,cached:market.cached,fetchedAt:market.fetchedAt});
       }
       if (url.pathname==='/api/alerts') return json({alerts:await listAlerts(env,clampInt(url.searchParams.get('limit'),1,50,12))});
       if (url.pathname==='/api/signals') return json({signals:await listSignals(env)});
@@ -96,7 +126,6 @@ async function runDeepScan(env) {
   catch(error) { console.error(JSON.stringify({event:'benchmark_fetch_error',message:error?.message||String(error)})); }
 
   const symbols=await selectDeepScanSymbols(env);
-
   const scans=[];
   for (const symbol of symbols) {
     try {
@@ -147,18 +176,10 @@ async function selectDeepScanSymbols(env) {
   const maintenance=[...fixed].sort((a,b)=>(updatedAt.get(a)||0)-(updatedAt.get(b)||0));
   const selected=[];
   const add=symbol=>{if(symbol&&symbol!=='SPY'&&!selected.includes(symbol)&&selected.length<5)selected.push(symbol);};
-
   radar.slice(0,3).forEach(add);
   maintenance.filter(symbol=>!selected.includes(symbol)).slice(0,2).forEach(add);
-  radar.forEach(add);
-  maintenance.forEach(add);
-
-  console.log(JSON.stringify({
-    event:'deep_scan_selection',
-    radarSlots:selected.filter(symbol=>radar.slice(0,3).includes(symbol)),
-    maintenancePriority:maintenance.slice(0,Math.min(5,maintenance.length)),
-    selected
-  }));
+  radar.forEach(add);maintenance.forEach(add);
+  console.log(JSON.stringify({event:'deep_scan_selection',radarSlots:selected.filter(symbol=>radar.slice(0,3).includes(symbol)),maintenancePriority:maintenance.slice(0,Math.min(5,maintenance.length)),selected}));
   return selected;
 }
 
@@ -184,15 +205,14 @@ async function sendWebhook(env,analysis,previousStatus,now) {
   if (!response.ok) console.error(JSON.stringify({event:'alert_webhook_error',status:response.status}));
 }
 
-async function readJson(request){
-  const text=await request.text();
-  if(text.length>20_000) throw new Error('Request payload is too large.');
-  try{return text?JSON.parse(text):{};}catch{throw new Error('Invalid JSON payload.');}
+async function portfolioAuthorized(request,env,body=null){
+  const endpoint=String(request.headers.get('x-sf-endpoint')||body?.deviceEndpoint||'').trim();
+  const token=String(request.headers.get('x-sf-token')||body?.deviceToken||'').trim();
+  if(!endpoint.startsWith('https://')||!validTestToken(token)) return false;
+  return authorizeDevice(env,endpoint,token);
 }
-function validSubscription(subscription){
-  const endpoint=String(subscription?.endpoint||'');
-  return endpoint.startsWith('https://') && endpoint.length<4096 && typeof subscription?.keys?.p256dh==='string' && typeof subscription?.keys?.auth==='string';
-}
+async function readJson(request){const text=await request.text();if(text.length>20_000)throw new Error('Request payload is too large.');try{return text?JSON.parse(text):{};}catch{throw new Error('Invalid JSON payload.');}}
+function validSubscription(subscription){const endpoint=String(subscription?.endpoint||'');return endpoint.startsWith('https://')&&endpoint.length<4096&&typeof subscription?.keys?.p256dh==='string'&&typeof subscription?.keys?.auth==='string';}
 function validTestToken(value){return /^[A-Za-z0-9_-]{32,128}$/.test(String(value||''));}
 function pushStatuses(env){return String(env.PUSH_ALERT_STATUSES||'SETUP — READY SOON|BUY NOW|SELL / EXIT').split('|').map(s=>s.trim()).filter(Boolean);}
 function watchlist(env){const raw=String(env.WATCHLIST||'').trim();const list=raw?raw.split(',').map(sanitizeSymbol).filter(Boolean):DEFAULT_WATCHLIST;return [...new Set(list.filter(symbol=>symbol!=='SPY'))].slice(0,20);}
@@ -203,4 +223,4 @@ function safeError(error){const m=String(error?.message||'');if(/API key/i.test(
 function json(data,status=200){return new Response(JSON.stringify(data),{status,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'}});}
 function easternParts(date){const parts=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',weekday:'short',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(date);return Object.fromEntries(parts.map(x=>[x.type,x.value]));}
 function easternMinute(date){return Number(easternParts(date).minute)||0;}
-function isUsMarketWindow(date){const p=easternParts(date);if(p.weekday==='Sat'||p.weekday==='Sun')return false;const minutes=Number(p.hour)*60+Number(p.minute);return minutes>=570&&minutes<=960;}
+function isUsMarketWindow(date){const p=easternParts(date);if(p.weekday==='Sat'||p.weekday==='Sun')return false;const minutes=Number(p.hour)*60+Number(p.minute);return minutes>=570&&minutes<960;}
