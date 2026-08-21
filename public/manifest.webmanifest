@@ -1,0 +1,28 @@
+{
+  "id": "/",
+  "name": "SignalForge",
+  "short_name": "SignalForge",
+  "description": "Market decision engine with automated signal scanning and confirmation.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "background_color": "#09111f",
+  "theme_color": "#09111f",
+  "orientation": "any",
+  "categories": ["finance", "productivity"],
+  "icons": [
+    {
+      "src": "/icons/signalforge-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/signalforge-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}
