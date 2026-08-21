@@ -4,6 +4,10 @@
   "main": "src/index.js",
   "compatibility_date": "2026-08-21",
   "compatibility_flags": ["nodejs_compat"],
+  "keep_vars": true,
+  "secrets": {
+    "required": ["TWELVE_DATA_API_KEY", "VAPID_PRIVATE_KEY"]
+  },
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",
