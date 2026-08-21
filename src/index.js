@@ -52,8 +52,9 @@ export default {
       if(url.pathname==='/api/opportunity-radar')return json({radar:await getRadarSnapshot(env)});
       if(url.pathname==='/api/portfolio'){
         if(!await portfolioAuthorized(request,env))return json({error:'Portfolio access requires an authorized SignalForge phone.'},403);
-        const [positions,signals]=await Promise.all([listPortfolioPositions(env),listSignals(env)]),signalMap=new Map(signals.map(row=>[row.symbol,row.analysis]));
-        return json({positions:positions.map(position=>({...position,strategy:evaluateStrategy(signalMap.get(position.symbol),position)}))});
+        const [positions,signals,stateRows]=await Promise.all([listPortfolioPositions(env),listSignals(env),env.DB.prepare(`SELECT symbol,strategy_json AS strategyJson FROM portfolio_strategy_state`).all()]);
+        const signalMap=new Map(signals.map(row=>[row.symbol,row.analysis])),strategyMap=new Map((stateRows.results||[]).map(row=>{try{return [row.symbol,JSON.parse(row.strategyJson)];}catch{return [row.symbol,null];}}));
+        return json({positions:positions.map(position=>({...position,strategy:strategyMap.get(position.symbol)||evaluateStrategy(signalMap.get(position.symbol),position)}))});
       }
       if(url.pathname==='/api/strategy'){
         if(!await portfolioAuthorized(request,env))return json({error:'Strategy ranking requires an authorized SignalForge phone.'},403);
@@ -82,32 +83,13 @@ async function runScheduledCycle(env,scheduledTime){
   try{
     await ensureSchema(env);const now=new Date(scheduledTime||Date.now());if(!env.TWELVE_DATA_API_KEY||!isUsMarketWindow(now))return;
     const p=easternParts(now),minutes=Number(p.hour)*60+Number(p.minute);
-
     if(p.weekday==='Fri'&&minutes>=840&&minutes<=930&&minutes%15===0){
       const result=await runWeeklyResearchBatch(env,{batchSize:6,now});
       console.log(JSON.stringify({event:'weekly_research_batch',weekKey:result.weekKey,scanned:result.scanned,cursor:result.cursor,universeSize:result.universeSize,completed:result.completed}));
-      if(result.completed&&result.scanned.length){
-        const snapshot=await getWeeklyStrategySnapshot(env),top=snapshot.ranked[0];
-        if(top){try{const push=await broadcastWeeklyOpportunityPush(env,{weekKey:snapshot.weekKey,row:top,occurredAt:Date.now()});console.log(JSON.stringify({event:'weekly_opportunity_push',symbol:top.symbol,state:top.strategy?.state,...push}));}catch(error){console.error(JSON.stringify({event:'weekly_opportunity_push_error',message:error?.message||String(error)}));}}
-      }
-      return;
+      if(result.completed&&result.scanned.length){const snapshot=await getWeeklyStrategySnapshot(env),top=snapshot.ranked[0];if(top){try{const push=await broadcastWeeklyOpportunityPush(env,{weekKey:snapshot.weekKey,row:top,occurredAt:Date.now()});console.log(JSON.stringify({event:'weekly_opportunity_push',symbol:top.symbol,state:top.strategy?.state,...push}));}catch(error){console.error(JSON.stringify({event:'weekly_opportunity_push_error',message:error?.message||String(error)}));}}}return;
     }
-
-    if(p.weekday!=='Fri'&&minutes===915){
-      const result=await runRadarDiscovery(env,{batchSize:7});
-      console.log(JSON.stringify({event:'daily_radar_refresh',scanned:result.scanned.map(x=>x.symbol),leaders:result.leaders.map(x=>x.symbol),cursor:result.cursor}));
-      return;
-    }
-
-    if(minutes===945){
-      const result=await runPortfolioCloseReview(env,{maxPositions:6});
-      for(const row of result.reviewed){
-        if(!row.event?.changed)continue;
-        try{const push=await broadcastPortfolioStrategyPush(env,{symbol:row.symbol,strategy:row.strategy,previousState:row.event.previousState,occurredAt:row.event.now});console.log(JSON.stringify({event:'portfolio_strategy_push',symbol:row.symbol,state:row.strategy.state,...push}));}
-        catch(error){console.error(JSON.stringify({event:'portfolio_strategy_push_error',symbol:row.symbol,message:error?.message||String(error)}));}
-      }
-      console.log(JSON.stringify({event:'portfolio_close_review',reviewed:result.reviewed.map(x=>({symbol:x.symbol,state:x.strategy.state})),skipped:result.skipped}));
-    }
+    if(p.weekday!=='Fri'&&minutes===915){const result=await runRadarDiscovery(env,{batchSize:7});console.log(JSON.stringify({event:'daily_radar_refresh',scanned:result.scanned.map(x=>x.symbol),leaders:result.leaders.map(x=>x.symbol),cursor:result.cursor}));return;}
+    if(minutes===945){const result=await runPortfolioCloseReview(env,{maxPositions:6});for(const row of result.reviewed){if(!row.event?.changed)continue;try{const push=await broadcastPortfolioStrategyPush(env,{symbol:row.symbol,strategy:row.strategy,previousState:row.event.previousState,occurredAt:row.event.now});console.log(JSON.stringify({event:'portfolio_strategy_push',symbol:row.symbol,state:row.strategy.state,...push}));}catch(error){console.error(JSON.stringify({event:'portfolio_strategy_push_error',symbol:row.symbol,message:error?.message||String(error)}));}}console.log(JSON.stringify({event:'portfolio_close_review',reviewed:result.reviewed.map(x=>({symbol:x.symbol,state:x.strategy.state})),skipped:result.skipped}));}
   }catch(error){console.error(JSON.stringify({event:'scheduled_cycle_error',message:error?.message||String(error)}));}
 }
 
