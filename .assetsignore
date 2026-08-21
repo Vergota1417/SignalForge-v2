@@ -1,0 +1,8 @@
+README.md
+src
+src/**
+wrangler.jsonc
+package.json
+package-lock.json
+.assetsignore
+.git*

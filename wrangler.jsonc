@@ -1,0 +1,29 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "signalforge-v2",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-21",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB"
+    }
+  ],
+  "triggers": {
+    "crons": ["*/15 * * * 1-5"]
+  },
+  "vars": {
+    "WATCHLIST": "XOM,NVDA,MSFT,AAPL,AMZN,TSLA",
+    "MAX_PROVIDER_REQUESTS_PER_DAY": "700",
+    "ALERT_STATUSES": "BUY NOW|SETUP — READY SOON|WAIT FOR PULLBACK|SELL / EXIT"
+  },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  }
+}

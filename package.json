@@ -1,0 +1,14 @@
+{
+  "name": "signalforge-v2",
+  "version": "2.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "check": "node --check src/index.js && node --check app.js && node --check config.js"
+  },
+  "devDependencies": {
+    "wrangler": "4.125.0"
+  }
+}

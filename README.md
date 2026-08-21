@@ -1,88 +1,82 @@
-# SignalForge Rebuild
+# SignalForge v2.1
 
-A deployable static rebuild of the SignalForge decision dashboard with the upgraded logic discussed in chat.
+SignalForge is a Cloudflare Worker + Static Assets decision-support dashboard for stock-market setups.
 
-## What changed
+## What changed in v2.1
 
-- Replaces a misleading raw `10/12` interpretation with **critical gates**.
-- Four independent decision engines:
-  1. Trend
-  2. Entry
-  3. Probability
-  4. Risk / Reward
-- Final states:
-  - BUY NOW
-  - SETUP — READY SOON
-  - WAIT FOR PULLBACK
-  - WAIT — SETUP NOT READY
-  - AVOID
-  - SELL / EXIT
-- Three distinct chart zones:
-  - Preferred Entry
-  - Overextension / Don’t Chase
-  - Thesis Break / Stop
-- Timeframes:
-  - 1D: 5-minute candles
-  - 5D: 15-minute candles
-  - 1M: 1-hour candles
-  - 3M: daily candles
-  - 6M: daily candles
-  - 1Y: daily candles
-  - 2Y: weekly candles
-- Lightweight walk-forward check on the loaded candle series.
-- Explains exactly why a setup is blocked from BUY.
-- Responsive desktop/mobile layout.
-- Watchlist scan with deterministic demo data.
+- Live market-data API runs server-side in the Cloudflare Worker.
+- Twelve Data API key stays in a Cloudflare secret, never in browser JavaScript.
+- 1D / 5D / 1M / 3M / 6M / 1Y / 2Y map to 5min / 15min / 1h / 1day / 1week candles.
+- D1 caches candles and stores current signal state plus status-transition history.
+- Cron Trigger scans the configured watchlist every 15 minutes on weekdays and only fetches during the U.S. market window.
+- Signal changes can optionally POST to an alert webhook.
+- Demo data remains a fallback if the live API is unavailable.
 
-## Run locally
-
-Because this is a static app, any simple web server works.
-
-### Python
-
-```bash
-cd SignalForge-Rebuild
-python -m http.server 8080
-```
-
-Then open `http://127.0.0.1:8080`.
-
-## Connect real market data
-
-Edit `config.js`:
-
-```js
-window.SIGNALFORGE_CONFIG = {
-  API_BASE_URL: "https://your-api.example.com",
-  REQUEST_TIMEOUT_MS: 7000
-};
-```
-
-The frontend expects:
+## Repository layout
 
 ```text
-GET /api/market-data?symbol=XOM&timeframe=6M
+index.html           Browser UI
+styles.css
+config.js
+app.js
+src/                 Worker API + scanner + D1 logic
+  index.js
+  market.js
+  db.js
+  analysis.js
+  constants.js
+wrangler.jsonc       Cloudflare deployment configuration
+.assetsignore        Keeps backend files out of static assets
+package.json
 ```
 
-Response:
+## Required Cloudflare secret
 
-```json
-{
-  "candles": [
-    {
-      "time": "2026-08-21T14:30:00Z",
-      "open": 100.1,
-      "high": 101.2,
-      "low": 99.8,
-      "close": 100.9,
-      "volume": 1234567
-    }
-  ]
-}
+Create a free Twelve Data API key, then add it to the Worker as a secret named:
+
+```text
+TWELVE_DATA_API_KEY
 ```
 
-If the API is blank or unavailable, the UI automatically falls back to deterministic demo data.
+Do not put the API key in `config.js` or GitHub.
+
+Optional webhook secret:
+
+```text
+ALERT_WEBHOOK_URL
+```
+
+If configured, SignalForge posts JSON when a symbol changes into one of the alert statuses configured in `wrangler.jsonc`.
+
+## Cloudflare deployment
+
+The existing Cloudflare Git deployment can keep using:
+
+```bash
+npx wrangler deploy
+```
+
+Wrangler serves the repository root as Static Assets, while `.assetsignore` excludes backend/configuration files. API requests under `/api/*` run through `src/index.js`.
+
+The `DB` D1 binding intentionally has no resource ID in source control. Modern Wrangler can automatically provision the D1 resource during deployment. The Worker initializes its tables with `CREATE TABLE IF NOT EXISTS` on first use.
+
+## API routes
+
+- `GET /api/health`
+- `GET /api/market-data?symbol=XOM&timeframe=6M`
+- `GET /api/signals`
+- `GET /api/alerts?limit=12`
+
+## Scanner
+
+The cron expression is `*/15 * * * 1-5`. Cron is evaluated by Cloudflare in UTC, while the Worker itself checks `America/New_York` and only runs provider calls from 09:30 through 16:00 Eastern on weekdays.
+
+The initial watchlist is configured with the `WATCHLIST` variable in `wrangler.jsonc`.
+
+## Market-data safety
+
+The Worker caches provider results in D1 and enforces a daily provider-call ceiling with `MAX_PROVIDER_REQUESTS_PER_DAY`. This protects the initial free data plan from accidental overuse.
 
 ## Important
 
-The calculations in this rebuild are a transparent decision-support prototype. They should be validated against historical market data before being used for live trading decisions. They are not financial advice and do not guarantee returns.
+SignalForge is decision-support software. A BUY label is produced only when the critical Trend, Entry, Probability, and Risk/Reward gates all clear. It does not place trades or guarantee returns.
