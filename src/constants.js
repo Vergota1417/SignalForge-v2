@@ -1,6 +1,6 @@
 export const TIMEFRAMES = {
-  '1D': { interval: '5min', outputsize: 90, cacheSeconds: 60 },
-  '5D': { interval: '15min', outputsize: 160, cacheSeconds: 180 },
+  '1D': { interval: '5min', outputsize: 90, cacheSeconds: 60, regularSessions: 1 },
+  '5D': { interval: '15min', outputsize: 160, cacheSeconds: 180, regularSessions: 5 },
   '1M': { interval: '1h', outputsize: 200, cacheSeconds: 300 },
   '3M': { interval: '1day', outputsize: 100, cacheSeconds: 600 },
   '6M': { interval: '1day', outputsize: 180, cacheSeconds: 600 },
