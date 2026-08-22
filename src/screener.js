@@ -60,8 +60,9 @@ function buildRow(quote,signal){
   const participationBoost=clamp((relativeVolume-1)*7,-5,15);
   const gateBoost=analysis?gatesReady*4:0;
   const overextensionPenalty=status==='WAIT FOR PULLBACK'?10:0;
-  const screenScore=round(discoveryScore+statusBoost+velocityBoost+participationBoost+gateBoost-overextensionPenalty,1);
   const bucket=bucketFor(status,analysis);
+  const rawScore=round(discoveryScore+statusBoost+velocityBoost+participationBoost+gateBoost-overextensionPenalty,1);
+  const screenScore=bucket==='AVOID'?Math.min(rawScore,-10):rawScore;
   const reason=reasonFor({status,analysis,relativeVolume,scoreVelocity});
   return {
     symbol:String(quote.symbol||''),
