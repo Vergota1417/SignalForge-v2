@@ -27,7 +27,7 @@ export async function reserveProviderRequest(env) {
 }
 
 export async function getCachedMarket(env, symbol, timeframe, maxAgeMs) {
-  const row = await env.DB.prepare('SELECT fetched_at AS fetchedAt, source, payload FROM market_cache WHERE symbol=? AND timeframe=?').bind(symbol,timeframe).first();
+  const row=await env.DB.prepare('SELECT fetched_at AS fetchedAt, source, payload FROM market_cache WHERE symbol=? AND timeframe=?').bind(symbol,timeframe).first();
   if (!row || Date.now()-Number(row.fetchedAt) >= maxAgeMs) return null;
   return { candles:JSON.parse(row.payload), source:row.source, cached:true, fetchedAt:Number(row.fetchedAt) };
 }
@@ -165,6 +165,12 @@ export async function listWeeklyResearch(env,weekKey) {
 export async function latestWeeklyResearchState(env) {
   const row=await env.DB.prepare(`SELECT week_key AS weekKey,cursor,universe_size AS universeSize,completed_at AS completedAt,updated_at AS updatedAt FROM weekly_research_state ORDER BY week_key DESC LIMIT 1`).first();
   return row?{...row,cursor:Number(row.cursor)||0,universeSize:Number(row.universeSize)||0,completedAt:Number(row.completedAt)||0,updatedAt:Number(row.updatedAt)||0}:null;
+}
+
+export async function getPortfolioStrategy(env,symbol){
+  const row=await env.DB.prepare(`SELECT state,reason,strategy_json AS strategyJson,updated_at AS updatedAt FROM portfolio_strategy_state WHERE symbol=?`).bind(symbol).first();
+  if(!row?.strategyJson)return null;
+  try{return{state:row.state,reason:row.reason,strategy:JSON.parse(row.strategyJson),updatedAt:Number(row.updatedAt)||0};}catch{return null;}
 }
 
 export async function recordPortfolioStrategy(env,symbol,strategy) {
