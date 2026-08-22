@@ -4,7 +4,8 @@ import { authorizeDevice, authorizePushTest, countPushSubscriptions, deletePortf
 import { getMarketData, searchSymbols } from './market.js';
 import { broadcastPortfolioStrategyPush, broadcastWeeklyOpportunityPush, pushConfigured, sendTestPush } from './push.js';
 import { getRadarSnapshot, runRadarDiscovery } from './radar.js';
-import { getSmartScreenerSnapshot } from './screener.js';
+import { getSmartScreenerSnapshot, runScreenerPromotion } from './screener.js';
+import { getAfterHoursResearchStatus, runAfterHoursResearch } from './research.js';
 import { evaluateStrategy, rankOpportunities, rankPortfolioActions } from './strategy.js';
 import { getWeeklyStrategySnapshot, runPortfolioCloseReview, runWeeklyResearchBatch } from './weekly.js';
 
@@ -29,10 +30,11 @@ export default {
       if(url.pathname==='/api/portfolio'&&request.method==='DELETE'){const body=await readJson(request);if(!await portfolioAuthorized(request,env,body))return json({error:'Portfolio access requires an authorized SignalForge phone.'},403);const symbol=sanitizeSymbol(body?.symbol);if(!symbol)return json({error:'Valid symbol is required.'},400);await deletePortfolioPosition(env,symbol);return json({ok:true,symbol});}
       if(request.method!=='GET')return json({error:'Method not allowed.'},405);
 
-      if(url.pathname==='/api/health')return json({ok:true,service:'SignalForge-v2',marketDataConfigured:Boolean(env.TWELVE_DATA_API_KEY),databaseConfigured:Boolean(env.DB),watchlist:watchlist(env),weeklyInvestmentEngine:true,dynamicDiscovery:true,discoveryPoolSize:120,weeklyResearchTarget:36,intradayTimingOnly:true,symbolSearch:true,opportunityRadar:true,smartMarketScreener:true,portfolioStrategy:true,calibratedScoring:true,fractionalSizing:true,pushConfigured:pushConfigured(env),pushSubscribers:await countPushSubscriptions(env),pushTest:true});
+      if(url.pathname==='/api/health')return json({ok:true,service:'SignalForge-v2',marketDataConfigured:Boolean(env.TWELVE_DATA_API_KEY),databaseConfigured:Boolean(env.DB),watchlist:watchlist(env),weeklyInvestmentEngine:true,dynamicDiscovery:true,discoveryPoolSize:120,weeklyResearchTarget:36,intradayTimingOnly:true,symbolSearch:true,opportunityRadar:true,smartMarketScreener:true,screenerPromotion:true,afterHoursResearch:true,portfolioStrategy:true,calibratedScoring:true,fractionalSizing:true,pushConfigured:pushConfigured(env),pushSubscribers:await countPushSubscriptions(env),pushTest:true});
       if(url.pathname==='/api/push/config')return json({configured:pushConfigured(env),publicKey:pushConfigured(env)?env.VAPID_PUBLIC_KEY:null,subscribers:await countPushSubscriptions(env),statuses:pushStatuses(env),testEnabled:true});
       if(url.pathname==='/api/opportunity-radar')return json({radar:await getRadarSnapshot(env)});
       if(url.pathname==='/api/screener')return json({screener:await getSmartScreenerSnapshot(env,{limit:clampInt(url.searchParams.get('limit'),5,50,30)})});
+      if(url.pathname==='/api/research-status')return json({research:await getAfterHoursResearchStatus(env)});
       if(url.pathname==='/api/portfolio'){
         if(!await portfolioAuthorized(request,env))return json({error:'Portfolio access requires an authorized SignalForge phone.'},403);
         const[positions,signals,stateRows]=await Promise.all([listPortfolioPositions(env),listSignals(env),env.DB.prepare(`SELECT symbol,strategy_json AS strategyJson FROM portfolio_strategy_state`).all()]);
@@ -63,15 +65,35 @@ export default {
 
 async function runScheduledCycle(env,scheduledTime){
   try{
-    await ensureSchema(env);const now=new Date(scheduledTime||Date.now());if(!env.TWELVE_DATA_API_KEY||!isUsMarketWindow(now))return;
-    const p=easternParts(now),minutes=Number(p.hour)*60+Number(p.minute);
-    if(p.weekday==='Fri'&&minutes>=840&&minutes<=930&&minutes%15===0){
+    await ensureSchema(env);const now=new Date(scheduledTime||Date.now());if(!env.TWELVE_DATA_API_KEY)return;
+    const p=easternParts(now),minutes=Number(p.hour)*60+Number(p.minute),weekday=p.weekday;
+    if(weekday==='Sat'||weekday==='Sun')return;
+
+    if(weekday==='Fri'&&minutes>=840&&minutes<=930&&minutes%15===0){
       const result=await runWeeklyResearchBatch(env,{batchSize:6,now});console.log(JSON.stringify({event:'weekly_research_batch',weekKey:result.weekKey,scanned:result.scanned,cursor:result.cursor,universeSize:result.universeSize,completed:result.completed}));
       if(result.completed&&result.scanned.length){const[snapshot,positions]=await Promise.all([getWeeklyStrategySnapshot(env),listPortfolioPositions(env)]),top=rankOpportunities(snapshot.ranked,positions)[0];if(top){try{const push=await broadcastWeeklyOpportunityPush(env,{weekKey:snapshot.weekKey,row:top,occurredAt:Date.now()});console.log(JSON.stringify({event:'weekly_opportunity_push',symbol:top.symbol,state:top.strategy?.state,...push}));}catch(error){console.error(JSON.stringify({event:'weekly_opportunity_push_error',message:error?.message||String(error)}));}}}return;
     }
-    const discoveryDay=p.weekday!=='Fri',discoverySlot=minutes>=615&&minutes<=915&&minutes%60===15;
-    if(discoveryDay&&discoverySlot){const result=await runRadarDiscovery(env,{batchSize:5});console.log(JSON.stringify({event:'discovery_radar_refresh',scanned:result.scanned.map(x=>x.symbol),leaders:result.leaders.map(x=>x.symbol),cursor:result.cursor,universeSize:result.universeSize}));return;}
-    if(minutes===945){const result=await runPortfolioCloseReview(env,{maxPositions:6});for(const row of result.reviewed){if(!row.event?.changed)continue;try{const push=await broadcastPortfolioStrategyPush(env,{symbol:row.symbol,strategy:row.strategy,previousState:row.event.previousState,occurredAt:row.event.now});console.log(JSON.stringify({event:'portfolio_strategy_push',symbol:row.symbol,state:row.strategy.state,...push}));}catch(error){console.error(JSON.stringify({event:'portfolio_strategy_push_error',symbol:row.symbol,message:error?.message||String(error)}));}}console.log(JSON.stringify({event:'portfolio_close_review',reviewed:result.reviewed.map(x=>({symbol:x.symbol,state:x.strategy.state})),skipped:result.skipped}));}
+
+    const discoveryDay=weekday!=='Fri',discoverySlot=minutes>=615&&minutes<=915&&minutes%60===15;
+    if(discoveryDay&&discoverySlot){
+      const radar=await runRadarDiscovery(env,{batchSize:5});
+      const promotion=await runScreenerPromotion(env,{maxPromotions:2,now:now.getTime()});
+      console.log(JSON.stringify({event:'discovery_promotion_cycle',scanned:radar.scanned.map(x=>x.symbol),leaders:radar.leaders.map(x=>x.symbol),promoted:promotion.promoted,candidates:promotion.candidates,cursor:radar.cursor,universeSize:radar.universeSize}));
+      return;
+    }
+
+    if(minutes===945){
+      const result=await runPortfolioCloseReview(env,{maxPositions:6});
+      for(const row of result.reviewed){if(!row.event?.changed)continue;try{const push=await broadcastPortfolioStrategyPush(env,{symbol:row.symbol,strategy:row.strategy,previousState:row.event.previousState,occurredAt:row.event.now});console.log(JSON.stringify({event:'portfolio_strategy_push',symbol:row.symbol,state:row.strategy.state,...push}));}catch(error){console.error(JSON.stringify({event:'portfolio_strategy_push_error',symbol:row.symbol,message:error?.message||String(error)}));}}
+      console.log(JSON.stringify({event:'portfolio_close_review',reviewed:result.reviewed.map(x=>({symbol:x.symbol,state:x.strategy.state})),skipped:result.skipped}));
+      return;
+    }
+
+    const afterHoursSlot=minutes>=975&&minutes<=1125&&minutes%30===15;
+    if(afterHoursSlot){
+      const result=await runAfterHoursResearch(env,{now:now.getTime(),maxPerRun:6});
+      console.log(JSON.stringify({event:'after_hours_research_cycle',...result}));
+    }
   }catch(error){console.error(JSON.stringify({event:'scheduled_cycle_error',message:error?.message||String(error)}));}
 }
 
@@ -87,4 +109,3 @@ function clampInt(v,min,max,fallback){const n=Number.parseInt(v,10);return Numbe
 function safeError(error){const m=String(error?.message||'');if(/API key/i.test(m))return'Market-data service is not configured yet.';if(/quota/i.test(m))return'Market-data daily safety limit reached.';if(/429|too many requests/i.test(m))return'Market-data minute limit reached. Try again shortly.';if(/Weekly research|Portfolio review/i.test(m))return m;if(/Push notifications are not configured/i.test(m))return m;if(/Invalid JSON|payload is too large|push test/i.test(m))return m;if(/Twelve Data/i.test(m))return m.slice(0,180);return'SignalForge API request failed.';}
 function json(data,status=200){return new Response(JSON.stringify(data),{status,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'}});}
 function easternParts(date){const parts=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',weekday:'short',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(date);return Object.fromEntries(parts.map(x=>[x.type,x.value]));}
-function isUsMarketWindow(date){const p=easternParts(date);if(p.weekday==='Sat'||p.weekday==='Sun')return false;const minutes=Number(p.hour)*60+Number(p.minute);return minutes>=570&&minutes<960;}
