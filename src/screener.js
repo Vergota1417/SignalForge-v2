@@ -4,6 +4,7 @@ import { getDiscoveryPool, getDiscoveryStatus } from './discovery.js';
 import { getMarketData } from './market.js';
 import { getResearchMap } from './research.js';
 import { runPaperSimulation } from './simulation.js';
+import { buildWeekendIntelligenceReport, getWeekendIntelligenceReport } from './weekend.js';
 
 const STATUS_BOOST={
   'BUY NOW':42,
@@ -17,6 +18,7 @@ const STATUS_BOOST={
 const PROMOTION_STALE_MS=4*60*60*1000;
 
 export async function getSmartScreenerSnapshot(env,{limit=30}={}){
+  const now=Date.now();
   const simulation=await runPaperSimulation(env);
   const [quotes,signals,pool,status,researchMap]=await Promise.all([
     listRadarQuotes(env,24*60*60*1000,80),
@@ -27,9 +29,16 @@ export async function getSmartScreenerSnapshot(env,{limit=30}={}){
   ]);
   const rows=buildScreenerRows(quotes,signals,{researchMap}).slice(0,Math.max(5,Math.min(50,Number(limit)||30)));
   const analyzed=rows.filter(row=>row.deepAnalysis).length,researchConfirmed=rows.filter(row=>row.research?.confirmationScore>=60).length;
+  let weekendIntelligence=await getWeekendIntelligenceReport(env);
+  const marketMode=marketModeFor(now);
+  if(marketMode.weekend&&marketMode.weekendResearchWindowOpen&&(!weekendIntelligence||weekendIntelligence.weekKey!==marketMode.weekKey)){
+    weekendIntelligence=await buildWeekendIntelligenceReport(env,{now});
+  }
   return {
     rows,
     simulation,
+    weekendIntelligence,
+    marketMode,
     updatedAt:Math.max(0,...rows.map(row=>Number(row.quoteUpdatedAt)||0)),
     coverage:{weeklyPool:pool.length,catalogSize:status.catalogSize,scannedSymbols:status.scannedSymbols,rankedNow:rows.length,deepAnalyzed:analyzed,researchConfirmed},
     methodology:{
@@ -38,6 +47,7 @@ export async function getSmartScreenerSnapshot(env,{limit=30}={}){
       stage3:'After-hours 1-year historical research adds a bounded confirmation adjustment; it cannot override AVOID or SELL / EXIT.',
       stage4:'Saved live deep-analysis status remains authoritative for trade state.',
       stage5:'Forward paper trading opens only on new BUY NOW events and never uses future data.',
+      weekend:'Weekend Intelligence converts stale executable-looking states into research-only Monday planning labels; fresh Monday data must reconfirm any BUY.',
       rule:'Historical research strengthens evidence and ranking, but never replaces the live decision gates.'
     }
   };
@@ -134,6 +144,7 @@ function promotionPriority(row){
 }
 function bucketFor(status,analysis){if(status==='BUY NOW')return'ACTIONABLE';if(status==='SETUP — READY SOON')return'READY SOON';if(status==='WAIT FOR PULLBACK')return'PULLBACK';if(status==='AVOID'||status==='SELL / EXIT')return'AVOID';if(analysis)return'WATCH';return'DISCOVERY';}
 function reasonFor({status,analysis,relativeVolume,scoreVelocity,research}){if(status==='BUY NOW')return'All saved critical gates are cleared and the setup is buy-ready.';if(status==='SETUP — READY SOON')return'High-quality setup; one timing or confirmation step remains.';if(status==='WAIT FOR PULLBACK')return'Strong enough to watch, but current price is extended; do not chase.';if(status==='AVOID')return analysis?.reason||'Deep analysis rejects a new entry.';if(status==='SELL / EXIT')return analysis?.reason||'Existing thesis is broken; this is not a new-entry candidate.';if(analysis?.criticalFailed?.length)return`Deep analysis is waiting on: ${analysis.criticalFailed.join(', ')}.`;if(research?.confirmationScore>=75)return'After-hours historical research strongly confirms this candidate; promote it for fresh live-gate analysis.';if(research?.confirmationScore<45&&research?.researchedAt)return'Historical confirmation is weak; live evidence must improve before promotion.';if(relativeVolume>=1.5&&scoreVelocity>0)return'Unusual participation is increasing; candidate deserves deeper analysis.';if(scoreVelocity>0)return'Discovery score is improving; watch for confirmation.';return'Discovery candidate; deep analysis has not promoted it yet.';}
+function marketModeFor(now){const parts=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',weekday:'short',hour:'2-digit',minute:'2-digit',hour12:false,year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date(now));const p=Object.fromEntries(parts.map(x=>[x.type,x.value]));const weekend=p.weekday==='Sat'||p.weekday==='Sun',minutes=Number(p.hour)*60+Number(p.minute);const d=new Date(Date.UTC(Number(p.year),Number(p.month)-1,Number(p.day)));const day=d.getUTCDay(),monday=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate()-(day===0?6:day-1)));return{weekend,weekday:p.weekday,minutes,weekKey:monday.toISOString().slice(0,10),weekendResearchWindowOpen:p.weekday==='Sun'||(p.weekday==='Sat'&&minutes>=675),executionMessage:weekend?'Market closed — weekend labels are planning states only. Fresh Monday confirmation is required.':'Live-market labels may become executable only when all current gates clear.'};}
 function finite(v){const n=Number(v);return Number.isFinite(n)?n:0;}
 function finiteOrNull(v){const n=Number(v);return Number.isFinite(n)?n:null;}
 function clamp(v,lo,hi){return Math.min(hi,Math.max(lo,v));}
