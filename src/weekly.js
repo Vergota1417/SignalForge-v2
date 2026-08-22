@@ -2,40 +2,23 @@ import { analyze } from './analysis.js';
 import { getMarketData } from './market.js';
 import { getWeeklyResearchUniverse } from './discovery.js';
 import { evaluateStrategy } from './strategy.js';
-import { getWeeklyResearchState, latestWeeklyResearchState, listPortfolioPositions, listWeeklyResearch, putWeeklyResearch, putWeeklyResearchState, recordPortfolioStrategy, recordSignal } from './db.js';
+import { getPortfolioStrategy, getWeeklyResearchState, latestWeeklyResearchState, listPortfolioPositions, listWeeklyResearch, putWeeklyResearch, putWeeklyResearchState, recordPortfolioStrategy, recordSignal } from './db.js';
 
 export async function runWeeklyResearchBatch(env,{batchSize=6,now=new Date()}={}) {
   const weekKey=investmentWeekKey(now);
   const universe=(await getWeeklyResearchUniverse(env,{limit:36,now:now.getTime(),weekKey})).filter(symbol=>symbol!=='SPY');
   const state=await getWeeklyResearchState(env,weekKey);
-  if(state.completedAt>0||state.cursor>=universe.length){
-    if(!state.completedAt)await putWeeklyResearchState(env,{weekKey,cursor:universe.length,universeSize:universe.length,completed:true});
-    return{weekKey,completed:true,cursor:universe.length,universeSize:universe.length,scanned:[]};
-  }
-
-  let benchmarkCandles=null;
-  try{benchmarkCandles=(await getMarketData(env,'SPY','1Y',false,{completedOnly:true})).candles;}
-  catch(error){console.error(JSON.stringify({event:'weekly_benchmark_error',message:error?.message||String(error)}));}
+  if(state.completedAt>0||state.cursor>=universe.length){if(!state.completedAt)await putWeeklyResearchState(env,{weekKey,cursor:universe.length,universeSize:universe.length,completed:true});return{weekKey,completed:true,cursor:universe.length,universeSize:universe.length,scanned:[]};}
+  let benchmarkCandles=null;try{benchmarkCandles=(await getMarketData(env,'SPY','1Y',false,{completedOnly:true})).candles;}catch(error){console.error(JSON.stringify({event:'weekly_benchmark_error',message:error?.message||String(error)}));}
   if(!benchmarkCandles)throw new Error('Weekly research requires the SPY benchmark.');
-
   const start=Math.min(state.cursor,universe.length),symbols=universe.slice(start,start+Math.max(1,Math.min(6,batchSize))),scanned=[];
-  for(const symbol of symbols){
-    try{
-      const market=await getMarketData(env,symbol,'1Y',false,{completedOnly:true}),analysis=analyze(market.candles,symbol,{benchmarkCandles}),strategy=evaluateStrategy(analysis,null);
-      await putWeeklyResearch(env,{weekKey,symbol,analysis,strategy});await recordSignal(env,analysis);
-      scanned.push({symbol,state:strategy?.state||'WATCH',score:Number(strategy?.opportunityScore)||0,dataQuality:market.quality||null});
-    }catch(error){console.error(JSON.stringify({event:'weekly_symbol_error',symbol,message:error?.message||String(error)}));break;}
-  }
-  const cursor=Math.min(universe.length,start+scanned.length),completed=cursor>=universe.length;
-  await putWeeklyResearchState(env,{weekKey,cursor,universeSize:universe.length,completed});
-  return{weekKey,completed,cursor,universeSize:universe.length,scanned};
+  for(const symbol of symbols){try{const market=await getMarketData(env,symbol,'1Y',false,{completedOnly:true}),analysis=analyze(market.candles,symbol,{benchmarkCandles}),strategy=evaluateStrategy(analysis,null);await putWeeklyResearch(env,{weekKey,symbol,analysis,strategy});await recordSignal(env,analysis);scanned.push({symbol,state:strategy?.state||'WATCH',score:Number(strategy?.opportunityScore)||0,dataQuality:market.quality||null});}catch(error){console.error(JSON.stringify({event:'weekly_symbol_error',symbol,message:error?.message||String(error)}));break;}}
+  const cursor=Math.min(universe.length,start+scanned.length),completed=cursor>=universe.length;await putWeeklyResearchState(env,{weekKey,cursor,universeSize:universe.length,completed});return{weekKey,completed,cursor,universeSize:universe.length,scanned};
 }
 
 export async function getWeeklyStrategySnapshot(env){
-  const latest=await latestWeeklyResearchState(env);
-  if(!latest){const universe=await getWeeklyResearchUniverse(env,{limit:36});return{weekKey:null,complete:false,progress:0,scanned:0,universeSize:universe.length,ranked:[]};}
-  const rows=await listWeeklyResearch(env,latest.weekKey);
-  const ranked=rows.map(row=>{const strategy=evaluateStrategy(row.analysis,null);return{...row,score:Number(strategy?.opportunityScore)||0,strategy};}).filter(row=>row.strategy).sort((a,b)=>strategyPriority(b)-strategyPriority(a)||b.score-a.score);
+  const latest=await latestWeeklyResearchState(env);if(!latest){const universe=await getWeeklyResearchUniverse(env,{limit:36});return{weekKey:null,complete:false,progress:0,scanned:0,universeSize:universe.length,ranked:[]};}
+  const rows=await listWeeklyResearch(env,latest.weekKey),ranked=rows.map(row=>{const strategy=evaluateStrategy(row.analysis,null);return{...row,score:Number(strategy?.opportunityScore)||0,strategy};}).filter(row=>row.strategy).sort((a,b)=>strategyPriority(b)-strategyPriority(a)||b.score-a.score);
   return{weekKey:latest.weekKey,complete:Boolean(latest.completedAt),completedAt:latest.completedAt||null,updatedAt:latest.updatedAt||null,scanned:rows.length,universeSize:latest.universeSize,progress:latest.universeSize?Math.min(100,Math.round(rows.length/latest.universeSize*100)):0,ranked};
 }
 
@@ -45,8 +28,10 @@ export async function runPortfolioCloseReview(env,{maxPositions=6}={}){
   if(!benchmarkCandles)throw new Error('Portfolio review requires the SPY benchmark.');
   const reviewed=[];
   for(const holding of positions.slice(0,Math.max(1,Math.min(6,maxPositions)))){
-    try{const market=await getMarketData(env,holding.symbol,'6M',false),analysis=analyze(market.candles,holding.symbol,{benchmarkCandles}),strategy=evaluateStrategy(analysis,holding),event=await recordPortfolioStrategy(env,holding.symbol,strategy);reviewed.push({symbol:holding.symbol,strategy,event,analysis});}
-    catch(error){console.error(JSON.stringify({event:'portfolio_review_error',symbol:holding.symbol,message:error?.message||String(error)}));}
+    try{
+      const [market,previous]=await Promise.all([getMarketData(env,holding.symbol,'6M',false),getPortfolioStrategy(env,holding.symbol)]),analysis=analyze(market.candles,holding.symbol,{benchmarkCandles}),strategy=evaluateStrategy(analysis,holding,null,previous?.strategy||null),event=await recordPortfolioStrategy(env,holding.symbol,strategy);
+      reviewed.push({symbol:holding.symbol,strategy,event,analysis});
+    }catch(error){console.error(JSON.stringify({event:'portfolio_review_error',symbol:holding.symbol,message:error?.message||String(error)}));}
   }
   return{reviewed,skipped:Math.max(0,positions.length-reviewed.length)};
 }

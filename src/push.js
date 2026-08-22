@@ -3,15 +3,8 @@ import { deletePushSubscription, listPushSubscriptions } from './db.js';
 
 const DEFAULT_PUSH_STATUSES = new Set(['SETUP — READY SOON','BUY NOW','SELL / EXIT']);
 
-export function pushConfigured(env) {
-  return Boolean(env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY && env.VAPID_SUBJECT);
-}
-
-export function shouldPushStatus(env, status) {
-  const raw=String(env.PUSH_ALERT_STATUSES||'').trim();
-  const allowed=raw ? new Set(raw.split('|').map(s=>s.trim()).filter(Boolean)) : DEFAULT_PUSH_STATUSES;
-  return allowed.has(status);
-}
+export function pushConfigured(env) {return Boolean(env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY && env.VAPID_SUBJECT);}
+export function shouldPushStatus(env, status) {const raw=String(env.PUSH_ALERT_STATUSES||'').trim();const allowed=raw ? new Set(raw.split('|').map(s=>s.trim()).filter(Boolean)) : DEFAULT_PUSH_STATUSES;return allowed.has(status);}
 
 export async function broadcastSignalPush(env, analysis, previousStatus, occurredAt=Date.now()) {
   if(!pushConfigured(env) || !shouldPushStatus(env, analysis?.status)) return {sent:0,failed:0,removed:0,skipped:true};
@@ -20,16 +13,16 @@ export async function broadcastSignalPush(env, analysis, previousStatus, occurre
 
 export async function broadcastPortfolioStrategyPush(env,{symbol,strategy,previousState,occurredAt=Date.now()}) {
   if(!pushConfigured(env) || !symbol || !strategy?.state) return {sent:0,failed:0,removed:0,skipped:true};
-  const important=new Set(['PROTECT PROFIT','SELL / EXIT']);
+  const important=new Set(['PROTECT PROFIT','REDUCE','SELL / EXIT']);
   if(!important.has(strategy.state)) return {sent:0,failed:0,removed:0,skipped:true};
-  const price=Number(strategy.price)||0,gainPct=Number(strategy.gainPct)||0;
-  const payload={kind:'portfolio-strategy-change',title:`${symbol} · ${strategy.state}`,body:`$${price.toFixed(2)} · P/L ${gainPct>=0?'+':''}${(gainPct*100).toFixed(1)}%\n${strategy.reason}`,symbol,status:strategy.state,previousStatus:previousState||null,price,gainPct,reason:strategy.reason,url:`/?symbol=${encodeURIComponent(symbol)}`,occurredAt:new Date(occurredAt).toISOString()};
+  const price=Number(strategy.price)||0,gainPct=Number(strategy.gainPct)||0,floor=Number(strategy.protection?.protectedPrice)||0;
+  const floorText=floor>0?` · floor $${floor.toFixed(2)}`:'';
+  const payload={kind:'portfolio-strategy-change',title:`${symbol} · ${strategy.state}`,body:`$${price.toFixed(2)} · P/L ${gainPct>=0?'+':''}${(gainPct*100).toFixed(1)}%${floorText}\n${strategy.reason}`,symbol,status:strategy.state,previousStatus:previousState||null,price,gainPct,protectedPrice:floor||null,reason:strategy.reason,url:`/?symbol=${encodeURIComponent(symbol)}`,occurredAt:new Date(occurredAt).toISOString()};
   return broadcast(env,payload,`portfolio-${symbol}-${strategy.state}`,1800);
 }
 
 export async function broadcastWeeklyOpportunityPush(env,{weekKey,row,occurredAt=Date.now()}) {
-  const symbol=row?.symbol,strategy=row?.strategy;
-  if(!pushConfigured(env)||!symbol||!strategy)return {sent:0,failed:0,removed:0,skipped:true};
+  const symbol=row?.symbol,strategy=row?.strategy;if(!pushConfigured(env)||!symbol||!strategy)return {sent:0,failed:0,removed:0,skipped:true};
   if(!['BUY WINDOW','BUY CANDIDATE'].includes(strategy.state))return {sent:0,failed:0,removed:0,skipped:true};
   const price=Number(strategy.price)||0,rr=Number(strategy.rr)||0,score=Number(strategy.opportunityScore)||0;
   const payload={kind:'weekly-opportunity',title:`Weekly #1 · ${symbol} · ${strategy.state}`,body:`Opportunity ${score}/100 · ${rr.toFixed(2)}:1 R/R · $${price.toFixed(2)}\n${strategy.reason}`,symbol,status:strategy.state,price,score,rr,weekKey:weekKey||null,reason:strategy.reason,url:`/?symbol=${encodeURIComponent(symbol)}`,occurredAt:new Date(occurredAt).toISOString()};
@@ -49,7 +42,6 @@ async function broadcast(env,payload,topic,ttl) {
   await Promise.all(subscriptions.map(async row=>{try{await sendNotification(row.subscription,body,{vapidDetails,TTL:ttl,urgency:'high',topic:sanitizeTopic(topic)});sent++;}catch(error){failed++;const statusCode=Number(error?.statusCode||error?.status||0);if(statusCode===404||statusCode===410){await deletePushSubscription(env,row.endpoint);removed++;}console.error(JSON.stringify({event:'push_delivery_error',statusCode,message:error?.message||String(error)}));}}));
   return {sent,failed,removed,skipped:false};
 }
-
 function vapid(env){return {subject:env.VAPID_SUBJECT,publicKey:env.VAPID_PUBLIC_KEY,privateKey:env.VAPID_PRIVATE_KEY};}
 function buildSignalPayload(analysis,previousStatus,occurredAt){const price=Number(analysis?.latest?.close)||0,readiness=Number(analysis?.readiness)||0;return {kind:'signal-status-change',title:`${analysis.symbol} · ${analysis.status}`,body:`$${price.toFixed(2)} · ${readiness}% readiness\n${analysis.reason}`,symbol:analysis.symbol,status:analysis.status,previousStatus:previousStatus||null,readiness,price,reason:analysis.reason,url:`/?symbol=${encodeURIComponent(analysis.symbol)}`,occurredAt:new Date(occurredAt).toISOString()};}
 function topicFor(analysis){return `${analysis?.symbol||'SF'}-${analysis?.status||'alert'}`;}
