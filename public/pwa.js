@@ -20,6 +20,7 @@
   loadModuleScript('/stock-meta.js','sf-stock-meta');
   loadModuleCss('/portfolio.css','sf-portfolio');
   loadModuleScript('/portfolio-ui.js','sf-portfolio');
+  loadFinancialCharting();
 
   const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
   if (installBtn && isStandalone) installBtn.hidden = true;
@@ -77,6 +78,16 @@
     }
   });
 
+  function loadFinancialCharting(){
+    if(window.LightweightCharts?.createChart){loadModuleScript('/chart-adapter.js','sf-financial-chart');return;}
+    if(document.querySelector('script[data-sf-lightweight]'))return;
+    const script=document.createElement('script');
+    script.src='https://cdn.jsdelivr.net/npm/lightweight-charts@5.2.1/dist/lightweight-charts.standalone.production.js';
+    script.async=true;script.crossOrigin='anonymous';script.setAttribute('data-sf-lightweight','1');
+    script.addEventListener('load',()=>loadModuleScript('/chart-adapter.js','sf-financial-chart'),{once:true});
+    script.addEventListener('error',()=>console.warn('[SignalForge chart] Financial chart library unavailable; Canvas fallback remains active.'),{once:true});
+    document.head.appendChild(script);
+  }
   function loadModuleCss(href,key){
     if(document.querySelector(`link[data-${key}]`))return;
     const link=document.createElement('link');link.rel='stylesheet';link.href=href;link.setAttribute(`data-${key}`,'1');document.head.appendChild(link);
