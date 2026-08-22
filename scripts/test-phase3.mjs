@@ -23,10 +23,10 @@ assert.ok(breakoutStructure.target>breakout[79].close,'A real breakout may use a
 assert.equal(breakoutStructure.targetSource,'measured move above prior resistance');
 
 const sizing=calculatePositionSizing({accountEquity:10000,availableCash:1200,maxRiskPct:.005,maxPositionPct:.20,entryPrice:100,stopPrice:94});
-assert.ok(sizing.shares>=0,'Sizing must never produce negative shares.');
-assert.ok(sizing.positionValue<=1200,'Sizing must never exceed deployable cash.');
-assert.ok(sizing.positionValue<=2000,'Sizing must never exceed max position exposure.');
-assert.ok(sizing.plannedRisk<=50,'Sizing must never exceed the risk budget.');
+assert.ok(sizing.estimatedShares>=0,'Sizing must never produce negative shares.');
+assert.ok(sizing.suggestedDollarAmount<=1200,'Sizing must never exceed deployable cash.');
+assert.ok(sizing.suggestedDollarAmount<=2000,'Sizing must never exceed max position exposure.');
+assert.ok(sizing.plannedRisk<=50.0001,'Sizing must never exceed the risk budget.');
 
 assert.equal(calculatePositionSizing({accountEquity:10000,availableCash:1000,entryPrice:100,stopPrice:100}),null,'Invalid zero-risk stop must not produce a position size.');
 

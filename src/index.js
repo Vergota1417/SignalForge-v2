@@ -4,7 +4,7 @@ import { authorizeDevice, authorizePushTest, countPushSubscriptions, deletePortf
 import { getMarketData, searchSymbols } from './market.js';
 import { broadcastPortfolioStrategyPush, broadcastWeeklyOpportunityPush, pushConfigured, sendTestPush } from './push.js';
 import { getRadarSnapshot, runRadarDiscovery } from './radar.js';
-import { evaluateStrategy } from './strategy.js';
+import { evaluateStrategy, rankOpportunities, rankPortfolioActions } from './strategy.js';
 import { getWeeklyStrategySnapshot, runPortfolioCloseReview, runWeeklyResearchBatch } from './weekly.js';
 
 export default {
@@ -47,19 +47,21 @@ export default {
       }
       if(request.method!=='GET')return json({error:'Method not allowed.'},405);
 
-      if(url.pathname==='/api/health')return json({ok:true,service:'SignalForge-v2',marketDataConfigured:Boolean(env.TWELVE_DATA_API_KEY),databaseConfigured:Boolean(env.DB),watchlist:watchlist(env),weeklyInvestmentEngine:true,intradayTimingOnly:true,symbolSearch:true,opportunityRadar:true,portfolioStrategy:true,pushConfigured:pushConfigured(env),pushSubscribers:await countPushSubscriptions(env),pushTest:true});
+      if(url.pathname==='/api/health')return json({ok:true,service:'SignalForge-v2',marketDataConfigured:Boolean(env.TWELVE_DATA_API_KEY),databaseConfigured:Boolean(env.DB),watchlist:watchlist(env),weeklyInvestmentEngine:true,intradayTimingOnly:true,symbolSearch:true,opportunityRadar:true,portfolioStrategy:true,calibratedScoring:true,fractionalSizing:true,pushConfigured:pushConfigured(env),pushSubscribers:await countPushSubscriptions(env),pushTest:true});
       if(url.pathname==='/api/push/config')return json({configured:pushConfigured(env),publicKey:pushConfigured(env)?env.VAPID_PUBLIC_KEY:null,subscribers:await countPushSubscriptions(env),statuses:pushStatuses(env),testEnabled:true});
       if(url.pathname==='/api/opportunity-radar')return json({radar:await getRadarSnapshot(env)});
       if(url.pathname==='/api/portfolio'){
         if(!await portfolioAuthorized(request,env))return json({error:'Portfolio access requires an authorized SignalForge phone.'},403);
         const [positions,signals,stateRows]=await Promise.all([listPortfolioPositions(env),listSignals(env),env.DB.prepare(`SELECT symbol,strategy_json AS strategyJson FROM portfolio_strategy_state`).all()]);
         const signalMap=new Map(signals.map(row=>[row.symbol,row.analysis])),strategyMap=new Map((stateRows.results||[]).map(row=>{try{return [row.symbol,JSON.parse(row.strategyJson)];}catch{return [row.symbol,null];}}));
-        return json({positions:positions.map(position=>({...position,strategy:strategyMap.get(position.symbol)||evaluateStrategy(signalMap.get(position.symbol),position)}))});
+        const rows=positions.map(position=>({...position,strategy:strategyMap.get(position.symbol)||evaluateStrategy(signalMap.get(position.symbol),position)}));
+        return json({positions:rankPortfolioActions(rows)});
       }
       if(url.pathname==='/api/strategy'){
         if(!await portfolioAuthorized(request,env))return json({error:'Strategy ranking requires an authorized SignalForge phone.'},403);
         const [positions,weekly]=await Promise.all([listPortfolioPositions(env),getWeeklyStrategySnapshot(env)]);
-        return json({ranked:weekly.ranked,positions,weekly:{weekKey:weekly.weekKey,complete:weekly.complete,progress:weekly.progress,scanned:weekly.scanned,universeSize:weekly.universeSize,completedAt:weekly.completedAt||null,updatedAt:weekly.updatedAt||null}});
+        const ranked=rankOpportunities(weekly.ranked,positions);
+        return json({ranked,weekly:{weekKey:weekly.weekKey,complete:weekly.complete,progress:weekly.progress,scanned:weekly.scanned,universeSize:weekly.universeSize,completedAt:weekly.completedAt||null,updatedAt:weekly.updatedAt||null}});
       }
       if(url.pathname==='/api/symbol-search'){
         const query=String(url.searchParams.get('q')||'').trim();if(!query)return json({results:[],cached:true});if(query.length>80)return json({error:'Search query is too long.'},400);return json(await searchSymbols(env,query));
@@ -86,7 +88,7 @@ async function runScheduledCycle(env,scheduledTime){
     if(p.weekday==='Fri'&&minutes>=840&&minutes<=930&&minutes%15===0){
       const result=await runWeeklyResearchBatch(env,{batchSize:6,now});
       console.log(JSON.stringify({event:'weekly_research_batch',weekKey:result.weekKey,scanned:result.scanned,cursor:result.cursor,universeSize:result.universeSize,completed:result.completed}));
-      if(result.completed&&result.scanned.length){const snapshot=await getWeeklyStrategySnapshot(env),top=snapshot.ranked[0];if(top){try{const push=await broadcastWeeklyOpportunityPush(env,{weekKey:snapshot.weekKey,row:top,occurredAt:Date.now()});console.log(JSON.stringify({event:'weekly_opportunity_push',symbol:top.symbol,state:top.strategy?.state,...push}));}catch(error){console.error(JSON.stringify({event:'weekly_opportunity_push_error',message:error?.message||String(error)}));}}}return;
+      if(result.completed&&result.scanned.length){const [snapshot,positions]=await Promise.all([getWeeklyStrategySnapshot(env),listPortfolioPositions(env)]),top=rankOpportunities(snapshot.ranked,positions)[0];if(top){try{const push=await broadcastWeeklyOpportunityPush(env,{weekKey:snapshot.weekKey,row:top,occurredAt:Date.now()});console.log(JSON.stringify({event:'weekly_opportunity_push',symbol:top.symbol,state:top.strategy?.state,...push}));}catch(error){console.error(JSON.stringify({event:'weekly_opportunity_push_error',message:error?.message||String(error)}));}}}return;
     }
     if(p.weekday!=='Fri'&&minutes===915){const result=await runRadarDiscovery(env,{batchSize:7});console.log(JSON.stringify({event:'daily_radar_refresh',scanned:result.scanned.map(x=>x.symbol),leaders:result.leaders.map(x=>x.symbol),cursor:result.cursor}));return;}
     if(minutes===945){const result=await runPortfolioCloseReview(env,{maxPositions:6});for(const row of result.reviewed){if(!row.event?.changed)continue;try{const push=await broadcastPortfolioStrategyPush(env,{symbol:row.symbol,strategy:row.strategy,previousState:row.event.previousState,occurredAt:row.event.now});console.log(JSON.stringify({event:'portfolio_strategy_push',symbol:row.symbol,state:row.strategy.state,...push}));}catch(error){console.error(JSON.stringify({event:'portfolio_strategy_push_error',symbol:row.symbol,message:error?.message||String(error)}));}}console.log(JSON.stringify({event:'portfolio_close_review',reviewed:result.reviewed.map(x=>({symbol:x.symbol,state:x.strategy.state})),skipped:result.skipped}));}

@@ -1,49 +1,119 @@
-function pct(v){return Number.isFinite(Number(v))?Number(v):0;}
+export function safeNum(v,fallback=null){const n=Number(v);return Number.isFinite(n)?n:fallback;}
+const clamp=(v,min,max)=>Math.min(max,Math.max(min,v));
+const positive=v=>{const n=safeNum(v);return n!==null&&n>0?n:null;};
+const round1=v=>Math.round(v*10)/10;
+
+function metricScore(metrics,maxPoints){
+  if(!Array.isArray(metrics)||!metrics.length)return 0;
+  return maxPoints*(metrics.filter(m=>m?.pass).length/metrics.length);
+}
+function validBenchmark(a){return Boolean(a?.benchmark&&positive(a.benchmark.latest));}
+function validEntryZone(a){const low=positive(a?.preferredEntryLow),high=positive(a?.preferredEntryHigh);return Boolean(low&&high&&low<high);}
+function validStop(a){return positive(a?.thesisBreak);}
+function validTarget(a,price){const target=positive(a?.target);return target&&target>price?target:null;}
+
+export function scoreBreakdown(a){
+  if(!a||typeof a!=='object')return{total:0,components:{}};
+  const trendMetrics=(a.engines?.trend?.metrics||[]).slice(0,3); // RS is scored separately.
+  const probabilityMetrics=(a.engines?.probability?.metrics||[]).slice(0,2); // regime/sample quality are separate.
+  const rrMetrics=a.engines?.riskReward?.metrics||[];
+  const entryMetrics=a.engines?.entry?.metrics||[];
+  const price=positive(a.latest?.close)||0;
+
+  const trend=metricScore(trendMetrics,20);
+  const probability=metricScore(probabilityMetrics,25);
+  const riskReward=metricScore(rrMetrics,20);
+  const entry=metricScore(entryMetrics,15);
+
+  const rs=safeNum(a.relativeStrength20);
+  const relativeStrength=rs===null?0:10*clamp((rs+.05)/.10,0,1); // -5%=0, equal SPY=5, +5%=10.
+  const marketRegime=!validBenchmark(a)?0:a.benchmark.riskOff?0:a.benchmark.bull?5:2.5;
+
+  const sample=safeNum(a.wf?.sample,0);
+  const dataQuality=(validBenchmark(a)?1:0)+(validStop(a)?1:0)+(validTarget(a,price)?1:0)+(sample>=12?2:sample>=5?1:0);
+  const components={trend:round1(trend),probability:round1(probability),riskReward:round1(riskReward),entry:round1(entry),relativeStrength:round1(relativeStrength),marketRegime:round1(marketRegime),dataQuality:round1(dataQuality)};
+  const total=Math.round(Object.values(components).reduce((sum,v)=>sum+v,0));
+  return{total:clamp(total,0,100),components};
+}
+
+export function opportunityScore(a){return scoreBreakdown(a).total;}
 
 export function calculatePositionSizing({accountEquity,availableCash,maxRiskPct=.005,maxPositionPct=.20,entryPrice,stopPrice}){
-  const equity=Number(accountEquity),cash=Number(availableCash),entry=Number(entryPrice),stop=Number(stopPrice);
-  if(!(equity>0)||!(cash>0)||!(entry>0)||!(stop>0)||stop>=entry)return null;
-  const riskPct=Math.min(.02,Math.max(.001,Number(maxRiskPct)||.005));
-  const positionPct=Math.min(.50,Math.max(.05,Number(maxPositionPct)||.20));
-  const perShareRisk=entry-stop,dollarRiskBudget=equity*riskPct;
-  const sharesByRisk=Math.floor(dollarRiskBudget/perShareRisk);
-  const sharesByCash=Math.floor(cash/entry);
-  const sharesByExposure=Math.floor((equity*positionPct)/entry);
-  const shares=Math.max(0,Math.min(sharesByRisk,sharesByCash,sharesByExposure));
-  const positionValue=shares*entry,plannedRisk=shares*perShareRisk;
-  return{shares,positionValue,plannedRisk,dollarRiskBudget,perShareRisk,riskPct,maxPositionPct:positionPct,limitedBy:shares===sharesByRisk?'risk budget':shares===sharesByCash?'available cash':'position exposure',cashRemaining:Math.max(0,cash-positionValue)};
+  const equity=positive(accountEquity),cash=safeNum(availableCash),entry=positive(entryPrice),stop=positive(stopPrice);
+  if(!equity||cash===null||cash<0||!entry||!stop||stop>=entry)return null;
+  const riskPct=clamp(safeNum(maxRiskPct,.005),.001,.02),positionPct=clamp(safeNum(maxPositionPct,.20),.05,.50);
+  const perShareRisk=entry-stop,riskFraction=perShareRisk/entry,dollarRiskBudget=equity*riskPct;
+  const dollarsByRisk=riskFraction>0?dollarRiskBudget/riskFraction:0;
+  const dollarsByCash=cash,dollarsByExposure=equity*positionPct;
+  const rawAllocation=Math.max(0,Math.min(dollarsByRisk,dollarsByCash,dollarsByExposure));
+  const suggestedDollarAmount=Math.floor((rawAllocation+1e-9)*100)/100; // round down: never exceed a cap.
+  const estimatedShares=suggestedDollarAmount>0?Math.floor(((suggestedDollarAmount/entry)+1e-12)*1e6)/1e6:0;
+  const plannedRisk=suggestedDollarAmount*riskFraction;
+  const minimum=Math.min(dollarsByRisk,dollarsByCash,dollarsByExposure);
+  const limitedBy=minimum===dollarsByRisk?'risk budget':minimum===dollarsByCash?'available cash':'position exposure';
+  return{suggestedDollarAmount,estimatedShares,plannedRisk,dollarRiskBudget,perShareRisk,riskFraction,riskPct,maxPositionPct:positionPct,limitedBy,cashRemaining:Math.max(0,cash-suggestedDollarAmount),limits:{risk:dollarsByRisk,cash:dollarsByCash,exposure:dollarsByExposure}};
+}
+
+function buyGateSummary(a,price){
+  const entryLow=positive(a.preferredEntryLow),entryHigh=positive(a.preferredEntryHigh),stop=validStop(a),target=validTarget(a,price),rsi=safeNum(a.rsi),overextension=positive(a.overextension),rr=safeNum(a.rr);
+  const entryZoneValid=Boolean(entryLow&&entryHigh&&entryLow<entryHigh),nearEntry=entryZoneValid&&price>=entryLow*.99&&price<=entryHigh*1.03;
+  const thesisIntact=Boolean(stop&&price>stop),notOverextended=Boolean(overextension&&rsi!==null&&price<=overextension&&rsi<76);
+  const checks=[
+    {name:'Trend engine',pass:Boolean(a.engines?.trend?.ready)},
+    {name:'Entry engine',pass:Boolean(a.engines?.entry?.ready)},
+    {name:'Probability engine',pass:Boolean(a.engines?.probability?.ready)},
+    {name:'Risk/reward engine',pass:Boolean(a.engines?.riskReward?.ready)},
+    {name:'SPY benchmark available',pass:validBenchmark(a)},
+    {name:'Structure stop resolved',pass:Boolean(stop)},
+    {name:'Structure target resolved above price',pass:Boolean(target)},
+    {name:'Entry zone resolved',pass:entryZoneValid},
+    {name:'Price near preferred entry',pass:nearEntry},
+    {name:'Actual structure R/R >= 1.80',pass:rr!==null&&rr>=1.8},
+    {name:'Thesis intact',pass:thesisIntact},
+    {name:'Not overextended',pass:notOverextended}
+  ];
+  return{checks,failed:checks.filter(x=>!x.pass).map(x=>x.name),allPassed:checks.every(x=>x.pass),nearEntry,thesisIntact,notOverextended,entryZoneValid,stop,target,rr:rr===null?0:rr};
 }
 
 export function evaluateStrategy(analysis,holding=null,accountContext=null){
-  if(!analysis?.latest?.close)return null;
-  const price=Number(analysis.latest.close),rr=Number(analysis.rr)||0,trendReady=Boolean(analysis.engines?.trend?.ready),probabilityReady=Boolean(analysis.engines?.probability?.ready),riskRewardReady=Boolean(analysis.engines?.riskReward?.ready),entryReady=Boolean(analysis.engines?.entry?.ready);
-  const overextended=price>Number(analysis.overextension||Infinity)||Number(analysis.rsi||0)>=76,nearEntry=price>=Number(analysis.preferredEntryLow||0)*.99&&price<=Number(analysis.preferredEntryHigh||Infinity)*1.03,thesisBroken=price<=Number(analysis.thesisBreak||0),owned=Boolean(holding&&Number(holding.shares)>0&&Number(holding.entryPrice)>0);
+  const price=positive(analysis?.latest?.close);if(!price)return null;
+  const trendReady=Boolean(analysis.engines?.trend?.ready),probabilityReady=Boolean(analysis.engines?.probability?.ready),riskRewardReady=Boolean(analysis.engines?.riskReward?.ready),entryReady=Boolean(analysis.engines?.entry?.ready);
+  const gates=buyGateSummary(analysis,price),owned=Boolean(holding&&positive(holding.shares)&&positive(holding.entryPrice));
+  const score=scoreBreakdown(analysis);
 
   if(owned){
-    const entryPrice=Number(holding.entryPrice),shares=Number(holding.shares),gainPct=entryPrice>0?price/entryPrice-1:0,marketValue=price*shares,costBasis=entryPrice*shares;
+    const entryPrice=positive(holding.entryPrice),shares=positive(holding.shares),gainPct=price/entryPrice-1,marketValue=price*shares,costBasis=entryPrice*shares,rsi=safeNum(analysis.rsi);
     let state='HOLD',reason='The investment thesis remains intact. Continue monitoring the larger trend and structure-based risk level.';
-    if(thesisBroken||analysis.status==='SELL / EXIT'){state='SELL / EXIT';reason='Price has broken the structure-based thesis level. The original reason for owning this position is no longer intact.';}
+    if(!gates.thesisIntact||analysis.status==='SELL / EXIT'){state='SELL / EXIT';reason='Price has broken the structure-based thesis level. The original reason for owning this position is no longer intact.';}
     else if((!trendReady&&gainPct<=0)||(analysis.benchmark?.riskOff&&!probabilityReady&&gainPct<.03)){state='SELL / EXIT';reason='Trend and market evidence deteriorated while the position has little or no profit cushion.';}
-    else if(gainPct>=.10&&(overextended||!entryReady||Number(analysis.rsi||0)>=72)){state='PROTECT PROFIT';reason='The position is profitable but price is extended or momentum is cooling. Protect gains while the thesis remains valid.';}
+    else if(gainPct>=.10&&(!gates.notOverextended||!entryReady||(rsi!==null&&rsi>=72))){state='PROTECT PROFIT';reason='The position is profitable but price is extended or momentum is cooling. Protect gains while the thesis remains valid.';}
     else if(gainPct>=.18&&!probabilityReady){state='PROTECT PROFIT';reason='A meaningful gain is open while continuation evidence has weakened. Protect the profit rather than assuming the trend will continue.';}
-    return{mode:'HOLDING',state,reason,price,entryPrice,shares,gainPct,gainAmount:marketValue-costBasis,marketValue,costBasis,thesisBreak:Number(analysis.thesisBreak)||null,target:Number(analysis.target)||null,opportunityScore:opportunityScore(analysis),timingEvidence:timingEvidence(analysis)};
+    return{mode:'HOLDING',state,reason,price,entryPrice,shares,gainPct,gainAmount:marketValue-costBasis,marketValue,costBasis,thesisBreak:gates.stop,target:gates.target,opportunityScore:score.total,scoreBreakdown:score.components,timingEvidence:timingEvidence(analysis)};
   }
 
+  const hardInvalid=analysis.status==='SELL / EXIT'||analysis.status==='AVOID'||(gates.stop&&price<=gates.stop)||!trendReady;
+  const dataReady=validBenchmark(analysis)&&Boolean(gates.stop)&&Boolean(gates.target)&&gates.entryZoneValid&&positive(analysis.overextension)&&safeNum(analysis.rsi)!==null;
   let state='WATCH',reason='The stock is worth monitoring, but the larger setup is not strong enough to commit capital yet.';
-  if(thesisBroken||analysis.status==='SELL / EXIT'||analysis.status==='AVOID'||!trendReady){state='AVOID';reason='The larger trend or thesis quality is not strong enough for a new investment.';}
-  else if(overextended){state='WATCH';reason='The larger setup may be attractive, but price is extended. Do not chase the move.';}
-  else if(analysis.dailyGatesReady&&rr>=1.5&&nearEntry){state='BUY WINDOW';reason='The larger setup, probability, structure-based reward/risk, and current entry area are favorable.';}
-  else if(trendReady&&probabilityReady&&riskRewardReady&&rr>=1.35){state='BUY CANDIDATE';reason='Higher-timeframe evidence and structure-based upside are favorable, but the current entry is not attractive enough yet.';}
-  else if(trendReady&&(probabilityReady||riskRewardReady)){state='WATCH';reason='The trend is constructive, but probability, entry quality, or structure-based reward/risk still needs improvement.';}
+  if(hardInvalid){state='AVOID';reason='The higher-timeframe trend or structure is unfavorable for new capital.';}
+  else if(!dataReady){state='WATCH';reason='The setup cannot become a buy yet because critical benchmark, structure, or entry data is unresolved.';}
+  else if(!gates.notOverextended){state='WATCH';reason='The setup may be attractive, but price is extended. Do not chase the move.';}
+  else if(gates.allPassed){state='BUY WINDOW';reason='All higher-timeframe engines passed, structure R/R is at least 1.80:1, and price is in the preferred entry area.';}
+  else if(trendReady&&probabilityReady&&riskRewardReady&&gates.rr>=1.35&&gates.thesisIntact){state='BUY CANDIDATE';reason='Higher-timeframe evidence and structure are favorable, but one or more BUY WINDOW conditions still need improvement.';}
+  else if(trendReady&&(probabilityReady||riskRewardReady)){state='WATCH';reason='Trend quality is constructive, but probability, structure reward/risk, or entry quality still needs improvement.';}
 
-  const sizing=(state==='BUY WINDOW'||state==='BUY CANDIDATE')&&accountContext?calculatePositionSizing({...accountContext,entryPrice:price,stopPrice:Number(analysis.thesisBreak)}):null;
-  return{mode:'CANDIDATE',state,reason,price,opportunityScore:opportunityScore(analysis),expectedUpside:price>0&&analysis.target?Math.max(0,Number(analysis.target)-price)/price:0,thesisRisk:price>0?Math.max(0,price-Number(analysis.thesisBreak||price))/price:0,rr,target:Number(analysis.target)||null,thesisBreak:Number(analysis.thesisBreak)||null,structure:analysis.structure||null,timingEvidence:timingEvidence(analysis),sizing};
+  const sizing=(state==='BUY WINDOW'||state==='BUY CANDIDATE')&&accountContext&&gates.stop?calculatePositionSizing({...accountContext,entryPrice:price,stopPrice:gates.stop}):null;
+  return{mode:'CANDIDATE',state,reason,price,opportunityScore:score.total,scoreBreakdown:score.components,expectedUpside:gates.target?(gates.target-price)/price:0,thesisRisk:gates.stop?(price-gates.stop)/price:0,rr:gates.rr,target:gates.target,thesisBreak:gates.stop,structure:analysis.structure||null,buyChecks:gates.checks,buyBlockers:gates.failed,timingEvidence:timingEvidence(analysis),sizing};
 }
 
 export function rankOpportunities(signals,holdings=[],accountContext=null){
-  const owned=new Map((holdings||[]).map(h=>[h.symbol,h]));
-  return(signals||[]).filter(row=>row?.analysis).map(row=>({symbol:row.symbol,updatedAt:Number(row.updatedAt)||0,strategy:evaluateStrategy(row.analysis,owned.get(row.symbol)||null,accountContext),analysis:row.analysis})).filter(row=>row.strategy).sort((a,b)=>{const order={'BUY WINDOW':5,'BUY CANDIDATE':4,'HOLD':3,'PROTECT PROFIT':2,'WATCH':1,'SELL / EXIT':0,'AVOID':0};const d=(order[b.strategy.state]||0)-(order[a.strategy.state]||0);return d||pct(b.strategy.opportunityScore)-pct(a.strategy.opportunityScore);});
+  const owned=new Set((holdings||[]).map(h=>String(h.symbol||'').toUpperCase()));
+  const order={'BUY WINDOW':4,'BUY CANDIDATE':3,'WATCH':2,'AVOID':0};
+  return(signals||[]).filter(row=>row?.analysis&&row?.symbol&&!owned.has(String(row.symbol).toUpperCase())).map(row=>({symbol:row.symbol,updatedAt:safeNum(row.updatedAt,0),strategy:evaluateStrategy(row.analysis,null,accountContext),analysis:row.analysis})).filter(row=>row.strategy).sort((a,b)=>{const d=(order[b.strategy.state]||0)-(order[a.strategy.state]||0);return d||b.strategy.opportunityScore-a.strategy.opportunityScore;});
 }
 
-function opportunityScore(a){const trend=a.engines?.trend?.ready?24:0,probability=a.engines?.probability?.ready?24:0,riskReward=a.engines?.riskReward?.ready?22:0,entry=a.engines?.entry?.ready?14:0,rs=Math.max(-.10,Math.min(.10,Number(a.relativeStrength20)||0))*60,rr=Math.min(Math.max(Number(a.rr)||0,0),3)*4,regime=a.benchmark?.riskOff?-10:a.benchmark?.bull?6:0;return Math.max(0,Math.min(100,Math.round(trend+probability+riskReward+entry+rs+rr+regime)));}
-function timingEvidence(a){const c=a.intradayConfirmation;if(!c)return{state:'NOT CHECKED',pass:null,reason:'Intraday timing has not been checked. It does not determine the higher-timeframe investment thesis.'};return{state:c.state||'UNKNOWN',pass:Boolean(c.pass),reason:c.reason||'',avwap:c.avwap||null,relativeVolume:c.relativeVolume||null,volatility:c.volatility||null};}
+export function rankPortfolioActions(rows=[]){
+  const order={'SELL / EXIT':3,'PROTECT PROFIT':2,'HOLD':1};
+  return[...(rows||[])].sort((a,b)=>{const d=(order[b?.strategy?.state]||0)-(order[a?.strategy?.state]||0);return d||(b?.strategy?.opportunityScore||0)-(a?.strategy?.opportunityScore||0);});
+}
+
+function timingEvidence(a){const c=a?.intradayConfirmation;if(!c)return{state:'NOT CHECKED',pass:null,reason:'Intraday timing has not been checked. It does not determine the higher-timeframe investment thesis.'};return{state:String(c.state||'UNKNOWN'),pass:Boolean(c.pass),reason:String(c.reason||''),avwap:positive(c.avwap),relativeVolume:safeNum(c.relativeVolume),volatility:c.volatility||null};}
