@@ -170,7 +170,7 @@
       [fmtMoney(s.equity),'Account value',Number(s.totalPnl)>=0?'positive':'negative'],
       [fmtMoney(s.totalPnl),'Total P/L',Number(s.totalPnl)>=0?'positive':'negative'],
       [fmtPct(s.returnPct),'Return',Number(s.returnPct)>=0?'positive':'negative'],
-      [`${Number(s.winRate||0)*100 .toFixed?.(1)||0}%`,'Win rate',''],
+      [`${(Number(s.winRate||0)*100).toFixed(1)}%`,'Win rate',''],
       [pf,'Profit factor',''],
       [fmtPct(s.maxDrawdown),'Max drawdown',Number(s.maxDrawdown)<0?'negative':'']
     ].map(([value,label,cls])=>`<div class="sf-sim-stat ${cls}"><strong>${esc(value)}</strong><span>${esc(label)}</span></div>`).join('');
