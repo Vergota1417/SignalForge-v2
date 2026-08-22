@@ -45,7 +45,11 @@ export async function getWeeklyStrategySnapshot(env) {
   const latest=await latestWeeklyResearchState(env);
   if(!latest) return {weekKey:null,complete:false,progress:0,scanned:0,universeSize:radarUniverse(env).filter(s=>s!=='SPY').length,ranked:[]};
   const rows=await listWeeklyResearch(env,latest.weekKey);
-  return {weekKey:latest.weekKey,complete:Boolean(latest.completedAt),completedAt:latest.completedAt||null,updatedAt:latest.updatedAt||null,scanned:rows.length,universeSize:latest.universeSize,progress:latest.universeSize?Math.min(100,Math.round(rows.length/latest.universeSize*100)):0,ranked:rows.sort((a,b)=>strategyPriority(b)-strategyPriority(a)||b.score-a.score)};
+  const ranked=rows.map(row=>{
+    const strategy=evaluateStrategy(row.analysis,null);
+    return {...row,score:Number(strategy?.opportunityScore)||0,strategy};
+  }).filter(row=>row.strategy).sort((a,b)=>strategyPriority(b)-strategyPriority(a)||b.score-a.score);
+  return {weekKey:latest.weekKey,complete:Boolean(latest.completedAt),completedAt:latest.completedAt||null,updatedAt:latest.updatedAt||null,scanned:rows.length,universeSize:latest.universeSize,progress:latest.universeSize?Math.min(100,Math.round(rows.length/latest.universeSize*100)):0,ranked};
 }
 
 export async function runPortfolioCloseReview(env,{maxPositions=6}={}) {
@@ -73,5 +77,5 @@ export function investmentWeekKey(date=new Date()) {
   const weekday=(base.getUTCDay()+6)%7;base.setUTCDate(base.getUTCDate()-weekday);return base.toISOString().slice(0,10);
 }
 
-function strategyPriority(row){const order={'BUY WINDOW':6,'BUY CANDIDATE':5,'WATCH':3,'HOLD':2,'PROTECT PROFIT':1,'SELL / EXIT':0,'AVOID':0};return order[row?.strategy?.state]||0;}
+function strategyPriority(row){const order={'BUY WINDOW':4,'BUY CANDIDATE':3,'WATCH':2,'AVOID':0};return order[row?.strategy?.state]||0;}
 function easternDateParts(date){const parts=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(date);return Object.fromEntries(parts.map(x=>[x.type,x.value]));}
