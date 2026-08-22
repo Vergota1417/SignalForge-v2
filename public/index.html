@@ -23,7 +23,7 @@
       <div class="top-actions"><label class="symbol-search"><span class="sr-only">Ticker or company</span><input id="symbolInput" type="text" value="XOM" autocomplete="off" aria-label="Ticker or company name" placeholder="Ticker or company" /></label><button id="loadSymbolBtn" class="btn ghost" type="button">Load</button><button id="installAppBtn" class="btn ghost pwa-install-btn" type="button">Install SignalForge</button></div>
     </header>
     <div class="page-grid">
-      <aside class="sidebar"><div class="sidebar-head"><div><div class="eyebrow">Watchlist</div><h2>Market radar</h2></div><button id="scanBtn" class="icon-btn" type="button" title="Refresh saved scanner results">↻</button></div><div id="watchlist" class="watchlist" aria-live="polite"></div><div class="mini-note"><strong>Decision rule</strong><span>A high pass count does not override a failed critical gate.</span></div></aside>
+      <aside class="sidebar"><div class="sidebar-head"><div><div class="eyebrow">Watchlist</div><h2>Market radar</h2></div><button id="scanBtn" class="icon-btn" type="button" title="Refresh saved scanner results" aria-label="Refresh saved scanner results">↻</button></div><div id="watchlist" class="watchlist" aria-live="polite"></div><div class="mini-note"><strong>Decision rule</strong><span>A high pass count does not override a failed critical gate.</span></div></aside>
       <main class="main-content">
         <section class="hero-card"><div class="hero-left"><div class="stock-ident"><div class="ticker-badge" id="tickerBadge">XOM</div><div><div class="eyebrow">Selected symbol</div><h1 id="stockTitle">XOM</h1><div class="muted" id="stockSubtitle">Loading market feed</div></div></div><div class="price-row"><div class="price" id="priceValue">—</div><div id="priceChange" class="price-change neutral">—</div></div></div><div class="hero-right"><div class="status-caption">CURRENT STATUS</div><div id="statusBadge" class="status-badge status-wait">WAIT — SETUP NOT READY</div><div id="statusReason" class="status-reason">Analyzing critical gates…</div></div></section>
         <section class="status-strip" aria-label="Status legend"><span class="legend-label">STATUS LEGEND</span><span class="pill buy">BUY NOW</span><span class="pill setup">SETUP — READY SOON</span><span class="pill pullback">WAIT FOR PULLBACK</span><span class="pill wait">WAIT — SETUP NOT READY</span><span class="pill avoid">AVOID</span><span class="pill sell">SELL / EXIT</span></section>
@@ -42,6 +42,7 @@
   <script src="weekend-ui.js"></script>
   <script src="simulation-capital-ui.js"></script>
   <script src="telemetry-ui.js"></script>
+  <script src="ui-router.js"></script>
   <script src="pwa.js"></script>
 </body>
 </html>
