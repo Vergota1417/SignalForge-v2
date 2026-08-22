@@ -3,6 +3,7 @@ import { listPortfolioPositions, listRadarQuotes, listSignals, recordSignal } fr
 import { getDiscoveryPool, getDiscoveryStatus } from './discovery.js';
 import { getMarketData } from './market.js';
 import { getResearchMap } from './research.js';
+import { runPaperSimulation } from './simulation.js';
 
 const STATUS_BOOST={
   'BUY NOW':42,
@@ -16,6 +17,7 @@ const STATUS_BOOST={
 const PROMOTION_STALE_MS=4*60*60*1000;
 
 export async function getSmartScreenerSnapshot(env,{limit=30}={}){
+  const simulation=await runPaperSimulation(env);
   const [quotes,signals,pool,status,researchMap]=await Promise.all([
     listRadarQuotes(env,24*60*60*1000,80),
     listSignals(env),
@@ -27,6 +29,7 @@ export async function getSmartScreenerSnapshot(env,{limit=30}={}){
   const analyzed=rows.filter(row=>row.deepAnalysis).length,researchConfirmed=rows.filter(row=>row.research?.confirmationScore>=60).length;
   return {
     rows,
+    simulation,
     updatedAt:Math.max(0,...rows.map(row=>Number(row.quoteUpdatedAt)||0)),
     coverage:{weeklyPool:pool.length,catalogSize:status.catalogSize,scannedSymbols:status.scannedSymbols,rankedNow:rows.length,deepAnalyzed:analyzed,researchConfirmed},
     methodology:{
@@ -34,6 +37,7 @@ export async function getSmartScreenerSnapshot(env,{limit=30}={}){
       stage2:'Top discovery candidates are automatically promoted into higher-cost four-engine analysis.',
       stage3:'After-hours 1-year historical research adds a bounded confirmation adjustment; it cannot override AVOID or SELL / EXIT.',
       stage4:'Saved live deep-analysis status remains authoritative for trade state.',
+      stage5:'Forward paper trading opens only on new BUY NOW events and never uses future data.',
       rule:'Historical research strengthens evidence and ranking, but never replaces the live decision gates.'
     }
   };
@@ -48,11 +52,11 @@ export async function runScreenerPromotion(env,{maxPromotions=2,now=Date.now()}=
   ]);
   const owned=new Set((positions||[]).map(row=>String(row.symbol||'').toUpperCase()));
   const candidates=selectPromotionCandidates(quotes,signals,{owned,now,limit:Math.max(1,Math.min(2,Number(maxPromotions)||2)),researchMap});
-  if(!candidates.length)return{promoted:[],candidates:[],skipped:'no-qualified-candidates'};
+  if(!candidates.length){await runPaperSimulation(env,{now});return{promoted:[],candidates:[],skipped:'no-qualified-candidates'};}
 
   let benchmarkCandles=null;
   try{benchmarkCandles=(await getMarketData(env,'SPY','6M',false)).candles;}catch(error){console.error(JSON.stringify({event:'promotion_benchmark_error',message:error?.message||String(error)}));}
-  if(!benchmarkCandles)return{promoted:[],candidates:candidates.map(x=>x.symbol),skipped:'benchmark-unavailable'};
+  if(!benchmarkCandles){await runPaperSimulation(env,{now});return{promoted:[],candidates:candidates.map(x=>x.symbol),skipped:'benchmark-unavailable'};}
 
   const promoted=[];
   for(const candidate of candidates){
@@ -65,6 +69,7 @@ export async function runScreenerPromotion(env,{maxPromotions=2,now=Date.now()}=
       break;
     }
   }
+  await runPaperSimulation(env,{now});
   return{promoted,candidates:candidates.map(x=>x.symbol)};
 }
 
