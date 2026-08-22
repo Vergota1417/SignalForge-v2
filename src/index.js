@@ -1,6 +1,6 @@
 import { analyze } from './analysis.js';
 import { DEFAULT_WATCHLIST, TIMEFRAMES } from './constants.js';
-import { authorizeDevice, authorizePushTest, countPushSubscriptions, deletePortfolioPosition, deletePushSubscription, ensureSchema, listAlerts, listPortfolioPositions, listSignals, upsertPortfolioPosition, upsertPushSubscription } from './db.js';
+import { authorizeDevice, authorizePushTest, countPushSubscriptions, deletePortfolioPosition, deletePushSubscription, ensureSchema, getCachedMarket, listAlerts, listPortfolioPositions, listSignals, upsertPortfolioPosition, upsertPushSubscription } from './db.js';
 import { getMarketData, searchSymbols } from './market.js';
 import { broadcastPortfolioStrategyPush, broadcastWeeklyOpportunityPush, pushConfigured, sendTestPush } from './push.js';
 import { getRadarSnapshot, runRadarDiscovery } from './radar.js';
@@ -43,6 +43,11 @@ export default {
       if(url.pathname==='/api/symbol-search'){const query=String(url.searchParams.get('q')||'').trim();if(!query)return json({results:[],cached:true});if(query.length>80)return json({error:'Search query is too long.'},400);return json(await searchSymbols(env,query));}
       if(url.pathname==='/api/market-data'){
         const symbol=sanitizeSymbol(url.searchParams.get('symbol')),timeframe=sanitizeTimeframe(url.searchParams.get('timeframe'));if(!symbol)return json({error:'Invalid symbol.'},400);
+        if(url.searchParams.get('cacheOnly')==='1'){
+          const market=await getCachedMarket(env,symbol,timeframe,30*86_400_000);
+          if(!market)return json({error:'Cached detail unavailable.',cacheMiss:true,symbol,timeframe},404);
+          return json({symbol,timeframe,candles:market.candles,source:market.source,cached:true,fetchedAt:market.fetchedAt,cacheOnly:true});
+        }
         const market=await getMarketData(env,symbol,timeframe,false);let benchmarkCandles=null;if(symbol!=='SPY'&&(timeframe==='6M'||timeframe==='1Y')){try{benchmarkCandles=(await getMarketData(env,'SPY',timeframe,false)).candles;}catch(error){console.error(JSON.stringify({event:'benchmark_fetch_error',message:error?.message||String(error)}));}}
         const analysis=analyze(market.candles,symbol,{benchmarkCandles}),strategy=evaluateStrategy(analysis,null);return json({symbol,timeframe,candles:market.candles,analysis,strategy,source:market.source,cached:market.cached,fetchedAt:market.fetchedAt});
       }
