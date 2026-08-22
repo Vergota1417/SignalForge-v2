@@ -7,7 +7,7 @@ export const CORE_DISCOVERY_SYMBOLS=[
 
 const CATALOG_TTL=86_400_000;
 const DEFAULT_DISCOVERY_SIZE=120;
-const DEFAULT_WEEKLY_SIZE=42;
+const DEFAULT_WEEKLY_SIZE=36;
 const WEAK_COOLDOWN_MS=30*86_400_000;
 
 export async function ensureDiscoverySchema(env){
@@ -41,6 +41,15 @@ export async function ensureDiscoverySchema(env){
       catalog_updated_at INTEGER NOT NULL DEFAULT 0,
       exploration_cursor INTEGER NOT NULL DEFAULT 0,
       updated_at INTEGER NOT NULL DEFAULT 0
+    )`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS discovery_weekly_universe (
+      week_key TEXT NOT NULL,
+      position INTEGER NOT NULL,
+      symbol TEXT NOT NULL,
+      source TEXT NOT NULL DEFAULT 'promoted',
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY(week_key,position),
+      UNIQUE(week_key,symbol)
     )`)
   ]);
 }
@@ -51,7 +60,7 @@ export async function refreshDiscoveryCatalog(env,{force=false}={}){
   if(!force&&meta.catalogUpdatedAt>0&&now-meta.catalogUpdatedAt<CATALOG_TTL){
     return{refreshed:false,catalogSize:await catalogCount(env),updatedAt:meta.catalogUpdatedAt};
   }
-  if(!env.TWELVE_DATA_API_KEY)return seedCoreCatalog(env,false);
+  if(!env.TWELVE_DATA_API_KEY)return seedCoreCatalog(env,true,now);
 
   try{
     await reserveProviderRequest(env);
@@ -75,13 +84,15 @@ export async function refreshDiscoveryCatalog(env,{force=false}={}){
         .bind(row.symbol,row.name,row.exchange,row.country,row.securityType,now));
       if(batch.length)await env.DB.batch(batch);
     }
-    await seedCoreCatalog(env,true);
+    await seedCoreCatalog(env,false,now);
     await putDiscoveryMeta(env,{...meta,catalogUpdatedAt:now});
     return{refreshed:true,catalogSize:await catalogCount(env),updatedAt:now};
   }catch(error){
     console.error(JSON.stringify({event:'discovery_catalog_error',message:error?.message||String(error)}));
-    const seeded=await seedCoreCatalog(env,false);
-    return{...seeded,error:error?.message||String(error)};
+    await seedCoreCatalog(env,false,now);
+    // Mark the attempt time so a provider outage cannot burn one /stocks request on every Worker invocation.
+    await putDiscoveryMeta(env,{...meta,catalogUpdatedAt:now});
+    return{refreshed:false,catalogSize:await catalogCount(env),updatedAt:now,fallback:true,error:error?.message||String(error)};
   }
 }
 
@@ -89,42 +100,41 @@ export async function getDiscoveryPool(env,{limit=DEFAULT_DISCOVERY_SIZE,now=Dat
   await ensureDiscoverySchema(env);
   await refreshDiscoveryCatalog(env);
   const capped=Math.max(20,Math.min(200,Number(limit)||DEFAULT_DISCOVERY_SIZE));
-  const pinned=envSymbols(env);
-  const core=CORE_DISCOVERY_SYMBOLS;
-  const promisingRows=await env.DB.prepare(`SELECT symbol,rolling_score AS rollingScore,score_velocity AS scoreVelocity,last_scanned AS lastScanned,cooldown_until AS cooldownUntil
-    FROM discovery_stats WHERE cooldown_until<=? ORDER BY rolling_score DESC,score_velocity DESC,last_scanned ASC LIMIT 60`).bind(now).all();
+  const pinned=envSymbols(env),core=CORE_DISCOVERY_SYMBOLS;
+  const promisingRows=await env.DB.prepare(`SELECT symbol FROM discovery_stats WHERE cooldown_until<=? ORDER BY rolling_score DESC,score_velocity DESC,last_scanned ASC LIMIT 60`).bind(now).all();
   const promising=(promisingRows.results||[]).map(r=>r.symbol).filter(Boolean);
-
   const used=new Set([...pinned,...core,...promising]);
-  const explorationLimit=Math.max(0,capped-used.size);
-  const exploration=await explorationSymbols(env,explorationLimit,used);
+  const exploration=await explorationSymbols(env,Math.max(0,capped-used.size),used,now);
   return unique([...pinned,...core,...promising,...exploration]).slice(0,capped);
 }
 
-export async function getWeeklyResearchUniverse(env,{limit=DEFAULT_WEEKLY_SIZE,now=Date.now()}={}){
+export async function getWeeklyResearchUniverse(env,{limit=DEFAULT_WEEKLY_SIZE,now=Date.now(),weekKey=investmentWeekKey(new Date(now))}={}){
   await ensureDiscoverySchema(env);
+  const existing=await env.DB.prepare(`SELECT symbol FROM discovery_weekly_universe WHERE week_key=? ORDER BY position`).bind(weekKey).all();
+  if((existing.results||[]).length)return(existing.results||[]).map(r=>r.symbol);
+
   const capped=Math.max(12,Math.min(42,Number(limit)||DEFAULT_WEEKLY_SIZE));
   const pinned=envSymbols(env).slice(0,8);
-  const previous=await env.DB.prepare(`SELECT symbol,MAX(score) AS score FROM weekly_research GROUP BY symbol ORDER BY score DESC LIMIT 6`).all();
+  const previous=await env.DB.prepare(`SELECT symbol,MAX(score) AS score FROM weekly_research WHERE week_key<>? GROUP BY symbol ORDER BY score DESC LIMIT 6`).bind(weekKey).all();
   const previousCandidates=(previous.results||[]).map(r=>r.symbol).filter(Boolean);
-  const leaders=await env.DB.prepare(`SELECT symbol,rolling_score AS rollingScore,score_velocity AS scoreVelocity,last_scanned AS lastScanned
-    FROM discovery_stats WHERE cooldown_until<=? AND dollar_volume>=10000000 ORDER BY rolling_score DESC,score_velocity DESC,last_scanned DESC LIMIT 30`).bind(now).all();
+  const leaders=await env.DB.prepare(`SELECT symbol FROM discovery_stats WHERE cooldown_until<=? AND dollar_volume>=10000000 ORDER BY rolling_score DESC,score_velocity DESC,last_scanned DESC LIMIT 30`).bind(now).all();
   const leaderSymbols=(leaders.results||[]).map(r=>r.symbol).filter(Boolean);
-  const exploration=await explorationSymbols(env,8,new Set([...pinned,...previousCandidates,...leaderSymbols]));
-  return unique([...pinned,...previousCandidates,...leaderSymbols,...exploration,...CORE_DISCOVERY_SYMBOLS]).slice(0,capped);
+  const exploration=await explorationSymbols(env,8,new Set([...pinned,...previousCandidates,...leaderSymbols]),now);
+  const shortlist=unique([...pinned,...previousCandidates,...leaderSymbols,...exploration,...CORE_DISCOVERY_SYMBOLS]).slice(0,capped);
+  const createdAt=Date.now();
+  if(shortlist.length){
+    await env.DB.batch(shortlist.map((symbol,position)=>env.DB.prepare(`INSERT OR IGNORE INTO discovery_weekly_universe(week_key,position,symbol,source,created_at) VALUES(?,?,?,?,?)`).bind(weekKey,position,symbol,sourceFor(symbol,pinned,previousCandidates,leaderSymbols,exploration),createdAt)));
+  }
+  return shortlist;
 }
 
 export async function recordDiscoveryObservation(env,quote,{now=Date.now()}={}){
   await ensureDiscoverySchema(env);
   const symbol=sanitizeSymbol(quote?.symbol);if(!symbol)return null;
   const previous=await env.DB.prepare(`SELECT scan_count AS scanCount,current_score AS currentScore,rolling_score AS rollingScore FROM discovery_stats WHERE symbol=?`).bind(symbol).first();
-  const score=finite(quote.discoveryScore??quote.score),priorScore=finite(previous?.currentScore),priorRolling=finite(previous?.rollingScore);
-  const scanCount=(Number(previous?.scanCount)||0)+1;
-  const rolling=previous?priorRolling*.65+score*.35:score;
-  const velocity=score-priorScore;
-  const dollarVolume=Math.max(0,finite(quote.price)*finite(quote.volume));
-  const weak=scanCount>=3&&rolling<=5&&dollarVolume<5_000_000;
-  const cooldownUntil=weak?now+WEAK_COOLDOWN_MS:0;
+  const score=finite(quote.discoveryScore??quote.score),priorScore=finite(previous?.currentScore),priorRolling=finite(previous?.rollingScore),scanCount=(Number(previous?.scanCount)||0)+1;
+  const rolling=previous?priorRolling*.65+score*.35:score,velocity=previous?score-priorScore:0,dollarVolume=Math.max(0,finite(quote.price)*finite(quote.volume));
+  const weak=scanCount>=3&&rolling<=5&&dollarVolume<5_000_000,cooldownUntil=weak?now+WEAK_COOLDOWN_MS:0;
   await env.DB.prepare(`INSERT INTO discovery_stats(symbol,last_scanned,scan_count,current_score,previous_score,rolling_score,score_velocity,price,dollar_volume,relative_volume,cooldown_until,updated_at)
     VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(symbol) DO UPDATE SET last_scanned=excluded.last_scanned,scan_count=excluded.scan_count,current_score=excluded.current_score,previous_score=excluded.previous_score,rolling_score=excluded.rolling_score,score_velocity=excluded.score_velocity,price=excluded.price,dollar_volume=excluded.dollar_volume,relative_volume=excluded.relative_volume,cooldown_until=excluded.cooldown_until,updated_at=excluded.updated_at`)
     .bind(symbol,now,scanCount,score,priorScore,rolling,velocity,finite(quote.price),dollarVolume,finite(quote.relativeVolume),cooldownUntil,now).run();
@@ -133,34 +143,33 @@ export async function recordDiscoveryObservation(env,quote,{now=Date.now()}={}){
 
 export async function getDiscoveryStatus(env){
   await ensureDiscoverySchema(env);
-  const meta=await getDiscoveryMeta(env);
-  const catalogSize=await catalogCount(env);
-  const stats=await env.DB.prepare(`SELECT COUNT(*) AS scanned,MAX(last_scanned) AS lastScanned FROM discovery_stats`).first();
-  return{catalogSize,scannedSymbols:Number(stats?.scanned)||0,lastScanned:Number(stats?.lastScanned)||0,catalogUpdatedAt:meta.catalogUpdatedAt,explorationCursor:meta.explorationCursor};
+  const meta=await getDiscoveryMeta(env),catalogSize=await catalogCount(env),stats=await env.DB.prepare(`SELECT COUNT(*) AS scanned,MAX(last_scanned) AS lastScanned FROM discovery_stats`).first();
+  return{catalogSize,scannedSymbols:Number(stats?.scanned)||0,lastScanned:Number(stats?.lastScanned)||0,catalogUpdatedAt:meta.catalogUpdatedAt};
 }
 
-async function explorationSymbols(env,limit,exclude=new Set()){
+async function explorationSymbols(env,limit,exclude=new Set(),now=Date.now()){
   if(limit<=0)return[];
-  const meta=await getDiscoveryMeta(env),rows=await env.DB.prepare(`SELECT c.symbol,COALESCE(s.last_scanned,0) AS lastScanned FROM discovery_catalog c LEFT JOIN discovery_stats s ON s.symbol=c.symbol WHERE c.eligible=1 ORDER BY c.symbol`).all();
+  const rows=await env.DB.prepare(`SELECT c.symbol,COALESCE(s.last_scanned,0) AS lastScanned FROM discovery_catalog c LEFT JOIN discovery_stats s ON s.symbol=c.symbol WHERE c.eligible=1 AND COALESCE(s.cooldown_until,0)<=? ORDER BY c.symbol`).bind(now).all();
   const all=(rows.results||[]).map(r=>r.symbol).filter(symbol=>symbol&&!exclude.has(symbol));if(!all.length)return[];
-  const week=weekSeed(new Date()),offset=(meta.explorationCursor+week)%all.length,result=[];
+  const offset=weekSeed(new Date(now))%all.length,result=[];
   for(let i=0;i<all.length&&result.length<limit;i++)result.push(all[(offset+i)%all.length]);
-  await putDiscoveryMeta(env,{...meta,explorationCursor:(offset+result.length)%all.length});
   return result;
 }
 
-async function seedCoreCatalog(env,preserveMeta=true){
-  await ensureDiscoverySchema(env);const now=Date.now();
+async function seedCoreCatalog(env,markRefresh=false,now=Date.now()){
+  await ensureDiscoverySchema(env);
   await env.DB.batch(CORE_DISCOVERY_SYMBOLS.map(symbol=>env.DB.prepare(`INSERT INTO discovery_catalog(symbol,name,exchange,country,security_type,source,eligible,updated_at) VALUES(?,?,'','United States','Common Stock','core',1,?) ON CONFLICT(symbol) DO UPDATE SET eligible=1,updated_at=excluded.updated_at`).bind(symbol,symbol,now)));
-  const meta=await getDiscoveryMeta(env);if(!preserveMeta&&!meta.catalogUpdatedAt)await putDiscoveryMeta(env,{...meta,catalogUpdatedAt:now});
-  return{refreshed:false,catalogSize:await catalogCount(env),updatedAt:meta.catalogUpdatedAt||now,fallback:true};
+  const meta=await getDiscoveryMeta(env);if(markRefresh)await putDiscoveryMeta(env,{...meta,catalogUpdatedAt:now});
+  return{refreshed:false,catalogSize:await catalogCount(env),updatedAt:markRefresh?now:meta.catalogUpdatedAt,fallback:true};
 }
 async function catalogCount(env){const row=await env.DB.prepare(`SELECT COUNT(*) AS count FROM discovery_catalog WHERE eligible=1`).first();return Number(row?.count)||0;}
-async function getDiscoveryMeta(env){const row=await env.DB.prepare(`SELECT catalog_updated_at AS catalogUpdatedAt,exploration_cursor AS explorationCursor,updated_at AS updatedAt FROM discovery_meta WHERE id=1`).first();return row?{catalogUpdatedAt:Number(row.catalogUpdatedAt)||0,explorationCursor:Number(row.explorationCursor)||0,updatedAt:Number(row.updatedAt)||0}:{catalogUpdatedAt:0,explorationCursor:0,updatedAt:0};}
-async function putDiscoveryMeta(env,meta){const now=Date.now();await env.DB.prepare(`INSERT INTO discovery_meta(id,catalog_updated_at,exploration_cursor,updated_at) VALUES(1,?,?,?) ON CONFLICT(id) DO UPDATE SET catalog_updated_at=excluded.catalog_updated_at,exploration_cursor=excluded.exploration_cursor,updated_at=excluded.updated_at`).bind(Number(meta.catalogUpdatedAt)||0,Number(meta.explorationCursor)||0,now).run();}
+async function getDiscoveryMeta(env){const row=await env.DB.prepare(`SELECT catalog_updated_at AS catalogUpdatedAt FROM discovery_meta WHERE id=1`).first();return row?{catalogUpdatedAt:Number(row.catalogUpdatedAt)||0}:{catalogUpdatedAt:0};}
+async function putDiscoveryMeta(env,meta){const now=Date.now();await env.DB.prepare(`INSERT INTO discovery_meta(id,catalog_updated_at,exploration_cursor,updated_at) VALUES(1,?,0,?) ON CONFLICT(id) DO UPDATE SET catalog_updated_at=excluded.catalog_updated_at,updated_at=excluded.updated_at`).bind(Number(meta.catalogUpdatedAt)||0,now).run();}
 function envSymbols(env){const raw=String(env.RADAR_UNIVERSE||'').trim();return raw?unique(raw.split(',').map(sanitizeSymbol).filter(Boolean)):[];}
-function isEligibleUsCommonStock(item){const exchange=String(item?.exchange||'').toUpperCase(),type=String(item?.type||'').toLowerCase(),country=String(item?.country||'United States').toLowerCase();return ['NASDAQ','NYSE','NYSE AMERICAN'].includes(exchange)&&country.includes('united states')&&type.includes('common stock');}
-function sanitizeSymbol(v){const s=String(v||'').trim().toUpperCase().replace(/[^A-Z.]/g,'').slice(0,6);return /^[A-Z]{1,5}(?:\.[A-Z])?$/.test(s)?s:'';}
+function isEligibleUsCommonStock(item){const exchange=String(item?.exchange||'').toUpperCase(),type=String(item?.type||'').toLowerCase(),country=String(item?.country||'United States').toLowerCase();return['NASDAQ','NYSE','NYSE AMERICAN'].includes(exchange)&&country.includes('united states')&&type.includes('common stock');}
+function sourceFor(symbol,pinned,previous,leaders,exploration){if(pinned.includes(symbol))return'pinned';if(previous.includes(symbol))return'previous';if(leaders.includes(symbol))return'radar-leader';if(exploration.includes(symbol))return'exploration';return'core';}
+function sanitizeSymbol(v){const s=String(v||'').trim().toUpperCase().replace(/[^A-Z.]/g,'').slice(0,6);return/^[A-Z]{1,5}(?:\.[A-Z])?$/.test(s)?s:'';}
 function unique(values){return[...new Set(values.filter(Boolean))];}
 function finite(v){const n=Number(v);return Number.isFinite(n)?n:0;}
 function weekSeed(date){const y=date.getUTCFullYear(),start=Date.UTC(y,0,1),days=Math.floor((date.getTime()-start)/86_400_000);return Math.floor(days/7)*17;}
+function investmentWeekKey(date){const parts=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(date),p=Object.fromEntries(parts.map(x=>[x.type,x.value])),base=new Date(Date.UTC(Number(p.year),Number(p.month)-1,Number(p.day))),weekday=(base.getUTCDay()+6)%7;base.setUTCDate(base.getUTCDate()-weekday);return base.toISOString().slice(0,10);}
