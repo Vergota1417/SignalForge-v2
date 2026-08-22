@@ -1,12 +1,12 @@
 {
   "name": "signalforge-v2",
-  "version": "2.11.0",
+  "version": "2.12.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "check": "node --check src/index.js && node --check src/analysis.js && node --check src/market.js && node --check src/radar.js && node --check src/discovery.js && node --check src/analysis-expectation.js && node --check src/strategy.js && node --check src/weekly.js && node --check src/push.js && node --check public/app.js && node --check public/pwa.js && node --check public/push-ui.js && node --check public/portfolio-ui.js && node --check public/radar-ui.js && node --check public/chart-inspector.js && node --check public/chart-adapter.js && node --check public/alert-history.js && node --check public/service-worker.js && node scripts/test-strategy.mjs && node scripts/test-weekly.mjs && node scripts/test-phase3.mjs && node scripts/test-phase4.mjs && node scripts/test-phase5.mjs && node scripts/test-phase6.mjs && node scripts/test-phase7-1.mjs && node scripts/test-phase7-2.mjs && node scripts/test-phase7-3.mjs",
+    "check": "node --check src/index.js && node --check src/analysis.js && node --check src/market.js && node --check src/radar.js && node --check src/discovery.js && node --check src/analysis-expectation.js && node --check src/strategy.js && node --check src/weekly.js && node --check src/push.js && node --check public/app.js && node --check public/pwa.js && node --check public/push-ui.js && node --check public/portfolio-ui.js && node --check public/radar-ui.js && node --check public/chart-inspector.js && node --check public/chart-adapter.js && node --check public/alert-history.js && node --check public/service-worker.js && node scripts/test-strategy.mjs && node scripts/test-weekly.mjs && node scripts/test-phase3.mjs && node scripts/test-phase4.mjs && node scripts/test-phase5.mjs && node scripts/test-phase6.mjs && node scripts/test-phase7-1.mjs && node scripts/test-phase7-2.mjs && node scripts/test-phase7-3.mjs && node scripts/test-phase7-4.mjs",
     "test:strategy": "node scripts/test-strategy.mjs",
     "test:weekly": "node scripts/test-weekly.mjs",
     "test:phase3": "node scripts/test-phase3.mjs",
@@ -16,6 +16,7 @@
     "test:phase7-1": "node scripts/test-phase7-1.mjs",
     "test:phase7-2": "node scripts/test-phase7-2.mjs",
     "test:phase7-3": "node scripts/test-phase7-3.mjs",
+    "test:phase7-4": "node scripts/test-phase7-4.mjs",
     "vapid:generate": "node scripts/generate-vapid.mjs"
   },
   "dependencies": {
