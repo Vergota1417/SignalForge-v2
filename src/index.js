@@ -2,7 +2,7 @@ import { analyze } from './analysis.js';
 import { DEFAULT_WATCHLIST, TIMEFRAMES } from './constants.js';
 import { authorizeDevice, authorizePushTest, countPushSubscriptions, deletePortfolioPosition, deletePushSubscription, ensureSchema, getCachedMarket, listAlerts, listPortfolioPositions, listSignals, upsertPortfolioPosition, upsertPushSubscription } from './db.js';
 import { getMarketData, searchSymbols } from './market.js';
-import { broadcastPortfolioStrategyPush, broadcastWeeklyOpportunityPush, pushConfigured, sendTestPush } from './push.js';
+import { broadcastBackgroundSummaryPush, broadcastPortfolioStrategyPush, broadcastWeeklyOpportunityPush, pushConfigured, sendTestPush } from './push.js';
 import { getRadarSnapshot, runRadarDiscovery } from './radar.js';
 import { getSmartScreenerSnapshot, runScreenerPromotion } from './screener.js';
 import { getAfterHoursResearchStatus, runAfterHoursResearch } from './research.js';
@@ -30,8 +30,8 @@ export default {
       if(url.pathname==='/api/portfolio'&&request.method==='DELETE'){const body=await readJson(request);if(!await portfolioAuthorized(request,env,body))return json({error:'Portfolio access requires an authorized SignalForge phone.'},403);const symbol=sanitizeSymbol(body?.symbol);if(!symbol)return json({error:'Valid symbol is required.'},400);await deletePortfolioPosition(env,symbol);return json({ok:true,symbol});}
       if(request.method!=='GET')return json({error:'Method not allowed.'},405);
 
-      if(url.pathname==='/api/health')return json({ok:true,service:'SignalForge-v2',marketDataConfigured:Boolean(env.TWELVE_DATA_API_KEY),databaseConfigured:Boolean(env.DB),watchlist:watchlist(env),weeklyInvestmentEngine:true,dynamicDiscovery:true,discoveryPoolSize:120,weeklyResearchTarget:36,intradayTimingOnly:true,symbolSearch:true,opportunityRadar:true,smartMarketScreener:true,screenerPromotion:true,afterHoursResearch:true,portfolioStrategy:true,calibratedScoring:true,fractionalSizing:true,pushConfigured:pushConfigured(env),pushSubscribers:await countPushSubscriptions(env),pushTest:true});
-      if(url.pathname==='/api/push/config')return json({configured:pushConfigured(env),publicKey:pushConfigured(env)?env.VAPID_PUBLIC_KEY:null,subscribers:await countPushSubscriptions(env),statuses:pushStatuses(env),testEnabled:true});
+      if(url.pathname==='/api/health')return json({ok:true,service:'SignalForge-v2',marketDataConfigured:Boolean(env.TWELVE_DATA_API_KEY),databaseConfigured:Boolean(env.DB),watchlist:watchlist(env),weeklyInvestmentEngine:true,dynamicDiscovery:true,discoveryPoolSize:120,weeklyResearchTarget:36,intradayTimingOnly:true,symbolSearch:true,opportunityRadar:true,smartMarketScreener:true,screenerPromotion:true,afterHoursResearch:true,weekendResearch:true,dailyBackgroundSummary:true,portfolioStrategy:true,calibratedScoring:true,fractionalSizing:true,pushConfigured:pushConfigured(env),pushSubscribers:await countPushSubscriptions(env),pushTest:true});
+      if(url.pathname==='/api/push/config')return json({configured:pushConfigured(env),publicKey:pushConfigured(env)?env.VAPID_PUBLIC_KEY:null,subscribers:await countPushSubscriptions(env),statuses:pushStatuses(env),backgroundSummary:true,testEnabled:true});
       if(url.pathname==='/api/opportunity-radar')return json({radar:await getRadarSnapshot(env)});
       if(url.pathname==='/api/screener')return json({screener:await getSmartScreenerSnapshot(env,{limit:clampInt(url.searchParams.get('limit'),5,50,30)})});
       if(url.pathname==='/api/research-status')return json({research:await getAfterHoursResearchStatus(env)});
@@ -67,7 +67,20 @@ async function runScheduledCycle(env,scheduledTime){
   try{
     await ensureSchema(env);const now=new Date(scheduledTime||Date.now());if(!env.TWELVE_DATA_API_KEY)return;
     const p=easternParts(now),minutes=Number(p.hour)*60+Number(p.minute),weekday=p.weekday;
-    if(weekday==='Sat'||weekday==='Sun')return;
+
+    if(weekday==='Sat'||weekday==='Sun'){
+      if(minutes!==675)return;
+      let weekendResearch=null;
+      if(weekday==='Sat'){
+        weekendResearch=await runAfterHoursResearch(env,{now:now.getTime(),maxPerRun:6});
+        console.log(JSON.stringify({event:'weekend_research_cycle',weekday,...weekendResearch}));
+      }
+      const[screener,research]=await Promise.all([getSmartScreenerSnapshot(env,{limit:10}),getAfterHoursResearchStatus(env)]);
+      const top=bestSummaryCandidate(screener?.rows||[]);
+      const push=await broadcastBackgroundSummaryPush(env,{dayLabel:weekday==='Sat'?'Saturday':'Sunday',top,research,weekend:true,occurredAt:now.getTime()});
+      console.log(JSON.stringify({event:'weekend_background_summary',weekday,symbol:top?.symbol||null,researchRan:Boolean(weekendResearch),...push}));
+      return;
+    }
 
     if(weekday==='Fri'&&minutes>=840&&minutes<=930&&minutes%15===0){
       const result=await runWeeklyResearchBatch(env,{batchSize:6,now});console.log(JSON.stringify({event:'weekly_research_batch',weekKey:result.weekKey,scanned:result.scanned,cursor:result.cursor,universeSize:result.universeSize,completed:result.completed}));
@@ -93,10 +106,17 @@ async function runScheduledCycle(env,scheduledTime){
     if(afterHoursSlot){
       const result=await runAfterHoursResearch(env,{now:now.getTime(),maxPerRun:6});
       console.log(JSON.stringify({event:'after_hours_research_cycle',...result}));
+      if(minutes===1125){
+        const[screener,research]=await Promise.all([getSmartScreenerSnapshot(env,{limit:10}),getAfterHoursResearchStatus(env)]);
+        const top=bestSummaryCandidate(screener?.rows||[]);
+        const push=await broadcastBackgroundSummaryPush(env,{dayLabel:weekday,top,research,weekend:false,occurredAt:now.getTime()});
+        console.log(JSON.stringify({event:'daily_background_summary',weekday,symbol:top?.symbol||null,...push}));
+      }
     }
   }catch(error){console.error(JSON.stringify({event:'scheduled_cycle_error',message:error?.message||String(error)}));}
 }
 
+function bestSummaryCandidate(rows){return(rows||[]).find(row=>row?.bucket&&row.bucket!=='AVOID')||(rows||[])[0]||null;}
 async function portfolioAuthorized(request,env,body=null){const endpoint=String(request.headers.get('x-sf-endpoint')||body?.deviceEndpoint||'').trim(),token=String(request.headers.get('x-sf-token')||body?.deviceToken||'').trim();if(!endpoint.startsWith('https://')||!validTestToken(token))return false;return authorizeDevice(env,endpoint,token);}
 async function readJson(request){const text=await request.text();if(text.length>20_000)throw new Error('Request payload is too large.');try{return text?JSON.parse(text):{};}catch{throw new Error('Invalid JSON payload.');}}
 function validSubscription(subscription){const endpoint=String(subscription?.endpoint||'');return endpoint.startsWith('https://')&&endpoint.length<4096&&typeof subscription?.keys?.p256dh==='string'&&typeof subscription?.keys?.auth==='string';}

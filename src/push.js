@@ -29,6 +29,23 @@ export async function broadcastWeeklyOpportunityPush(env,{weekKey,row,occurredAt
   return broadcast(env,payload,`weekly-${weekKey||'research'}-${symbol}`,21_600);
 }
 
+export async function broadcastBackgroundSummaryPush(env,{dayLabel='Today',top=null,research=null,weekend=false,occurredAt=Date.now()}={}) {
+  if(!pushConfigured(env)) return {sent:0,failed:0,removed:0,skipped:true};
+  const symbol=String(top?.symbol||'').toUpperCase();
+  const bucket=String(top?.bucket||top?.status||'NO ACTIONABLE SETUP');
+  const score=Number(top?.screenScore);
+  const researched=Number(research?.researchCount)||0;
+  const lastRunCount=Array.isArray(research?.lastRun?.researched)?research.lastRun.researched.length:0;
+  const quotaUsed=Number(research?.budget?.used)||0;
+  const quotaMax=Number(research?.budget?.max)||0;
+  const candidate=symbol?`${symbol} · ${bucket}${Number.isFinite(score)?` · score ${score.toFixed(1)}`:''}`:'No promoted candidate cleared the current filters.';
+  const work=weekend?`${lastRunCount} historical review${lastRunCount===1?'':'s'} completed · ${researched} symbols researched total`:`${researched} symbols have historical confirmation`;
+  const quota=quotaMax>0?` · API ${quotaUsed}/${quotaMax}`:'';
+  const payload={kind:'background-summary',title:`SignalForge · ${dayLabel} background update`,body:`${candidate}\n${work}${quota}`,symbol:symbol||null,status:bucket,url:symbol?`/?symbol=${encodeURIComponent(symbol)}`:'/',occurredAt:new Date(occurredAt).toISOString()};
+  const dayKey=new Date(occurredAt).toISOString().slice(0,10).replace(/-/g,'');
+  return broadcast(env,payload,`summary-${dayKey}`,43_200,'normal');
+}
+
 export async function sendTestPush(env, subscription) {
   if(!pushConfigured(env)) throw new Error('Push notifications are not configured yet.');
   const payload=JSON.stringify({kind:'push-test',title:'SignalForge Test Alert',body:'Push notifications are working on this device.',url:'/',status:'TEST',occurredAt:new Date().toISOString()});
@@ -36,10 +53,10 @@ export async function sendTestPush(env, subscription) {
   catch(error){const statusCode=Number(error?.statusCode||error?.status||0);if(statusCode===404||statusCode===410)await deletePushSubscription(env,subscription?.endpoint||'');const wrapped=new Error(error?.message||'Push test failed.');wrapped.statusCode=statusCode;throw wrapped;}
 }
 
-async function broadcast(env,payload,topic,ttl) {
+async function broadcast(env,payload,topic,ttl,urgency='high') {
   const subscriptions=await listPushSubscriptions(env);if(!subscriptions.length)return {sent:0,failed:0,removed:0,skipped:true};
   const body=JSON.stringify(payload),vapidDetails=vapid(env);let sent=0,failed=0,removed=0;
-  await Promise.all(subscriptions.map(async row=>{try{await sendNotification(row.subscription,body,{vapidDetails,TTL:ttl,urgency:'high',topic:sanitizeTopic(topic)});sent++;}catch(error){failed++;const statusCode=Number(error?.statusCode||error?.status||0);if(statusCode===404||statusCode===410){await deletePushSubscription(env,row.endpoint);removed++;}console.error(JSON.stringify({event:'push_delivery_error',statusCode,message:error?.message||String(error)}));}}));
+  await Promise.all(subscriptions.map(async row=>{try{await sendNotification(row.subscription,body,{vapidDetails,TTL:ttl,urgency,topic:sanitizeTopic(topic)});sent++;}catch(error){failed++;const statusCode=Number(error?.statusCode||error?.status||0);if(statusCode===404||statusCode===410){await deletePushSubscription(env,row.endpoint);removed++;}console.error(JSON.stringify({event:'push_delivery_error',statusCode,message:error?.message||String(error)}));}}));
   return {sent,failed,removed,skipped:false};
 }
 function vapid(env){return {subject:env.VAPID_SUBJECT,publicKey:env.VAPID_PUBLIC_KEY,privateKey:env.VAPID_PRIVATE_KEY};}
