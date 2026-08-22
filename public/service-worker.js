@@ -1,4 +1,4 @@
-const CACHE_NAME='signalforge-shell-v13';
+const CACHE_NAME='signalforge-shell-v14';
 const APP_SHELL=['/','/index.html','/styles.css','/pwa.css','/radar.css','/push.css','/portfolio.css','/config.js','/app.js','/pwa.js','/radar-ui.js','/push-ui.js','/alert-history.js','/stock-meta.js','/portfolio-ui.js','/chart-inspector.js','/manifest.webmanifest','/icons/signalforge-icon.svg','/icons/signalforge-maskable.svg'];
 
 self.addEventListener('install',event=>{event.waitUntil(caches.open(CACHE_NAME).then(cache=>cache.addAll(APP_SHELL)));});
