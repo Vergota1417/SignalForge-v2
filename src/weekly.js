@@ -14,16 +14,16 @@ export async function runWeeklyResearchBatch(env,{batchSize=6,now=new Date()}={}
   }
 
   let benchmarkCandles=null;
-  try{benchmarkCandles=(await getMarketData(env,'SPY','1Y',false)).candles;}
+  try{benchmarkCandles=(await getMarketData(env,'SPY','1Y',false,{completedOnly:true})).candles;}
   catch(error){console.error(JSON.stringify({event:'weekly_benchmark_error',message:error?.message||String(error)}));}
   if(!benchmarkCandles)throw new Error('Weekly research requires the SPY benchmark.');
 
   const start=Math.min(state.cursor,universe.length),symbols=universe.slice(start,start+Math.max(1,Math.min(6,batchSize))),scanned=[];
   for(const symbol of symbols){
     try{
-      const market=await getMarketData(env,symbol,'1Y',false),analysis=analyze(market.candles,symbol,{benchmarkCandles}),strategy=evaluateStrategy(analysis,null);
+      const market=await getMarketData(env,symbol,'1Y',false,{completedOnly:true}),analysis=analyze(market.candles,symbol,{benchmarkCandles}),strategy=evaluateStrategy(analysis,null);
       await putWeeklyResearch(env,{weekKey,symbol,analysis,strategy});await recordSignal(env,analysis);
-      scanned.push({symbol,state:strategy?.state||'WATCH',score:Number(strategy?.opportunityScore)||0});
+      scanned.push({symbol,state:strategy?.state||'WATCH',score:Number(strategy?.opportunityScore)||0,dataQuality:market.quality||null});
     }catch(error){console.error(JSON.stringify({event:'weekly_symbol_error',symbol,message:error?.message||String(error)}));break;}
   }
   const cursor=Math.min(universe.length,start+scanned.length),completed=cursor>=universe.length;
