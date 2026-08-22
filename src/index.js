@@ -4,6 +4,7 @@ import { authorizeDevice, authorizePushTest, countPushSubscriptions, deletePortf
 import { getMarketData, searchSymbols } from './market.js';
 import { broadcastPortfolioStrategyPush, broadcastWeeklyOpportunityPush, pushConfigured, sendTestPush } from './push.js';
 import { getRadarSnapshot, runRadarDiscovery } from './radar.js';
+import { getSmartScreenerSnapshot } from './screener.js';
 import { evaluateStrategy, rankOpportunities, rankPortfolioActions } from './strategy.js';
 import { getWeeklyStrategySnapshot, runPortfolioCloseReview, runWeeklyResearchBatch } from './weekly.js';
 
@@ -28,9 +29,10 @@ export default {
       if(url.pathname==='/api/portfolio'&&request.method==='DELETE'){const body=await readJson(request);if(!await portfolioAuthorized(request,env,body))return json({error:'Portfolio access requires an authorized SignalForge phone.'},403);const symbol=sanitizeSymbol(body?.symbol);if(!symbol)return json({error:'Valid symbol is required.'},400);await deletePortfolioPosition(env,symbol);return json({ok:true,symbol});}
       if(request.method!=='GET')return json({error:'Method not allowed.'},405);
 
-      if(url.pathname==='/api/health')return json({ok:true,service:'SignalForge-v2',marketDataConfigured:Boolean(env.TWELVE_DATA_API_KEY),databaseConfigured:Boolean(env.DB),watchlist:watchlist(env),weeklyInvestmentEngine:true,dynamicDiscovery:true,discoveryPoolSize:120,weeklyResearchTarget:36,intradayTimingOnly:true,symbolSearch:true,opportunityRadar:true,portfolioStrategy:true,calibratedScoring:true,fractionalSizing:true,pushConfigured:pushConfigured(env),pushSubscribers:await countPushSubscriptions(env),pushTest:true});
+      if(url.pathname==='/api/health')return json({ok:true,service:'SignalForge-v2',marketDataConfigured:Boolean(env.TWELVE_DATA_API_KEY),databaseConfigured:Boolean(env.DB),watchlist:watchlist(env),weeklyInvestmentEngine:true,dynamicDiscovery:true,discoveryPoolSize:120,weeklyResearchTarget:36,intradayTimingOnly:true,symbolSearch:true,opportunityRadar:true,smartMarketScreener:true,portfolioStrategy:true,calibratedScoring:true,fractionalSizing:true,pushConfigured:pushConfigured(env),pushSubscribers:await countPushSubscriptions(env),pushTest:true});
       if(url.pathname==='/api/push/config')return json({configured:pushConfigured(env),publicKey:pushConfigured(env)?env.VAPID_PUBLIC_KEY:null,subscribers:await countPushSubscriptions(env),statuses:pushStatuses(env),testEnabled:true});
       if(url.pathname==='/api/opportunity-radar')return json({radar:await getRadarSnapshot(env)});
+      if(url.pathname==='/api/screener')return json({screener:await getSmartScreenerSnapshot(env,{limit:clampInt(url.searchParams.get('limit'),5,50,30)})});
       if(url.pathname==='/api/portfolio'){
         if(!await portfolioAuthorized(request,env))return json({error:'Portfolio access requires an authorized SignalForge phone.'},403);
         const[positions,signals,stateRows]=await Promise.all([listPortfolioPositions(env),listSignals(env),env.DB.prepare(`SELECT symbol,strategy_json AS strategyJson FROM portfolio_strategy_state`).all()]);
