@@ -1,5 +1,6 @@
 import { analyze } from './analysis.js';
 import { listPortfolioPositions, listRadarQuotes, listSignals } from './db.js';
+import { getWeeklyResearchUniverse } from './discovery.js';
 import { getMarketData } from './market.js';
 
 const DAY_MS=86_400_000;
@@ -53,11 +54,13 @@ export async function providerBudget(env,{now=Date.now()}={}){
 export async function getResearchMap(env,{maxAgeMs=7*DAY_MS}={}){
   await ensureResearchSchema(env);
   const cutoff=Date.now()-Math.max(DAY_MS,Number(maxAgeMs)||7*DAY_MS);
-  const rows=await env.DB.prepare(`SELECT symbol,status,confirmation_score AS confirmationScore,confidence_label AS confidenceLabel,sample_size AS sampleSize,win_rate AS winRate,avg_return AS avgReturn,rr,gates_ready AS gatesReady,summary_json AS summaryJson,researched_at AS researchedAt FROM after_hours_research WHERE researched_at>=?`).bind(cutoff).all();
+  const rows=await env.DB.prepare(`SELECT symbol,status,confirmation_score AS confirmationScore,confidence_label AS confidenceLabel,sample_size AS sampleSize,win_rate AS winRate,avg_return AS avgReturn,rr,gates_ready AS gatesReady,summary_json AS summaryJson,analysis_json AS analysisJson,researched_at AS researchedAt FROM after_hours_research WHERE researched_at>=?`).bind(cutoff).all();
   const map=new Map();
   for(const row of rows.results||[]){
-    let summary={};try{summary=JSON.parse(row.summaryJson||'{}');}catch{}
-    map.set(row.symbol,{...row,confirmationScore:Number(row.confirmationScore)||0,sampleSize:Number(row.sampleSize)||0,winRate:Number(row.winRate)||0,avgReturn:Number(row.avgReturn)||0,rr:Number(row.rr)||0,gatesReady:Number(row.gatesReady)||0,researchedAt:Number(row.researchedAt)||0,summary});
+    let summary={},analysis={};
+    try{summary=JSON.parse(row.summaryJson||'{}');}catch{}
+    try{analysis=JSON.parse(row.analysisJson||'{}');}catch{}
+    map.set(row.symbol,{...row,confirmationScore:Number(row.confirmationScore)||0,sampleSize:Number(row.sampleSize)||0,winRate:Number(row.winRate)||0,avgReturn:Number(row.avgReturn)||0,rr:Number(row.rr)||0,gatesReady:Number(row.gatesReady)||0,researchedAt:Number(row.researchedAt)||0,summary,analysis});
   }
   return map;
 }
@@ -75,20 +78,21 @@ export async function getAfterHoursResearchStatus(env){
   return{budget,researchCount:Number(count?.count)||0,lastResearchedAt:Number(count?.lastResearchedAt)||0,lastRun:lastRun?{...lastRun,startedAt:Number(lastRun.startedAt)||0,completedAt:Number(lastRun.completedAt)||0,usageBefore:Number(lastRun.usageBefore)||0,usageAfter:Number(lastRun.usageAfter)||0,quotaMax:Number(lastRun.quotaMax)||0,targetRequests:Number(lastRun.targetRequests)||0,candidates,researched}:null};
 }
 
-export async function runAfterHoursResearch(env,{now=Date.now(),maxPerRun=DEFAULT_MAX_PER_RUN}={}){
+export async function runAfterHoursResearch(env,{now=Date.now(),maxPerRun=DEFAULT_MAX_PER_RUN,expandUniverse=false}={}){
   await ensureResearchSchema(env);
   const startedAt=Date.now(),budget=await providerBudget(env,{now});
   const runCap=Math.max(1,Math.min(12,Number(maxPerRun)||DEFAULT_MAX_PER_RUN));
   if(budget.remainingToTarget<=1)return saveRun(env,{startedAt,budget,candidates:[],researched:[],skippedReason:'quota-target-reached'});
 
-  const [positions,signals,quotes,researchMap]=await Promise.all([
+  const [positions,signals,quotes,researchMap,fallbackSymbols]=await Promise.all([
     listPortfolioPositions(env),
     listSignals(env),
     listRadarQuotes(env,36*60*60*1000,100),
-    getResearchMap(env,{maxAgeMs:30*DAY_MS})
+    getResearchMap(env,{maxAgeMs:30*DAY_MS}),
+    expandUniverse?getWeeklyResearchUniverse(env,{limit:36,now}):Promise.resolve([])
   ]);
   const candidateLimit=Math.min(runCap,Math.max(1,budget.remainingToTarget-1));
-  const candidates=selectResearchCandidates({positions,signals,quotes,researchMap,now,limit:candidateLimit});
+  const candidates=selectResearchCandidates({positions,signals,quotes,researchMap,fallbackSymbols,now,limit:candidateLimit});
   if(!candidates.length)return saveRun(env,{startedAt,budget,candidates:[],researched:[],skippedReason:'no-stale-qualified-candidates'});
 
   let benchmarkCandles=null;
@@ -115,11 +119,12 @@ export async function runAfterHoursResearch(env,{now=Date.now(),maxPerRun=DEFAUL
   return saveRun(env,{startedAt,budget:{...budget,usedAfter:after.used},candidates:candidates.map(x=>x.symbol),researched,skippedReason:researched.length?'':'research-unavailable'});
 }
 
-export function selectResearchCandidates({positions=[],signals=[],quotes=[],researchMap=new Map(),now=Date.now(),limit=6}={}){
+export function selectResearchCandidates({positions=[],signals=[],quotes=[],researchMap=new Map(),fallbackSymbols=[],now=Date.now(),limit=6}={}){
   const positionSet=new Set((positions||[]).map(x=>String(x.symbol||'').toUpperCase()).filter(Boolean));
   const signalMap=new Map((signals||[]).map(x=>[String(x.symbol||'').toUpperCase(),x]));
   const quoteMap=new Map((quotes||[]).map(x=>[String(x.symbol||'').toUpperCase(),x]));
-  const symbols=new Set([...positionSet,...signalMap.keys(),...quoteMap.keys()]);
+  const fallbackIndex=new Map((fallbackSymbols||[]).map((x,i)=>[String(x||'').toUpperCase(),i]));
+  const symbols=new Set([...positionSet,...signalMap.keys(),...quoteMap.keys(),...fallbackIndex.keys()]);
   const rows=[];
   for(const symbol of symbols){
     if(!symbol||symbol==='SPY')continue;
@@ -138,11 +143,12 @@ export function selectResearchCandidates({positions=[],signals=[],quotes=[],rese
     else if(status==='WAIT FOR PULLBACK')priority+=500;
     else if(status==='WAIT — SETUP NOT READY')priority+=300;
     else if(status==='NOT ANALYZED')priority+=250;
+    if(fallbackIndex.has(symbol))priority+=Math.max(0,180-fallbackIndex.get(symbol)*4);
     priority+=Math.max(-50,Math.min(150,discovery));
     priority+=Math.max(-30,Math.min(80,velocity*2));
     priority+=Math.max(0,Math.min(60,(rv-1)*30));
     priority+=Math.max(0,Math.min(60,readiness*.6));
-    rows.push({symbol,status,owned:positionSet.has(symbol),priority:Math.round(priority*10)/10,discoveryScore:discovery,scoreVelocity:velocity,relativeVolume:rv,researchedAt});
+    rows.push({symbol,status,owned:positionSet.has(symbol),priority:Math.round(priority*10)/10,discoveryScore:discovery,scoreVelocity:velocity,relativeVolume:rv,researchedAt,source:fallbackIndex.has(symbol)?'weekly-universe':'active-pool'});
   }
   return rows.sort((a,b)=>b.priority-a.priority||a.researchedAt-b.researchedAt||a.symbol.localeCompare(b.symbol)).slice(0,Math.max(1,Math.min(12,Number(limit)||6)));
 }
