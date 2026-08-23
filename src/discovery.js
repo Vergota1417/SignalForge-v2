@@ -1,4 +1,4 @@
-import { reserveProviderRequest } from './db.js';
+import { reserveProviderPurpose } from './provider-usage.js';
 
 export const CORE_DISCOVERY_SYMBOLS=[
   'AAPL','MSFT','NVDA','AMZN','META','GOOGL','AVGO','TSLA','AMD','NFLX','CRM','ORCL','ADBE','QCOM','INTC','MU','AMAT','ARM','PLTR','CRWD',
@@ -25,7 +25,7 @@ export async function refreshDiscoveryCatalog(env,{force=false}={}){
   if(!force&&meta.catalogUpdatedAt>0&&now-meta.catalogUpdatedAt<CATALOG_TTL)return{refreshed:false,catalogSize:await catalogCount(env),updatedAt:meta.catalogUpdatedAt};
   if(!env.TWELVE_DATA_API_KEY)return seedCoreCatalog(env,true,now);
   try{
-    await reserveProviderRequest(env);
+    await reserveProviderPurpose(env,'stock-catalog');
     const url=new URL('https://api.twelvedata.com/stocks');url.searchParams.set('country','United States');url.searchParams.set('type','Common Stock');url.searchParams.set('apikey',env.TWELVE_DATA_API_KEY);
     const response=await fetch(url,{headers:{accept:'application/json'}});if(!response.ok)throw new Error(`Twelve Data HTTP ${response.status}`);
     const payload=await response.json();if(payload?.status==='error')throw new Error(`Twelve Data: ${payload.message||'provider error'}`);
