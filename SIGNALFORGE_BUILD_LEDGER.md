@@ -27,15 +27,17 @@ This file is the persistent source of truth for the build sequence. Complete and
 
 Benchmark-relative outcome is intentionally deferred to Stage 11.3, where the correct sector/market benchmark and no-lookahead baseline will be defined together.
 
+### Stage 11.2 — Scanner / Request Budget Engine ✅
+
+- [x] Divide discovery into HOT / ACTIVE / EXPLORE tiers with bounded tier sizes.
+- [x] Revisit HOT names every ~30 minutes when due and ACTIVE names every ~90 minutes, while preventing any name from being repeatedly hit inside 15 minutes.
+- [x] Preserve at least one EXPLORE slot in the normal five-symbol scan batch so new movement can still be discovered.
+- [x] Use every useful 15-minute non-Friday market slot from 09:45–15:30 ET instead of only hourly discovery.
+- [x] Limit each market slot to five radar quotes and at most one deep promotion to preserve provider headroom.
+- [x] Record provider request purposes for radar quotes, market time-series by timeframe/context, symbol search, and stock-catalog refresh while retaining the global daily safety counter.
+- [x] Keep after-hours research/outcome maintenance and the existing quota target/reserve rather than consuming the full daily budget during live scanning.
+
 ## CURRENT
-
-### Stage 11.2 — Scanner / Request Budget Engine
-
-- [ ] Divide discovery into HOT / ACTIVE / EXPLORE tiers.
-- [ ] Revisit HOT names more frequently than cold exploration names.
-- [ ] Use every useful 15-minute market-hours slot within the provider safety budget.
-- [ ] Record where daily provider requests were spent.
-- [ ] Reserve remaining quota for after-hours research/outcome completion.
 
 ### Stage 11.3 — Benchmark Context
 
