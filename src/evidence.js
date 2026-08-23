@@ -1,3 +1,5 @@
+import { benchmarkContextFor } from './benchmark-context.js';
+
 const FIFTEEN_MINUTES=15*60*1000;
 export const ANALYSIS_MODEL_VERSION='sf-analysis-v1';
 
@@ -107,7 +109,7 @@ export function radarEvidenceRow(quote,{source='radar',now=Date.now()}={}){
 }
 
 export function analysisEvidenceRow(analysis,{source='deep-analysis',timeframe='6M',quote=null,now=Date.now(),modelVersion=ANALYSIS_MODEL_VERSION}={}){
-  const engines=analysis?.engines||{},gateList=Object.values(engines).filter(Boolean),symbol=sanitizeSymbol(analysis?.symbol);
+  const engines=analysis?.engines||{},gateList=Object.values(engines).filter(Boolean),symbol=sanitizeSymbol(analysis?.symbol),benchmarkContext=benchmarkContextFor(symbol);
   const gatesReady=gateList.filter(x=>x?.ready).length,gateTotal=gateList.length||4;
   return{
     symbol,observationType:'ANALYSIS',source:String(source||'deep-analysis'),timeframe:String(timeframe||''),modelVersion:String(modelVersion||ANALYSIS_MODEL_VERSION),
@@ -115,8 +117,8 @@ export function analysisEvidenceRow(analysis,{source='deep-analysis',timeframe='
     discoveryScore:numOrNull(quote?.rollingDiscoveryScore??quote?.discoveryScore??quote?.score),scoreVelocity:numOrNull(quote?.scoreVelocity),relativeVolume:numOrNull(quote?.relativeVolume),dollarVolume:numOrNull(quote?.dollarVolume),
     gatesReady,gateTotal,trendReady:Boolean(engines?.trend?.ready),entryReady:Boolean(engines?.entry?.ready),probabilityReady:Boolean(engines?.probability?.ready),riskRewardReady:Boolean(engines?.riskReward?.ready),
     preferredEntryLow:numOrNull(analysis?.preferredEntryLow),preferredEntryHigh:numOrNull(analysis?.preferredEntryHigh),overextension:numOrNull(analysis?.overextension),thesisBreak:numOrNull(analysis?.thesisBreak),target:numOrNull(analysis?.target),rr:numOrNull(analysis?.rr),
-    benchmarkSymbol:String(analysis?.benchmark?.symbol||''),benchmarkBull:analysis?.benchmark?Boolean(analysis.benchmark.bull):null,benchmarkRiskOff:analysis?.benchmark?Boolean(analysis.benchmark.riskOff):null,
-    payload:{criticalFailed:Array.isArray(analysis?.criticalFailed)?analysis.criticalFailed:[],reason:String(analysis?.reason||''),wf:{sample:Number(analysis?.wf?.sample)||0,winRate:numOrNull(analysis?.wf?.winRate),avgReturn:numOrNull(analysis?.wf?.avgReturn)},relativeStrength20:numOrNull(analysis?.relativeStrength20),rsi:numOrNull(analysis?.rsi)}
+    benchmarkSymbol:String(analysis?.benchmark?.symbol||benchmarkContext.marketBenchmark||''),benchmarkBull:analysis?.benchmark?Boolean(analysis.benchmark.bull):null,benchmarkRiskOff:analysis?.benchmark?Boolean(analysis.benchmark.riskOff):null,
+    payload:{benchmarkContext,criticalFailed:Array.isArray(analysis?.criticalFailed)?analysis.criticalFailed:[],reason:String(analysis?.reason||''),wf:{sample:Number(analysis?.wf?.sample)||0,winRate:numOrNull(analysis?.wf?.winRate),avgReturn:numOrNull(analysis?.wf?.avgReturn)},relativeStrength20:numOrNull(analysis?.relativeStrength20),rsi:numOrNull(analysis?.rsi)}
   };
 }
 
