@@ -3,6 +3,7 @@ import { listPortfolioPositions, listRadarQuotes, listSignals } from './db.js';
 import { getWeeklyResearchUniverse } from './discovery.js';
 import { getMarketData } from './market.js';
 import { recordAnalysisEvidence } from './evidence.js';
+import { runOutcomeTracker } from './outcomes.js';
 
 const DAY_MS=86_400_000;
 const RESEARCH_STALE_MS=20*60*60*1000;
@@ -83,7 +84,7 @@ export async function runAfterHoursResearch(env,{now=Date.now(),maxPerRun=DEFAUL
   await ensureResearchSchema(env);
   const startedAt=Date.now(),budget=await providerBudget(env,{now});
   const runCap=Math.max(1,Math.min(12,Number(maxPerRun)||DEFAULT_MAX_PER_RUN));
-  if(budget.remainingToTarget<=1)return saveRun(env,{startedAt,budget,candidates:[],researched:[],skippedReason:'quota-target-reached'});
+  if(budget.remainingToTarget<=1)return finalizeResearchRun(env,{startedAt,budget,candidates:[],researched:[],skippedReason:'quota-target-reached',now});
 
   const [positions,signals,quotes,researchMap,fallbackSymbols]=await Promise.all([
     listPortfolioPositions(env),
@@ -94,12 +95,12 @@ export async function runAfterHoursResearch(env,{now=Date.now(),maxPerRun=DEFAUL
   ]);
   const candidateLimit=Math.min(runCap,Math.max(1,budget.remainingToTarget-1));
   const candidates=selectResearchCandidates({positions,signals,quotes,researchMap,fallbackSymbols,now,limit:candidateLimit});
-  if(!candidates.length)return saveRun(env,{startedAt,budget,candidates:[],researched:[],skippedReason:'no-stale-qualified-candidates'});
+  if(!candidates.length)return finalizeResearchRun(env,{startedAt,budget,candidates:[],researched:[],skippedReason:'no-stale-qualified-candidates',now});
 
   let benchmarkCandles=null;
   try{benchmarkCandles=(await getMarketData(env,'SPY','1Y',false,{completedOnly:true})).candles;}
   catch(error){console.error(JSON.stringify({event:'after_hours_benchmark_error',message:error?.message||String(error)}));}
-  if(!benchmarkCandles)return saveRun(env,{startedAt,budget,candidates:candidates.map(x=>x.symbol),researched:[],skippedReason:'benchmark-unavailable'});
+  if(!benchmarkCandles)return finalizeResearchRun(env,{startedAt,budget,candidates:candidates.map(x=>x.symbol),researched:[],skippedReason:'benchmark-unavailable',now});
 
   const researched=[];
   for(const candidate of candidates){
@@ -119,7 +120,7 @@ export async function runAfterHoursResearch(env,{now=Date.now(),maxPerRun=DEFAUL
     }
   }
   const after=await providerBudget(env,{now:Date.now()});
-  return saveRun(env,{startedAt,budget:{...budget,usedAfter:after.used},candidates:candidates.map(x=>x.symbol),researched,skippedReason:researched.length?'':'research-unavailable'});
+  return finalizeResearchRun(env,{startedAt,budget:{...budget,usedAfter:after.used},candidates:candidates.map(x=>x.symbol),researched,skippedReason:researched.length?'':'research-unavailable',now});
 }
 
 export function selectResearchCandidates({positions=[],signals=[],quotes=[],researchMap=new Map(),fallbackSymbols=[],now=Date.now(),limit=6}={}){
@@ -181,6 +182,13 @@ export function historicalConfirmation(analysis){
 async function saveResearch(env,{symbol,analysis,confirmation,now}){
   const summary={score:confirmation.score,label:confirmation.label,sampleSize:confirmation.sampleSize,winRate:confirmation.winRate,avgReturn:confirmation.avgReturn,rr:confirmation.rr,gatesReady:confirmation.gatesReady,readiness:confirmation.readiness,relativeStrength20:confirmation.relativeStrength20,riskOff:confirmation.riskOff};
   await env.DB.prepare(`INSERT INTO after_hours_research(symbol,status,confirmation_score,confidence_label,sample_size,win_rate,avg_return,rr,gates_ready,summary_json,analysis_json,researched_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(symbol) DO UPDATE SET status=excluded.status,confirmation_score=excluded.confirmation_score,confidence_label=excluded.confidence_label,sample_size=excluded.sample_size,win_rate=excluded.win_rate,avg_return=excluded.avg_return,rr=excluded.rr,gates_ready=excluded.gates_ready,summary_json=excluded.summary_json,analysis_json=excluded.analysis_json,researched_at=excluded.researched_at,updated_at=excluded.updated_at`).bind(symbol,String(analysis?.status||'UNKNOWN'),confirmation.score,confirmation.label,confirmation.sampleSize,confirmation.winRate,confirmation.avgReturn,confirmation.rr,confirmation.gatesReady,JSON.stringify(summary),JSON.stringify(analysis),now,now).run();
+}
+
+async function finalizeResearchRun(env,args){
+  const run=await saveRun(env,args);let outcomes=null;
+  try{outcomes=await runOutcomeTracker(env,{now:Number(args.now)||Date.now(),maxSymbols:4});}
+  catch(error){console.error(JSON.stringify({event:'evidence_outcome_tracker_error',message:error?.message||String(error)}));outcomes={error:error?.message||String(error)};}
+  return{...run,outcomes};
 }
 
 async function saveRun(env,{startedAt,budget,candidates,researched,skippedReason}){
