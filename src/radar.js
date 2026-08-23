@@ -1,6 +1,7 @@
 import { getRadarState, listRadarQuotes, putRadarQuote, putRadarState, reserveProviderRequest } from './db.js';
 import { CORE_DISCOVERY_SYMBOLS, getDiscoveryPool, getDiscoveryStatus, recordDiscoveryObservation } from './discovery.js';
 import { buildAnalysisExpectations } from './analysis-expectation.js';
+import { recordRadarEvidence } from './evidence.js';
 
 export function radarUniverse(env){const raw=String(env.RADAR_UNIVERSE||'').trim(),pinned=raw?raw.split(',').map(sanitizeSymbol).filter(Boolean):[];return[...new Set([...pinned,...CORE_DISCOVERY_SYMBOLS])].slice(0,120);}
 
@@ -8,7 +9,7 @@ export async function runRadarDiscovery(env,{batchSize=5}={}){
   const universe=await getDiscoveryPool(env,{limit:120});if(!universe.length)return{mode:'discovery',scanned:[],leaders:[],cursor:0,universeSize:0};
   const previous=await getRadarState(env),start=(Number(previous?.cursor)||0)%universe.length,count=Math.max(1,Math.min(5,Number(batchSize)||5,universe.length)),symbols=[];for(let i=0;i<count;i++)symbols.push(universe[(start+i)%universe.length]);
   const scanned=[];
-  for(const symbol of symbols){try{const quote=await fetchQuote(env,symbol),observation=await recordDiscoveryObservation(env,quote),enriched={...quote,rollingDiscoveryScore:observation?.rollingScore??quote.discoveryScore,scoreVelocity:observation?.scoreVelocity??0,dollarVolume:observation?.dollarVolume??quote.price*quote.volume};await putRadarQuote(env,enriched);scanned.push(enriched);}catch(error){console.error(JSON.stringify({event:'radar_quote_error',symbol,message:error?.message||String(error)}));}}
+  for(const symbol of symbols){try{const quote=await fetchQuote(env,symbol),observation=await recordDiscoveryObservation(env,quote),enriched={...quote,rollingDiscoveryScore:observation?.rollingScore??quote.discoveryScore,scoreVelocity:observation?.scoreVelocity??0,dollarVolume:observation?.dollarVolume??quote.price*quote.volume};await putRadarQuote(env,enriched);await recordRadarEvidence(env,enriched,{source:'scheduled-radar'});scanned.push(enriched);}catch(error){console.error(JSON.stringify({event:'radar_quote_error',symbol,message:error?.message||String(error)}));}}
   const leaders=rankQuotes(await listRadarQuotes(env,14_400_000,40)).slice(0,6),nextCursor=(start+symbols.length)%universe.length,updatedAt=await putRadarState(env,nextCursor,leaders.map(q=>q.symbol));return{mode:'discovery',scanned,leaders,cursor:nextCursor,updatedAt,universeSize:universe.length};
 }
 

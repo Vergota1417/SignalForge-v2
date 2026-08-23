@@ -5,6 +5,7 @@ import { getMarketData } from './market.js';
 import { getResearchMap } from './research.js';
 import { runPaperSimulation } from './simulation.js';
 import { buildWeekendIntelligenceReport, getWeekendIntelligenceReport } from './weekend.js';
+import { recordAnalysisEvidence } from './evidence.js';
 
 const STATUS_BOOST={
   'BUY NOW':42,
@@ -73,6 +74,7 @@ export async function runScreenerPromotion(env,{maxPromotions=2,now=Date.now()}=
     try{
       const market=await getMarketData(env,candidate.symbol,'6M',false),analysis=analyze(market.candles,candidate.symbol,{benchmarkCandles});
       const event=await recordSignal(env,analysis);
+      await recordAnalysisEvidence(env,analysis,{source:'screener-promotion',timeframe:'6M',quote:candidate,now});
       promoted.push({symbol:candidate.symbol,screenScore:candidate.screenScore,researchScore:candidate.research?.confirmationScore||0,status:analysis.status,readiness:analysis.readiness,changed:event.changed});
     }catch(error){
       console.error(JSON.stringify({event:'screener_promotion_error',symbol:candidate.symbol,message:error?.message||String(error)}));
