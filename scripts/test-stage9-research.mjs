@@ -20,6 +20,10 @@ const freshMap=new Map([['OWN',{researchedAt:now-60_000}]]);
 const staleFiltered=selectResearchCandidates({positions,signals,quotes,researchMap:freshMap,now,limit:2});
 assert.ok(!staleFiltered.some(x=>x.symbol==='OWN'),'Fresh research should not be repeated immediately.');
 
+const thinPool=selectResearchCandidates({positions:[],signals:[{symbol:'NVDA',status:'WAIT — SETUP NOT READY',readiness:40}],quotes:[],researchMap:new Map(),fallbackSymbols:['AAPL','MSFT','AMZN','META','GOOGL'],now,limit:6});
+assert.equal(thinPool.length,6,'Weekend research should backfill a thin active pool from the weekly universe.');
+assert.ok(thinPool.some(x=>x.source==='weekly-universe'),'Weekend research backfill should be marked as weekly-universe sourced.');
+
 const researchMap=new Map([['NEW',{confirmationScore:82,confidenceLabel:'STRONG',sampleSize:30,winRate:.64,avgReturn:.04,rr:2.1,gatesReady:4,researchedAt:now}],['BAD',{confirmationScore:95,confidenceLabel:'STRONG',sampleSize:40,winRate:.70,avgReturn:.05,rr:2.5,gatesReady:4,researchedAt:now}]]);
 const screenQuotes=[...quotes,{symbol:'BAD',price:70,volume:1000000,dollarVolume:70000000,rollingDiscoveryScore:80,relativeVolume:2,scoreVelocity:12}];
 const screenSignals=[{symbol:'BAD',status:'AVOID',readiness:25,analysis:{status:'AVOID',engines:{trend:engine(false),entry:engine(false),probability:engine(false),riskReward:engine(false)}}}];
