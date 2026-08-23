@@ -34,7 +34,7 @@ export async function buildWeekendIntelligenceReport(env,{researchRun=null,now=D
     const signal=signalMap.get(symbol)||null;
     const research=researchMap.get(symbol)||null;
     const quote=quoteMap.get(symbol)||null;
-    const analysis=signal?.analysis||null;
+    const analysis=signal?.analysis||research?.analysis||null;
     const score=Number(research?.confirmationScore)||0;
     const prior=previousMap.get(symbol);
     const priorScore=Number(prior?.confirmationScore);
@@ -49,7 +49,7 @@ export async function buildWeekendIntelligenceReport(env,{researchRun=null,now=D
     candidates.push({
       symbol,
       weekendStatus,
-      liveStatus:String(signal?.status||research?.status||'NOT ANALYZED'),
+      liveStatus:String(signal?.status||research?.status||analysis?.status||'NOT ANALYZED'),
       confirmationScore:score,
       confidenceLabel:String(research?.confidenceLabel||'UNRESOLVED'),
       sampleSize:Number(research?.sampleSize)||0,

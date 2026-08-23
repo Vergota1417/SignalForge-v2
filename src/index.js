@@ -75,7 +75,7 @@ async function runScheduledCycle(env,scheduledTime){
     await ensureSchema(env);const now=new Date(scheduledTime||Date.now());if(!env.TWELVE_DATA_API_KEY)return;
     const p=easternParts(now),minutes=Number(p.hour)*60+Number(p.minute),weekday=p.weekday;
     if(weekday==='Sat'||weekday==='Sun'){
-      if(minutes!==675)return;let weekendResearch=null;if(weekday==='Sat'){weekendResearch=await runAfterHoursResearch(env,{now:now.getTime(),maxPerRun:6});console.log(JSON.stringify({event:'weekend_research_cycle',weekday,...weekendResearch}));}
+      if(minutes!==675)return;let weekendResearch=null;if(weekday==='Sat'){weekendResearch=await runAfterHoursResearch(env,{now:now.getTime(),maxPerRun:6,expandUniverse:true});console.log(JSON.stringify({event:'weekend_research_cycle',weekday,...weekendResearch}));}
       const[screener,research]=await Promise.all([getSmartScreenerSnapshot(env,{limit:10}),getAfterHoursResearchStatus(env)]),top=bestSummaryCandidate(screener?.rows||[]),push=await broadcastBackgroundSummaryPush(env,{dayLabel:weekday==='Sat'?'Saturday':'Sunday',top,research,weekend:true,occurredAt:now.getTime()});console.log(JSON.stringify({event:'weekend_background_summary',weekday,symbol:top?.symbol||null,researchRan:Boolean(weekendResearch),...push}));return;
     }
     if(weekday==='Fri'&&minutes>=840&&minutes<=930&&minutes%15===0){
