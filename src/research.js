@@ -2,6 +2,7 @@ import { analyze } from './analysis.js';
 import { listPortfolioPositions, listRadarQuotes, listSignals } from './db.js';
 import { getWeeklyResearchUniverse } from './discovery.js';
 import { getMarketData } from './market.js';
+import { recordAnalysisEvidence } from './evidence.js';
 
 const DAY_MS=86_400_000;
 const RESEARCH_STALE_MS=20*60*60*1000;
@@ -108,7 +109,9 @@ export async function runAfterHoursResearch(env,{now=Date.now(),maxPerRun=DEFAUL
       const market=await getMarketData(env,candidate.symbol,'1Y',false,{completedOnly:true});
       const analysis=analyze(market.candles,candidate.symbol,{benchmarkCandles});
       const confirmation=historicalConfirmation(analysis);
-      await saveResearch(env,{symbol:candidate.symbol,analysis,confirmation,now:Date.now()});
+      const observedAt=Date.now();
+      await saveResearch(env,{symbol:candidate.symbol,analysis,confirmation,now:observedAt});
+      await recordAnalysisEvidence(env,analysis,{source:expandUniverse?'weekend-research':'after-hours-research',timeframe:'1Y',quote:candidate,now:observedAt});
       researched.push({symbol:candidate.symbol,priority:candidate.priority,status:analysis.status,confirmationScore:confirmation.score,label:confirmation.label,sampleSize:confirmation.sampleSize,winRate:confirmation.winRate,avgReturn:confirmation.avgReturn,rr:confirmation.rr});
     }catch(error){
       console.error(JSON.stringify({event:'after_hours_research_error',symbol:candidate.symbol,message:error?.message||String(error)}));
