@@ -1,12 +1,13 @@
 import { TIMEFRAMES } from './constants.js';
-import { getCachedMarket, putCachedMarket, reserveProviderRequest, getCachedSymbolSearch, putCachedSymbolSearch } from './db.js';
+import { getCachedMarket, putCachedMarket, getCachedSymbolSearch, putCachedSymbolSearch } from './db.js';
+import { reserveProviderPurpose } from './provider-usage.js';
 
 const MINIMUM_HISTORY={ '1D':1,'5D':60,'1M':60,'3M':60,'6M':100,'1Y':120,'2Y':80 };
 const US_EXCHANGES=new Set(['NASDAQ','NYSE','NYSE AMERICAN','NYSE ARCA','CBOE','BATS']);
 
 export async function getMarketData(env,symbol,timeframe,forceRefresh=false,options={}){
   const cfg=TIMEFRAMES[timeframe];if(!cfg)throw new Error('Unsupported timeframe.');
-  const completedOnly=Boolean(options?.completedOnly);
+  const completedOnly=Boolean(options?.completedOnly),purpose=String(options?.purpose||`time-series-${String(timeframe).toLowerCase()}`);
   if(!forceRefresh){
     const cached=await getCachedMarket(env,symbol,timeframe,cfg.cacheSeconds*1000);
     if(cached){
@@ -16,7 +17,7 @@ export async function getMarketData(env,symbol,timeframe,forceRefresh=false,opti
     }
   }
   if(!env.TWELVE_DATA_API_KEY)throw new Error('Twelve Data API key is not configured.');
-  await reserveProviderRequest(env);
+  await reserveProviderPurpose(env,purpose);
 
   const url=new URL('https://api.twelvedata.com/time_series');
   url.searchParams.set('symbol',symbol);url.searchParams.set('interval',cfg.interval);url.searchParams.set('outputsize',String(cfg.outputsize));url.searchParams.set('order','asc');url.searchParams.set('timezone','UTC');url.searchParams.set('apikey',env.TWELVE_DATA_API_KEY);
@@ -44,7 +45,7 @@ export async function getMarketData(env,symbol,timeframe,forceRefresh=false,opti
 export async function searchSymbols(env,query){
   const normalized=String(query||'').trim().replace(/\s+/g,' ').slice(0,80);if(normalized.length<1)return{results:[],cached:true,fetchedAt:Date.now()};
   const cacheKey=normalized.toUpperCase(),cached=await getCachedSymbolSearch(env,cacheKey,86_400_000);if(cached)return cached;
-  if(!env.TWELVE_DATA_API_KEY)throw new Error('Twelve Data API key is not configured.');await reserveProviderRequest(env);
+  if(!env.TWELVE_DATA_API_KEY)throw new Error('Twelve Data API key is not configured.');await reserveProviderPurpose(env,'symbol-search');
   const url=new URL('https://api.twelvedata.com/symbol_search');url.searchParams.set('symbol',normalized);url.searchParams.set('outputsize','12');url.searchParams.set('show_plan','true');url.searchParams.set('apikey',env.TWELVE_DATA_API_KEY);
   const payload=await fetchProviderJson(url,'Twelve Data symbol search');if(payload?.status==='error')throw new Error(`Twelve Data: ${payload.message||'symbol search error'}`);
   const results=(Array.isArray(payload?.data)?payload.data:[]).filter(row=>row?.symbol&&row?.instrument_name).map(row=>({symbol:String(row.symbol).toUpperCase(),name:String(row.instrument_name),exchange:String(row.exchange||''),micCode:String(row.mic_code||''),type:String(row.instrument_type||''),country:String(row.country||''),currency:String(row.currency||''),plan:String(row.access?.plan||'')})).filter(isSupportedSearchResult).slice(0,8);
