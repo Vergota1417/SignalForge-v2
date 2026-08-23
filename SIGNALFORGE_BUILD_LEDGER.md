@@ -7,25 +7,27 @@ This file is the persistent source of truth for the build sequence. Complete and
 - Stages 1–10: decision engine, dynamic discovery, Smart Screener, after-hours research, telemetry, background summaries, Weekend Intelligence, forward paper simulation, realistic paper capital/contributions, UI routing fixes.
 - Weekend research breadth: active candidates are backfilled from the 36-symbol weekly research universe instead of stopping on a thin Friday pool.
 
+### Stage 11 — Evidence Database ✅
+
+- [x] Append radar observations instead of only keeping the latest quote.
+- [x] Append deep-analysis snapshots instead of only keeping the latest signal state.
+- [x] Save decision inputs: price, movement, RVOL, discovery score/velocity, liquidity, readiness, four critical gates, entry/stop/target, R/R, benchmark regime.
+- [x] Attach an analysis model/config version to every deep-analysis observation.
+- [x] Prevent UI refreshes from creating duplicate evidence by using 15-minute time buckets/idempotency.
+- [x] Add evidence health/status count functions for later telemetry.
+
+### Stage 11.1 — Outcome Tracker ✅
+
+- [x] Evaluate saved observations after 1, 3, 5, 10, and 20 trading sessions.
+- [x] Record forward return, MFE, MAE, and target-hit/stop-hit ordering.
+- [x] Track rejected and WAIT observations as well as BUY observations because outcomes attach to all saved evidence rows with a valid price.
+- [x] Preserve unresolved outcomes until enough future completed sessions exist.
+- [x] Group pending observations by symbol so one daily fetch can complete many observations/horizons.
+- [x] Mark same-session target+stop collisions as ambiguous rather than inventing intraday ordering.
+
+Benchmark-relative outcome is intentionally deferred to Stage 11.3, where the correct sector/market benchmark and no-lookahead baseline will be defined together.
+
 ## CURRENT
-
-### Stage 11 — Evidence Database
-
-Goal: turn SignalForge from a cache-driven decision app into a point-in-time learning system.
-
-- [ ] Append radar observations instead of only keeping the latest quote.
-- [ ] Append deep-analysis snapshots instead of only keeping the latest signal state.
-- [ ] Save decision inputs: price, movement, RVOL, discovery score/velocity, liquidity, readiness, four critical gates, entry/stop/target, R/R, benchmark regime.
-- [ ] Attach an analysis model/config version to every deep-analysis observation.
-- [ ] Prevent UI refreshes from creating duplicate evidence by using time buckets/idempotency.
-- [ ] Add evidence health/status counts for later telemetry.
-
-### Stage 11.1 — Outcome Tracker
-
-- [ ] Evaluate saved observations after 1, 3, 5, 10, and 20 trading sessions.
-- [ ] Record forward return, benchmark-relative return, MFE, MAE, target-hit/stop-hit ordering.
-- [ ] Track rejected and WAIT observations as well as BUY observations.
-- [ ] Preserve unresolved outcomes until enough future market data exists.
 
 ### Stage 11.2 — Scanner / Request Budget Engine
 
@@ -39,6 +41,7 @@ Goal: turn SignalForge from a cache-driven decision app into a point-in-time lea
 
 - [ ] Automatically map stock → industry/sector benchmark → broad-market benchmark.
 - [ ] Persist sector and market relative-strength context with evidence observations.
+- [ ] Add benchmark-relative forward outcomes without lookahead.
 - [ ] Test whether sector rotation improves forward outcomes before using it as a critical gate.
 
 ### Stage 11.4 — Evidence / Model Evaluation
