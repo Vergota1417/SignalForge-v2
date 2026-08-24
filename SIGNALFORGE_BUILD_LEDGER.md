@@ -58,10 +58,23 @@ This file is the persistent source of truth for the build sequence. Complete and
 - [x] Save analysis model/config version with every new paper position and closed paper trade while preserving legacy rows as LEGACY/UNKNOWN.
 - [x] Separate lifetime paper results by model cohort when algorithms change.
 
+### Stage 12 — Evidence-Guided Strategy Optimization ✅
+
+- [x] Rank setup cohorts by resolved forward performance with minimum sample qualification.
+- [x] Analyze losing BUY observations and missed winners to identify recurring false-positive and false-negative characteristics.
+- [x] Measure the forward value and winner-block rate of individual decision gates before changing production rules.
+- [x] Compare configurable Challenger rules against the current BUY NOW Champion on expectancy, benchmark excess return, false positives, adverse excursion, and sample size.
+- [x] Keep retrospective promotion findings evidence-only and require forward shadow validation before any production gate change.
+- [x] Expose the optimization report through the backend API and include Stage 12 regression checks in the complete validation suite.
+
 ## CURRENT
 
-Evidence foundation Stages 11–11.5 are complete. The next large feature/model stage must be selected from measured evidence rather than added ahead of validation.
+### Stage 13 — Earlier Movement Detection
+
+Use Stage 12 findings to test whether acceleration, RVOL change, discovery-score velocity, sector leadership, price/volume expansion, and setup-transition speed identify strong moves earlier without materially increasing false positives or drawdown.
+
+No Stage 13 signal may become a production BUY gate until it passes the Champion/Challenger forward-shadow process created in Stage 12.
 
 ## NEXT RULE
 
-Use the Stage 11 evidence database, benchmark-relative outcomes, model evaluation, and hardened paper simulator to decide what improves real forward performance. Production bugs may be fixed immediately. New critical gates or major UI/model features should be justified by forward evidence before promotion.
+Use measured evidence to choose candidate improvements. Production bugs may be fixed immediately. New critical gates or major model changes must first beat the current Champion retrospectively, then survive forward shadow validation before promotion.
