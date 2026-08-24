@@ -45,5 +45,6 @@ assert.match(screener,/broadcastSignalPush/,'Scheduled signal transitions must b
 assert.match(screener,/execution-confirmation-15m/,'Near-ready execution rechecks must use the 15-minute confirmation feed.');
 assert.match(screener,/sf-analysis-v3-execution/,'Stage 14.12 production evidence must be versioned separately for later model comparison.');
 assert.match(screener,/refreshExecutionAnalysis\(analysis,confirmation\)/,'The first full daily-ready analysis must pass through the same explicit execution gate as later rechecks.');
+assert.doesNotMatch(screener,/loadBenchmarkEvidence/,'Live execution promotion must not spend extra sector/industry benchmark requests; those belong in research/evaluation paths.');
 
-console.log('Stage 14.12 execution, alert, and chart-sync regression checks passed.');
+console.log('Stage 14.12 execution, alert, chart-sync, and provider-budget regression checks passed.');
