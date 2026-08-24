@@ -1,1 +1,1 @@
-window.SIGNALFORGE_BUILD=Object.freeze({version:'2.30.8',release:'mobile-radar-watchlist',shell:'v30-8'});
+window.SIGNALFORGE_BUILD=Object.freeze({version:'2.30.9',release:'last-selected-symbol',shell:'v30-9'});
