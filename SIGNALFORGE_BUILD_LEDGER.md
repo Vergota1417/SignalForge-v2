@@ -96,10 +96,19 @@ This file is the persistent source of truth for the build sequence. Complete and
 - [x] Keep BUY NOW as the only entry-permission state; BUILDING and READY SOON remain preparation states.
 - [x] Add Stage 14.1 regression and syntax coverage to the complete validation suite.
 
+### Stage 14.2 — Production Visibility / PWA Freshness ✅
+
+- [x] Display the deployed SignalForge version directly beside the product name.
+- [x] Display the active service-worker cache/shell identifier so stale phone installs are immediately recognizable.
+- [x] Advance the PWA shell cache version and include Unified Action plus all current UI modules in the app shell.
+- [x] Force an explicit service-worker update check on app startup while bypassing HTTP cache for the worker script.
+- [x] Make the update banner identify the incoming SignalForge version before reload.
+- [x] Include build metadata syntax validation in the complete validation command.
+
 ## CURRENT
 
-Stage 14.1 is complete. SignalForge now presents one consistent action hierarchy from early discovery through deep-analysis confirmation while retaining the evidence-first production rules. The forward challenger remains in COLLECTING until enough post-rollout 10-session outcomes resolve.
+Stage 14.2 production visibility is complete in code. SignalForge v2.30.2 exposes its deployed version and active PWA shell in the header so production screenshots can prove which interface is actually running. The forward challenger remains in COLLECTING until enough post-rollout 10-session outcomes resolve.
 
 ## NEXT RULE
 
-Do not invent another production model change while the forward cohort is immature. Continue collecting Early Movement and Challenger evidence. The next strategy change must be selected from measured outcomes, beat the current Champion retrospectively, and independently pass Stage 14 forward shadow validation before deliberate production review.
+Verify the production phone shows v2.30.2 and signalforge-shell-v30-2 before diagnosing any remaining Unified Action display issue. Do not invent another production model change while the forward cohort is immature. Continue collecting Early Movement and Challenger evidence. The next strategy change must be selected from measured outcomes, beat the current Champion retrospectively, and independently pass Stage 14 forward shadow validation before deliberate production review.
