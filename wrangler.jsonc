@@ -19,7 +19,7 @@
     }
   ],
   "triggers": {
-    "crons": ["*/15 * * * *"]
+    "crons": ["* * * * *"]
   },
   "vars": {
     "WATCHLIST": "XOM,NVDA,MSFT,AAPL,AMZN,TSLA",
