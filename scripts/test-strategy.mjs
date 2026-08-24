@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { evaluateStrategy } from '../src/strategy.js';
 
 function engine(ready=true){return{ready,passes:ready?4:2,total:4,metrics:Array.from({length:4},(_,i)=>({name:`m${i}`,pass:ready||i<2}))};}
-function confirmation(pass=true){return{pass,participationPass:pass,passes:pass?4:3,total:5,state:pass?'PASS':'FAIL',relativeVolume:pass?1.2:.8,momentum4:pass?.01:-.01,reason:pass?'Participation confirmed.':'Participation blocked.'};}
+function confirmation(pass=true){return{pass,participationPass:pass,passes:pass?4:3,total:5,state:pass?'PASS':'FAIL',relativeVolume:pass?1.2:.8,momentum4:pass ? .01 : -.01,reason:pass?'Participation confirmed.':'Participation blocked.'};}
 function analysis(overrides={}){
   const base={
     symbol:'TEST',latest:{close:100},rsi:58,rr:2.0,target:118,thesisBreak:94,overextension:109,preferredEntryLow:97,preferredEntryHigh:102,
