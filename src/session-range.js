@@ -1,4 +1,5 @@
 export const SESSION_RANGE_SHADOW_VERSION='sf-session-range-shadow-v1';
+const FIFTEEN_MINUTES=15*60*1000;
 
 export function assessSessionRange(candles,{atr=null,currentPrice=null}={}){
   if(!Array.isArray(candles)||candles.length<30)return insufficient('Not enough 15-minute history to estimate session range.');
@@ -65,6 +66,58 @@ export function assessSessionRange(candles,{atr=null,currentPrice=null}={}){
   };
 }
 
+export async function recordSessionRangeShadow(env,analysis,{source='execution-recheck',now=Date.now()}={}){
+  const range=analysis?.sessionRangeShadow,symbol=sanitizeSymbol(analysis?.symbol);
+  if(!env?.DB||!symbol||!range)return null;
+  await ensureShadowSchema(env);
+  const observedAt=Number(now)||Date.now(),observedBucket=Math.floor(observedAt/FIFTEEN_MINUTES)*FIFTEEN_MINUTES;
+  await env.DB.prepare(`INSERT OR IGNORE INTO session_range_shadow_observations(
+    symbol,model_version,source,observed_at,observed_bucket,production_status,price,shadow_state,
+    atr_usage,median_range_usage,p80_range_usage,same_time_pace,range_position,current_range_pct,
+    remaining_atr_pct,historical_sample,payload_json,created_at
+  ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(
+    symbol,String(range.version||SESSION_RANGE_SHADOW_VERSION),String(source||'execution-recheck'),observedAt,observedBucket,String(analysis.status||''),numOrNull(analysis?.latest?.close),String(range.state||'INSUFFICIENT'),
+    numOrNull(range.atrUsage),numOrNull(range.medianRangeUsage),numOrNull(range.p80RangeUsage),numOrNull(range.sameTimePace),numOrNull(range.rangePosition),numOrNull(range.currentRangePct),
+    numOrNull(range.remainingAtrPct),Number(range.historicalSample)||0,JSON.stringify(range),Date.now()
+  ).run();
+  return{symbol,observedAt,observedBucket,state:String(range.state||'INSUFFICIENT'),modelVersion:String(range.version||SESSION_RANGE_SHADOW_VERSION)};
+}
+
+export async function getSessionRangeShadowStatus(env){
+  await ensureShadowSchema(env);
+  const [total,states,last]=await Promise.all([
+    env.DB.prepare(`SELECT COUNT(*) AS count FROM session_range_shadow_observations`).first(),
+    env.DB.prepare(`SELECT shadow_state AS state,COUNT(*) AS count FROM session_range_shadow_observations GROUP BY shadow_state ORDER BY shadow_state`).all(),
+    env.DB.prepare(`SELECT symbol,production_status AS productionStatus,shadow_state AS shadowState,observed_at AS observedAt FROM session_range_shadow_observations ORDER BY observed_at DESC,id DESC LIMIT 1`).first()
+  ]);
+  return{modelVersion:SESSION_RANGE_SHADOW_VERSION,totalObservations:Number(total?.count)||0,byState:Object.fromEntries((states.results||[]).map(r=>[r.state,Number(r.count)||0])),last:last?{...last,observedAt:Number(last.observedAt)||0}:null};
+}
+
+async function ensureShadowSchema(env){
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS session_range_shadow_observations(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    symbol TEXT NOT NULL,
+    model_version TEXT NOT NULL,
+    source TEXT NOT NULL,
+    observed_at INTEGER NOT NULL,
+    observed_bucket INTEGER NOT NULL,
+    production_status TEXT NOT NULL DEFAULT '',
+    price REAL,
+    shadow_state TEXT NOT NULL,
+    atr_usage REAL,
+    median_range_usage REAL,
+    p80_range_usage REAL,
+    same_time_pace REAL,
+    range_position REAL,
+    current_range_pct REAL,
+    remaining_atr_pct REAL,
+    historical_sample INTEGER NOT NULL DEFAULT 0,
+    payload_json TEXT NOT NULL DEFAULT '{}',
+    created_at INTEGER NOT NULL,
+    UNIQUE(symbol,model_version,observed_bucket)
+  )`).run();
+  await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_session_range_shadow_time ON session_range_shadow_observations(observed_at DESC)`).run();
+}
 function groupSessions(candles){
   const map=new Map();
   for(const candle of candles){
@@ -93,5 +146,7 @@ function quantile(values,q){const a=(values||[]).filter(Number.isFinite).sort((x
 function median(values){return quantile(values,.5);}
 function validCandle(c){return Number.isFinite(Number(c?.time))&&positive(c?.open)&&positive(c?.high)&&positive(c?.low)&&positive(c?.close)&&Number(c.high)>=Number(c.low);}
 function positive(v){const n=Number(v);return Number.isFinite(n)&&n>0?n:null;}
+function numOrNull(v){const n=Number(v);return Number.isFinite(n)?n:null;}
+function sanitizeSymbol(v){const s=String(v||'').trim().toUpperCase().replace(/[^A-Z.]/g,'').slice(0,6);return/^[A-Z]{1,5}(?:\.[A-Z])?$/.test(s)?s:'';}
 function clamp(v,lo,hi){return Math.min(hi,Math.max(lo,v));}
 function insufficient(reason){return{version:SESSION_RANGE_SHADOW_VERSION,shadowOnly:true,affectsBuyNow:false,state:'INSUFFICIENT',reason,historicalSample:0,sameTimeSample:0};}
