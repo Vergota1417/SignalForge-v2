@@ -1,1 +1,1 @@
-window.SIGNALFORGE_BUILD=Object.freeze({version:'2.30.18',release:'mobile-simple-shell-fix',shell:'v30-18'});
+window.SIGNALFORGE_BUILD=Object.freeze({version:'2.30.19',release:'alert-deeplink-summary-anchor',shell:'v30-19'});
