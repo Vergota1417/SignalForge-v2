@@ -12,14 +12,15 @@
     style.id='sfDecisionSummaryStyles';
     style.textContent=`
       .sf-decision-summary{margin:10px 0 12px;padding:14px;border:1px solid var(--border);border-radius:14px;background:linear-gradient(135deg,rgba(78,161,255,.08),var(--panel) 42%,var(--panel-2));box-shadow:0 10px 28px rgba(0,0,0,.12)}
-      .sf-summary-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.sf-summary-eyebrow{font-size:9px;font-weight:850;letter-spacing:.09em;color:var(--muted)}.sf-summary-action{font-size:20px;font-weight:950;line-height:1.1;margin-top:4px}.sf-summary-action.buy{color:var(--green)}.sf-summary-action.wait,.sf-summary-action.setup{color:var(--yellow)}.sf-summary-action.pullback{color:var(--orange)}.sf-summary-action.avoid,.sf-summary-action.sell{color:var(--red)}
+      .sf-summary-symbol-line{display:flex;align-items:baseline;gap:8px;margin-top:2px}.sf-summary-symbol-line strong{font-size:15px;letter-spacing:.02em}.sf-summary-symbol-line span{font-size:12px;color:var(--muted)}.sf-summary-symbol-line [data-summary-change].positive{color:var(--green)}.sf-summary-symbol-line [data-summary-change].negative{color:var(--red)}
+      .sf-summary-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-top:4px}.sf-summary-eyebrow{font-size:9px;font-weight:850;letter-spacing:.09em;color:var(--muted)}.sf-summary-action{font-size:20px;font-weight:950;line-height:1.1;margin-top:4px}.sf-summary-action.buy{color:var(--green)}.sf-summary-action.wait,.sf-summary-action.setup{color:var(--yellow)}.sf-summary-action.pullback{color:var(--orange)}.sf-summary-action.avoid,.sf-summary-action.sell{color:var(--red)}
       .sf-summary-time{text-align:right;font-size:9px;color:var(--muted);line-height:1.45;min-width:112px}.sf-summary-time strong{display:block;color:var(--text);font-size:11px}
       .sf-summary-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin-top:12px}.sf-summary-cell{padding:9px;border:1px solid var(--border);border-radius:9px;background:rgba(255,255,255,.018)}.sf-summary-cell small{display:block;color:var(--muted);font-size:8px;font-weight:750;text-transform:uppercase;letter-spacing:.06em}.sf-summary-cell strong{display:block;margin-top:3px;font-size:11px;color:var(--text)}.sf-summary-cell .exp{display:block;margin-top:2px;font-size:8px;color:var(--muted)}
       .sf-summary-cell.good strong{color:var(--green)}.sf-summary-cell.caution strong{color:var(--orange)}.sf-summary-cell.blocked strong{color:var(--red)}.sf-summary-cell.pending strong{color:var(--yellow)}
       .sf-summary-explain{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:9px}.sf-summary-box{padding:10px;border:1px solid var(--border);border-radius:9px;background:var(--panel-2)}.sf-summary-box small{display:block;color:var(--muted);font-size:8px;font-weight:800;letter-spacing:.07em;text-transform:uppercase}.sf-summary-box strong{display:block;margin-top:4px;font-size:11px;line-height:1.45;color:var(--text)}
       .sf-summary-actions{display:flex;justify-content:flex-end;margin-top:9px}.sf-details-toggle{border:1px solid var(--border);background:transparent;color:var(--text);border-radius:8px;padding:7px 10px;font-size:10px;font-weight:800;cursor:pointer}
       body.sf-simple-mode .status-strip,body.sf-simple-mode .engine-section,body.sf-simple-mode .bottom-grid,body.sf-simple-mode #sfSessionRangeShadow,body.sf-simple-mode #sfOpeningRangeShadow{display:none!important}
-      @media(max-width:700px){.sf-decision-summary{padding:11px}.sf-summary-top{align-items:center}.sf-summary-action{font-size:17px}.sf-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.sf-summary-explain{grid-template-columns:1fr}.sf-summary-time{min-width:92px}.sf-summary-cell{padding:8px}}
+      @media(max-width:700px){.sf-decision-summary{margin:8px 0 10px;padding:11px}.sf-summary-top{align-items:center}.sf-summary-action{font-size:17px}.sf-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.sf-summary-explain{grid-template-columns:1fr}.sf-summary-time{min-width:92px}.sf-summary-cell{padding:8px}body.sf-simple-mode .hero-card,body.sf-simple-mode .dashboard-row{display:none!important}}
     `;
     document.head.appendChild(style);
   }
@@ -31,6 +32,8 @@
     const hero=document.querySelector('.hero-card');if(!hero)return null;
     panel=document.createElement('section');panel.id='sfDecisionSummary';panel.className='sf-decision-summary';panel.setAttribute('aria-live','polite');
     panel.innerHTML=`
+      <div class="sf-summary-eyebrow">SELECTED STOCK</div>
+      <div class="sf-summary-symbol-line"><strong data-summary-symbol>—</strong><span data-summary-price>—</span><span data-summary-change>—</span></div>
       <div class="sf-summary-top"><div><div class="sf-summary-eyebrow">DECISION SUMMARY</div><div class="sf-summary-action wait" data-summary-action>ANALYZING</div></div><div class="sf-summary-time"><span>Last checked</span><strong data-last-check>—</strong><span data-next-check>Next check —</span></div></div>
       <div class="sf-summary-grid">
         <div class="sf-summary-cell pending" data-cell-setup><small>Setup quality</small><strong data-setup>—</strong></div>
@@ -50,21 +53,25 @@
 
   async function refresh(){
     const panel=ensurePanel();if(!panel)return;
-    const symbol=String(document.getElementById('tickerBadge')?.textContent||'').trim().toUpperCase();if(!symbol)return;
+    const symbol=String(document.getElementById('tickerBadge')?.textContent||document.getElementById('symbolInput')?.value||'').trim().toUpperCase();if(!symbol)return;
     lastSymbol=symbol;
+    setText(panel,'[data-summary-symbol]',symbol);
     try{
-      const response=await fetch(`${API}/api/signals`,{headers:{accept:'application/json'}});
+      const response=await fetch(`${API}/api/signals`,{headers:{accept:'application/json'},cache:'no-store'});
       if(!response.ok)throw new Error(`HTTP ${response.status}`);
       const body=await response.json(),row=(body.signals||[]).find(x=>String(x.symbol||'').toUpperCase()===symbol)||null;
       if(lastSymbol!==symbol)return;
-      render(panel,row);
+      render(panel,row,symbol);
     }catch(error){renderFallback(panel,String(error?.message||'request failed'));}
   }
 
-  function render(panel,row){
+  function render(panel,row,symbol){
     const a=row?.analysis||null,status=String(row?.status||a?.status||document.getElementById('statusBadge')?.textContent||'WAIT — SETUP NOT READY').trim();
     const exec=a?.execution||{},confirmation=a?.intradayConfirmation||{},range=a?.sessionRangeShadow||{},opening=range?.openingRangeShadow||{};
     const rr=finite(exec.currentRr)?Number(exec.currentRr):finite(a?.rr)?Number(a.rr):null;
+    const price=finite(a?.latest?.close)?Number(a.latest.close):parseMoney(document.getElementById('priceValue')?.textContent),change=finite(a?.changePct)?Number(a.changePct):null;
+    setText(panel,'[data-summary-symbol]',symbol||a?.symbol||'—');setText(panel,'[data-summary-price]',price!=null?money(price):'—');
+    const changeEl=panel.querySelector('[data-summary-change]');if(changeEl){changeEl.textContent=change==null?'—':`${change>=0?'+':''}${(change*100).toFixed(2)}%`;changeEl.className=change==null?'':change>=0?'positive':'negative';}
     const action=actionFor(status);setText(panel,'[data-summary-action]',action.label);panel.querySelector('[data-summary-action]').className=`sf-summary-action ${action.kind}`;
 
     const readiness=finite(a?.readiness)?Number(a.readiness):0;
@@ -110,6 +117,7 @@
   function toggleDetails(){const showing=!document.body.classList.contains('sf-simple-mode');localStorage.setItem(DETAILS_KEY,showing?'0':'1');applyDetailsPreference();}
   function applyDetailsPreference(){const show=localStorage.getItem(DETAILS_KEY)==='1';document.body.classList.toggle('sf-simple-mode',!show);const btn=document.querySelector('[data-details-toggle]');if(btn)btn.textContent=show?'Hide Details':'Show Details';}
   function renderFallback(panel,message){setText(panel,'[data-blocker]',`Saved signal summary unavailable: ${message}.`);setText(panel,'[data-next-step]','The main decision card remains authoritative until the saved summary refreshes.');}
+  function parseMoney(v){const n=Number(String(v||'').replace(/[^0-9.-]/g,''));return Number.isFinite(n)&&n>0?n:null;}
   function money(v){const n=Number(v);return Number.isFinite(n)?`$${n.toFixed(2)}`:'—';}
   function finite(v){return Number.isFinite(Number(v));}
   function schedule(){clearInterval(timer);timer=setInterval(()=>{if(document.visibilityState!=='hidden')refresh();},60_000);}
