@@ -4,49 +4,54 @@
   const DETAILS_KEY='signalforge_show_details_v1';
   const NEAR_READY_MS=15*60*1000;
   const DEEP_REFRESH_MS=4*60*60*1000;
-  let timer=null,lastSymbol='';
+  let timer=null,lastSymbol='',alertFocused=false;
 
   function ensureStyles(){
     if(document.getElementById('sfDecisionSummaryStyles'))return;
     const style=document.createElement('style');
     style.id='sfDecisionSummaryStyles';
     style.textContent=`
-      .sf-decision-summary{margin:10px 0 12px;padding:14px;border:1px solid var(--border);border-radius:14px;background:linear-gradient(135deg,rgba(78,161,255,.08),var(--panel) 42%,var(--panel-2));box-shadow:0 10px 28px rgba(0,0,0,.12)}
+      .sf-decision-summary{margin:0 0 12px;padding:14px;border:1px solid var(--border);border-radius:14px;background:linear-gradient(135deg,rgba(78,161,255,.08),var(--panel) 42%,var(--panel-2));box-shadow:0 10px 28px rgba(0,0,0,.12)}
+      .sf-alert-context{position:relative;margin:-2px -2px 11px;padding:10px 34px 10px 11px;border:1px solid rgba(126,188,255,.38);border-radius:10px;background:rgba(126,188,255,.08)}.sf-alert-context[hidden]{display:none!important}.sf-alert-context small{display:block;color:#7ebcff;font-size:8px;font-weight:900;letter-spacing:.1em}.sf-alert-context strong{display:block;margin-top:3px;font-size:13px}.sf-alert-context span{display:block;margin-top:3px;color:var(--muted);font-size:10px;line-height:1.4}.sf-alert-dismiss{position:absolute;right:7px;top:7px;width:24px;height:24px;border:1px solid var(--border);border-radius:7px;background:transparent;color:var(--muted);cursor:pointer}
       .sf-summary-symbol-line{display:flex;align-items:baseline;gap:8px;margin-top:2px}.sf-summary-symbol-line strong{font-size:15px;letter-spacing:.02em}.sf-summary-symbol-line span{font-size:12px;color:var(--muted)}.sf-summary-symbol-line [data-summary-change].positive{color:var(--green)}.sf-summary-symbol-line [data-summary-change].negative{color:var(--red)}
       .sf-summary-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-top:4px}.sf-summary-eyebrow{font-size:9px;font-weight:850;letter-spacing:.09em;color:var(--muted)}.sf-summary-action{font-size:20px;font-weight:950;line-height:1.1;margin-top:4px}.sf-summary-action.buy{color:var(--green)}.sf-summary-action.wait,.sf-summary-action.setup{color:var(--yellow)}.sf-summary-action.pullback{color:var(--orange)}.sf-summary-action.avoid,.sf-summary-action.sell{color:var(--red)}
       .sf-summary-time{text-align:right;font-size:9px;color:var(--muted);line-height:1.45;min-width:112px}.sf-summary-time strong{display:block;color:var(--text);font-size:11px}
       .sf-summary-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin-top:12px}.sf-summary-cell{padding:9px;border:1px solid var(--border);border-radius:9px;background:rgba(255,255,255,.018)}.sf-summary-cell small{display:block;color:var(--muted);font-size:8px;font-weight:750;text-transform:uppercase;letter-spacing:.06em}.sf-summary-cell strong{display:block;margin-top:3px;font-size:11px;color:var(--text)}.sf-summary-cell .exp{display:block;margin-top:2px;font-size:8px;color:var(--muted)}
       .sf-summary-cell.good strong{color:var(--green)}.sf-summary-cell.caution strong{color:var(--orange)}.sf-summary-cell.blocked strong{color:var(--red)}.sf-summary-cell.pending strong{color:var(--yellow)}
       .sf-summary-explain{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:9px}.sf-summary-box{padding:10px;border:1px solid var(--border);border-radius:9px;background:var(--panel-2)}.sf-summary-box small{display:block;color:var(--muted);font-size:8px;font-weight:800;letter-spacing:.07em;text-transform:uppercase}.sf-summary-box strong{display:block;margin-top:4px;font-size:11px;line-height:1.45;color:var(--text)}
-      .sf-summary-actions{display:flex;justify-content:flex-end;margin-top:9px}.sf-details-toggle{border:1px solid var(--border);background:transparent;color:var(--text);border-radius:8px;padding:7px 10px;font-size:10px;font-weight:800;cursor:pointer}
+      .sf-summary-actions{display:flex;justify-content:flex-end;margin-top:9px}.sf-details-toggle{border:1px solid var(--border);background:transparent;color:var(--text);border-radius:8px;padding:8px 11px;font-size:10px;font-weight:850;cursor:pointer}
       body.sf-simple-mode .status-strip,body.sf-simple-mode .engine-section,body.sf-simple-mode .bottom-grid,body.sf-simple-mode #sfSessionRangeShadow,body.sf-simple-mode #sfOpeningRangeShadow{display:none!important}
-      @media(max-width:700px){.sf-decision-summary{margin:8px 0 10px;padding:11px}.sf-summary-top{align-items:center}.sf-summary-action{font-size:17px}.sf-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.sf-summary-explain{grid-template-columns:1fr}.sf-summary-time{min-width:92px}.sf-summary-cell{padding:8px}body.sf-simple-mode .hero-card,body.sf-simple-mode .dashboard-row{display:none!important}}
+      @media(max-width:700px){.sf-decision-summary{margin:0 0 10px;padding:11px}.sf-summary-top{align-items:center}.sf-summary-action{font-size:17px}.sf-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.sf-summary-explain{grid-template-columns:1fr}.sf-summary-time{min-width:92px}.sf-summary-cell{padding:8px}body.sf-simple-mode .hero-card,body.sf-simple-mode .dashboard-row{display:none!important}}
     `;
     document.head.appendChild(style);
   }
 
+  function panelMarkup(){return `
+    <div class="sf-alert-context" data-alert-context hidden>
+      <small>OPENED FROM ALERT</small><strong data-alert-title>—</strong><span data-alert-reason>—</span><button class="sf-alert-dismiss" type="button" data-alert-dismiss aria-label="Dismiss alert context">×</button>
+    </div>
+    <div class="sf-summary-eyebrow">SELECTED STOCK</div>
+    <div class="sf-summary-symbol-line"><strong data-summary-symbol>—</strong><span data-summary-price>—</span><span data-summary-change>—</span></div>
+    <div class="sf-summary-top"><div><div class="sf-summary-eyebrow">DECISION SUMMARY</div><div class="sf-summary-action wait" data-summary-action>ANALYZING</div></div><div class="sf-summary-time"><span>Last checked</span><strong data-last-check>—</strong><span data-next-check>Next check —</span></div></div>
+    <div class="sf-summary-grid">
+      <div class="sf-summary-cell pending" data-cell-setup><small>Setup quality</small><strong data-setup>—</strong></div>
+      <div class="sf-summary-cell pending" data-cell-entry><small>Entry location</small><strong data-entry>—</strong></div>
+      <div class="sf-summary-cell pending" data-cell-participation><small>Participation</small><strong data-participation>—</strong></div>
+      <div class="sf-summary-cell pending" data-cell-room><small>Room to run</small><strong data-room>—</strong><span class="exp">experimental</span></div>
+      <div class="sf-summary-cell pending" data-cell-opening><small>Opening structure</small><strong data-opening>—</strong><span class="exp">experimental</span></div>
+      <div class="sf-summary-cell pending" data-cell-rr><small>Risk / reward</small><strong data-rr>—</strong></div>
+    </div>
+    <div class="sf-summary-explain"><div class="sf-summary-box"><small>Why not buy?</small><strong data-blocker>Waiting for the current decision.</strong></div><div class="sf-summary-box"><small>What needs to happen next?</small><strong data-next-step>SignalForge is checking the production gates.</strong></div></div>
+    <div class="sf-summary-actions"><button class="sf-details-toggle" type="button" data-details-toggle>Show Details</button></div>`;}
+
   function ensurePanel(){
     ensureStyles();
+    const main=document.querySelector('.main-content');if(!main)return null;
     let panel=document.getElementById('sfDecisionSummary');
-    if(panel)return panel;
-    const hero=document.querySelector('.hero-card');if(!hero)return null;
-    panel=document.createElement('section');panel.id='sfDecisionSummary';panel.className='sf-decision-summary';panel.setAttribute('aria-live','polite');
-    panel.innerHTML=`
-      <div class="sf-summary-eyebrow">SELECTED STOCK</div>
-      <div class="sf-summary-symbol-line"><strong data-summary-symbol>—</strong><span data-summary-price>—</span><span data-summary-change>—</span></div>
-      <div class="sf-summary-top"><div><div class="sf-summary-eyebrow">DECISION SUMMARY</div><div class="sf-summary-action wait" data-summary-action>ANALYZING</div></div><div class="sf-summary-time"><span>Last checked</span><strong data-last-check>—</strong><span data-next-check>Next check —</span></div></div>
-      <div class="sf-summary-grid">
-        <div class="sf-summary-cell pending" data-cell-setup><small>Setup quality</small><strong data-setup>—</strong></div>
-        <div class="sf-summary-cell pending" data-cell-entry><small>Entry location</small><strong data-entry>—</strong></div>
-        <div class="sf-summary-cell pending" data-cell-participation><small>Participation</small><strong data-participation>—</strong></div>
-        <div class="sf-summary-cell pending" data-cell-room><small>Room to run</small><strong data-room>—</strong><span class="exp">experimental</span></div>
-        <div class="sf-summary-cell pending" data-cell-opening><small>Opening structure</small><strong data-opening>—</strong><span class="exp">experimental</span></div>
-        <div class="sf-summary-cell pending" data-cell-rr><small>Risk / reward</small><strong data-rr>—</strong></div>
-      </div>
-      <div class="sf-summary-explain"><div class="sf-summary-box"><small>Why not buy?</small><strong data-blocker>Waiting for the current decision.</strong></div><div class="sf-summary-box"><small>What needs to happen next?</small><strong data-next-step>SignalForge is checking the production gates.</strong></div></div>
-      <div class="sf-summary-actions"><button class="sf-details-toggle" type="button" data-details-toggle>Show Details</button></div>`;
-    hero.insertAdjacentElement('afterend',panel);
-    const btn=panel.querySelector('[data-details-toggle]');btn.addEventListener('click',toggleDetails);
+    if(!panel){panel=document.createElement('section');panel.id='sfDecisionSummary';panel.className='sf-decision-summary';panel.setAttribute('aria-live','polite');main.insertBefore(panel,main.firstElementChild||null);}
+    if(!panel.querySelector('[data-details-toggle]'))panel.innerHTML=panelMarkup();
+    const btn=panel.querySelector('[data-details-toggle]');if(btn&&!btn.dataset.bound){btn.dataset.bound='1';btn.addEventListener('click',toggleDetails);}
+    const dismiss=panel.querySelector('[data-alert-dismiss]');if(dismiss&&!dismiss.dataset.bound){dismiss.dataset.bound='1';dismiss.addEventListener('click',dismissAlertContext);}
     applyDetailsPreference();
     return panel;
   }
@@ -54,14 +59,12 @@
   async function refresh(){
     const panel=ensurePanel();if(!panel)return;
     const symbol=String(document.getElementById('tickerBadge')?.textContent||document.getElementById('symbolInput')?.value||'').trim().toUpperCase();if(!symbol)return;
-    lastSymbol=symbol;
-    setText(panel,'[data-summary-symbol]',symbol);
+    lastSymbol=symbol;setText(panel,'[data-summary-symbol]',symbol);renderAlertContext(panel,symbol);
     try{
       const response=await fetch(`${API}/api/signals`,{headers:{accept:'application/json'},cache:'no-store'});
       if(!response.ok)throw new Error(`HTTP ${response.status}`);
       const body=await response.json(),row=(body.signals||[]).find(x=>String(x.symbol||'').toUpperCase()===symbol)||null;
-      if(lastSymbol!==symbol)return;
-      render(panel,row,symbol);
+      if(lastSymbol!==symbol)return;render(panel,row,symbol);
     }catch(error){renderFallback(panel,String(error?.message||'request failed'));}
   }
 
@@ -72,24 +75,28 @@
     const price=finite(a?.latest?.close)?Number(a.latest.close):parseMoney(document.getElementById('priceValue')?.textContent),change=finite(a?.changePct)?Number(a.changePct):null;
     setText(panel,'[data-summary-symbol]',symbol||a?.symbol||'—');setText(panel,'[data-summary-price]',price!=null?money(price):'—');
     const changeEl=panel.querySelector('[data-summary-change]');if(changeEl){changeEl.textContent=change==null?'—':`${change>=0?'+':''}${(change*100).toFixed(2)}%`;changeEl.className=change==null?'':change>=0?'positive':'negative';}
-    const action=actionFor(status);setText(panel,'[data-summary-action]',action.label);panel.querySelector('[data-summary-action]').className=`sf-summary-action ${action.kind}`;
-
-    const readiness=finite(a?.readiness)?Number(a.readiness):0;
-    setMetric(panel,'setup',readiness>=82?'STRONG':readiness>=60?'BUILDING':'WEAK',readiness>=82?'good':readiness>=60?'pending':'blocked');
-    const nearEntry=exec.nearEntry===true;
-    setMetric(panel,'entry',nearEntry?'GOOD':a?.engines?.entry?.ready?'READY':'OUTSIDE ZONE',nearEntry?'good':a?.engines?.entry?.ready?'pending':'blocked');
-    const participation=confirmation.participationPass===true;
-    setMetric(panel,'participation',participation?'CONFIRMED':a?.dailyGatesReady?'WAITING':'PENDING',participation?'good':'pending');
+    const action=actionFor(status);setText(panel,'[data-summary-action]',action.label);const actionEl=panel.querySelector('[data-summary-action]');if(actionEl)actionEl.className=`sf-summary-action ${action.kind}`;
+    const readiness=finite(a?.readiness)?Number(a.readiness):0;setMetric(panel,'setup',readiness>=82?'STRONG':readiness>=60?'BUILDING':'WEAK',readiness>=82?'good':readiness>=60?'pending':'blocked');
+    const nearEntry=exec.nearEntry===true;setMetric(panel,'entry',nearEntry?'GOOD':a?.engines?.entry?.ready?'READY':'OUTSIDE ZONE',nearEntry?'good':a?.engines?.entry?.ready?'pending':'blocked');
+    const participation=confirmation.participationPass===true;setMetric(panel,'participation',participation?'CONFIRMED':a?.dailyGatesReady?'WAITING':'PENDING',participation?'good':'pending');
     const roomState=String(range?.state||'COLLECTING').toUpperCase();setMetric(panel,'room',roomState,shadowTone(roomState));
     const openingState=String(opening?.state||'COLLECTING').toUpperCase();setMetric(panel,'opening',openingState,openingTone(openingState));
     setMetric(panel,'rr',rr==null?'UNRESOLVED':`${rr.toFixed(2)} : 1${rr>=1.8?' PASS':' BLOCKED'}`,rr!=null&&rr>=1.8?'good':'blocked');
-
-    const blockers=Array.isArray(exec.blockers)?exec.blockers:[];
-    const blockerCopy=blockerFor(a,status,blockers,rr);
-    setText(panel,'[data-blocker]',blockerCopy.why);
-    setText(panel,'[data-next-step]',blockerCopy.next);
-    const updated=Number(row?.updatedAt)||0;setText(panel,'[data-last-check]',ageLabel(updated));setText(panel,'[data-next-check]',nextCheckLabel(status,a,updated));
+    const blockers=Array.isArray(exec.blockers)?exec.blockers:[],copy=blockerFor(a,status,blockers,rr);setText(panel,'[data-blocker]',copy.why);setText(panel,'[data-next-step]',copy.next);
+    const updated=Number(row?.updatedAt)||0;setText(panel,'[data-last-check]',ageLabel(updated));setText(panel,'[data-next-check]',nextCheckLabel(status,a,updated));renderAlertContext(panel,symbol);
   }
+
+  function renderAlertContext(panel,symbol){
+    const params=new URLSearchParams(location.search),box=panel.querySelector('[data-alert-context]');if(!box)return;
+    const active=params.get('alert')==='1',alertSymbol=String(params.get('alertSymbol')||'').toUpperCase();
+    if(!active||(alertSymbol&&alertSymbol!==symbol)){box.hidden=true;return;}
+    const status=params.get('alertStatus')||'SignalForge alert',previous=params.get('alertPrevious')||'',reason=params.get('alertReason')||'This notification opened the related SignalForge setup.',at=params.get('alertAt')||'';
+    const transition=previous&&previous!==status?`${previous} → ${status}`:status;setText(panel,'[data-alert-title]',`${alertSymbol||symbol||'SignalForge'} · ${transition}`);
+    const when=at?` · ${formatAlertTime(at)}`:'';setText(panel,'[data-alert-reason]',`${reason}${when}`);box.hidden=false;
+    if(!alertFocused){alertFocused=true;setTimeout(()=>panel.scrollIntoView({behavior:'smooth',block:'start'}),450);}
+  }
+
+  function dismissAlertContext(){const params=new URLSearchParams(location.search);['alert','alertSymbol','alertStatus','alertPrevious','alertReason','alertAt','alertKind'].forEach(k=>params.delete(k));const q=params.toString();history.replaceState(history.state,'',`${location.pathname}${q?`?${q}`:''}${location.hash}`);const box=document.querySelector('[data-alert-context]');if(box)box.hidden=true;}
 
   function blockerFor(a,status,blockers,rr){
     if(status==='BUY NOW')return{why:'Nothing is blocking BUY NOW. All production gates are currently cleared.',next:'If you act, use the displayed thesis-break/stop and structure target. SignalForge will keep rechecking the setup.'};
@@ -101,8 +108,7 @@
     if(first==='PARTICIPATION')return{why:a?.intradayConfirmation?.reason||'Live participation has not confirmed the move yet.',next:'Wait for RVOL of at least 1.00x, positive 1-hour response, and the required 15-minute confirmation.'};
     if(first==='OVEREXTENSION'||status==='WAIT FOR PULLBACK')return{why:'Price is extended and chasing would worsen the entry.',next:`Wait for a pullback below the overextension area${finite(a?.overextension)?` near ${money(a.overextension)}`:''} while the thesis remains intact.`};
     if(first==='THESIS BREAK')return{why:'Current price is at or below the thesis-break area.',next:'No new BUY should occur until structure repairs and a fresh thesis is established.'};
-    const failed=Array.isArray(a?.criticalFailed)?a.criticalFailed:[];
-    if(first==='HIGHER-TIMEFRAME GATES'||failed.length)return{why:`Higher-timeframe gate${failed.length===1?'':'s'} still blocking: ${failed.join(', ')||'not all four engines are ready'}.`,next:'Let the blocking higher-timeframe gate improve; SignalForge will promote it to execution checks once all four are ready.'};
+    const failed=Array.isArray(a?.criticalFailed)?a.criticalFailed:[];if(first==='HIGHER-TIMEFRAME GATES'||failed.length)return{why:`Higher-timeframe gate${failed.length===1?'':'s'} still blocking: ${failed.join(', ')||'not all four engines are ready'}.`,next:'Let the blocking higher-timeframe gate improve; SignalForge will promote it to execution checks once all four are ready.'};
     return{why:a?.reason||'The setup has not cleared every production BUY requirement.',next:'SignalForge will keep monitoring the candidate and re-evaluate when the required conditions change.'};
   }
 
@@ -114,16 +120,17 @@
   function setText(panel,selector,value){const el=panel.querySelector(selector);if(el)el.textContent=String(value??'—');}
   function ageLabel(ts){if(!ts)return'not yet';const d=Math.max(0,Date.now()-ts),m=Math.floor(d/60000);if(m<1)return'just now';if(m<60)return`${m} min ago`;const h=Math.floor(m/60);return`${h}h ${m%60}m ago`;}
   function nextCheckLabel(status,a,updated){if(!updated)return'Next check pending';const near=Boolean(a?.dailyGatesReady||status==='SETUP — READY SOON'||status==='WAIT FOR PULLBACK'||status==='BUY NOW'),interval=near?NEAR_READY_MS:DEEP_REFRESH_MS,due=updated+interval,remain=due-Date.now();if(remain<=0)return'Next check due now';const mins=Math.ceil(remain/60000);return near?`Next check ~${mins} min`:`Next deep check ~${Math.max(1,Math.ceil(mins/60))}h`;}
-  function toggleDetails(){const showing=!document.body.classList.contains('sf-simple-mode');localStorage.setItem(DETAILS_KEY,showing?'0':'1');applyDetailsPreference();}
+  function toggleDetails(){const showing=!document.body.classList.contains('sf-simple-mode');localStorage.setItem(DETAILS_KEY,showing?'0':'1');applyDetailsPreference();setTimeout(()=>window.dispatchEvent(new Event('resize')),80);}
   function applyDetailsPreference(){const show=localStorage.getItem(DETAILS_KEY)==='1';document.body.classList.toggle('sf-simple-mode',!show);const btn=document.querySelector('[data-details-toggle]');if(btn)btn.textContent=show?'Hide Details':'Show Details';}
-  function renderFallback(panel,message){setText(panel,'[data-blocker]',`Saved signal summary unavailable: ${message}.`);setText(panel,'[data-next-step]','The main decision card remains authoritative until the saved summary refreshes.');}
-  function parseMoney(v){const n=Number(String(v||'').replace(/[^0-9.-]/g,''));return Number.isFinite(n)&&n>0?n:null;}
+  function renderFallback(panel,message){setText(panel,'[data-blocker]',`Saved signal summary unavailable: ${message}.`);setText(panel,'[data-next-step]','The main decision card remains authoritative until the saved summary refreshes.');renderAlertContext(panel,lastSymbol);}
+  function parseMoney(v){const n=Number(String(v||'').replace(/[^0-9.-]/g,''));return Number.isFinite(n)?n:null;}
   function money(v){const n=Number(v);return Number.isFinite(n)?`$${n.toFixed(2)}`:'—';}
   function finite(v){return Number.isFinite(Number(v));}
+  function formatAlertTime(v){const d=new Date(v);return Number.isFinite(d.getTime())?d.toLocaleString([],{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'';}
   function schedule(){clearInterval(timer);timer=setInterval(()=>{if(document.visibilityState!=='hidden')refresh();},60_000);}
 
+  ensurePanel();
   const ticker=document.getElementById('tickerBadge');if(ticker)new MutationObserver(()=>setTimeout(refresh,130)).observe(ticker,{childList:true,subtree:true,characterData:true});
   const status=document.getElementById('statusBadge');if(status)new MutationObserver(()=>setTimeout(refresh,170)).observe(status,{childList:true,subtree:true,characterData:true});
-  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')refresh();});
-  window.addEventListener('load',()=>setTimeout(refresh,350));setTimeout(refresh,500);schedule();
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')refresh();});window.addEventListener('load',()=>setTimeout(refresh,350));setTimeout(refresh,250);schedule();
 })();
