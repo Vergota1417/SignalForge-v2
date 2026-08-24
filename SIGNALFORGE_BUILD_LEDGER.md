@@ -25,8 +25,6 @@ This file is the persistent source of truth for the build sequence. Complete and
 - [x] Group pending observations by symbol so one daily fetch can complete many observations/horizons.
 - [x] Mark same-session target+stop collisions as ambiguous rather than inventing intraday ordering.
 
-Benchmark-relative outcome is intentionally deferred to Stage 11.3, where the correct sector/market benchmark and no-lookahead baseline will be defined together.
-
 ### Stage 11.2 — Scanner / Request Budget Engine ✅
 
 - [x] Divide discovery into HOT / ACTIVE / EXPLORE tiers with bounded tier sizes.
@@ -37,14 +35,14 @@ Benchmark-relative outcome is intentionally deferred to Stage 11.3, where the co
 - [x] Record provider request purposes for radar quotes, market time-series by timeframe/context, symbol search, and stock-catalog refresh while retaining the global daily safety counter.
 - [x] Keep after-hours research/outcome maintenance and the existing quota target/reserve rather than consuming the full daily budget during live scanning.
 
+### Stage 11.3 — Benchmark Context ✅
+
+- [x] Automatically map stock → industry/sector benchmark → broad-market benchmark, with SPY fallback for unmapped names.
+- [x] Persist calculated industry, sector, and market relative-strength/trend context with deep-analysis evidence observations.
+- [x] Add 1/3/5/10/20-session industry, sector, and market benchmark returns plus excess returns using the last completed benchmark session at/before the observation as the no-lookahead baseline.
+- [x] Add a sector-rotation cohort evaluator and regression coverage while explicitly keeping rotation evidence-only rather than silently promoting it to a critical gate.
+
 ## CURRENT
-
-### Stage 11.3 — Benchmark Context
-
-- [ ] Automatically map stock → industry/sector benchmark → broad-market benchmark.
-- [ ] Persist sector and market relative-strength context with evidence observations.
-- [ ] Add benchmark-relative forward outcomes without lookahead.
-- [ ] Test whether sector rotation improves forward outcomes before using it as a critical gate.
 
 ### Stage 11.4 — Evidence / Model Evaluation
 
