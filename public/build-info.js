@@ -1,1 +1,1 @@
-window.SIGNALFORGE_BUILD=Object.freeze({version:'2.30.14',release:'session-range-shadow',shell:'v30-14'});
+window.SIGNALFORGE_BUILD=Object.freeze({version:'2.30.15',release:'opening-range-shadow',shell:'v30-15'});
