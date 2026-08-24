@@ -8,17 +8,19 @@ const ACTIVE_CAP=48;
 
 export async function getTieredScannerBatch(env,{limit=6,exploreCursor=0,now=Date.now()}={}){
   const pool=await getDiscoveryPool(env,{limit:120,now});
-  if(!pool.length)return{symbols:[],tiers:{hot:0,active:0,explore:0},selected:{hot:[],active:[],explore:[]},nextExploreCursor:0,universeSize:0};
-  const rows=await env.DB.prepare(`SELECT symbol,last_scanned AS lastScanned,scan_count AS scanCount,rolling_score AS rollingScore,score_velocity AS scoreVelocity,dollar_volume AS dollarVolume,relative_volume AS relativeVolume,cooldown_until AS cooldownUntil FROM discovery_stats WHERE cooldown_until<=?`).bind(now).all();
+  if(!pool.length)return{symbols:[],tiers:{hot:0,active:0,explore:0},selected:{hot:[],active:[],explore:[]},nextExploreCursor:0,universeSize:0,cooldownCount:0};
+  const rows=await env.DB.prepare(`SELECT symbol,last_scanned AS lastScanned,scan_count AS scanCount,rolling_score AS rollingScore,score_velocity AS scoreVelocity,dollar_volume AS dollarVolume,relative_volume AS relativeVolume,cooldown_until AS cooldownUntil FROM discovery_stats`).all();
   const stats=new Map((rows.results||[]).map(r=>[String(r.symbol||'').toUpperCase(),normalizeStat(r)]));
-  const classified=classifyScannerUniverse(pool,stats,{now});
+  const eligiblePool=pool.filter(symbol=>Number(stats.get(symbol)?.cooldownUntil||0)<=now),cooldownCount=pool.length-eligiblePool.length;
+  if(!eligiblePool.length)return{symbols:[],tiers:{hot:0,active:0,explore:0},selected:{hot:[],active:[],explore:[]},nextExploreCursor:0,universeSize:pool.length,cooldownCount};
+  const classified=classifyScannerUniverse(eligiblePool,stats,{now});
   const allocation=allocationForLimit(limit);
   const batch=selectTieredSymbols(classified,{limit,exploreCursor,now,allocation});
-  return{...batch,tiers:{hot:classified.hot.length,active:classified.active.length,explore:classified.explore.length},universeSize:pool.length};
+  return{...batch,tiers:{hot:classified.hot.length,active:classified.active.length,explore:classified.explore.length},universeSize:pool.length,cooldownCount};
 }
 
 export function classifyScannerUniverse(pool,stats,{now=Date.now()}={}){
-  const rows=(pool||[]).map(symbol=>({symbol,...(stats.get(symbol)||emptyStat(symbol))}));
+  const rows=(pool||[]).map(symbol=>({symbol,...(stats.get(symbol)||emptyStat(symbol))})).filter(x=>Number(x.cooldownUntil||0)<=now);
   const hotEligible=rows.filter(isHot).sort(prioritySort).slice(0,HOT_CAP),hotSet=new Set(hotEligible.map(x=>x.symbol));
   const activeEligible=rows.filter(x=>!hotSet.has(x.symbol)&&isActive(x)).sort(prioritySort).slice(0,ACTIVE_CAP),activeSet=new Set(activeEligible.map(x=>x.symbol));
   const explore=rows.filter(x=>!hotSet.has(x.symbol)&&!activeSet.has(x.symbol)).sort((a,b)=>a.symbol.localeCompare(b.symbol));
