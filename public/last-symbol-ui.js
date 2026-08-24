@@ -24,7 +24,6 @@
   function observe(){
     const badge=document.getElementById('tickerBadge');
     if(!badge){requestAnimationFrame(observe);return;}
-    rememberDisplayedSymbol();
     new MutationObserver(rememberDisplayedSymbol).observe(badge,{childList:true,characterData:true,subtree:true});
   }
   observe();
