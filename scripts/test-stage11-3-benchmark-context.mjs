@@ -1,0 +1,30 @@
+import assert from 'node:assert/strict';
+import { benchmarkContextFor, relativeStrengthFor, buildBenchmarkEvidenceContext } from '../src/benchmark-context.js';
+import { evaluateObservationOutcomes } from '../src/outcomes.js';
+
+const day=n=>Date.UTC(2026,7,n,0,0,0);
+const candle=(n,close)=>({time:day(n),open:close,high:close*1.01,low:close*.99,close,volume:1_000_000});
+
+const nvda=benchmarkContextFor('NVDA');
+assert.equal(nvda.industryBenchmark,'SMH');
+assert.equal(nvda.sectorBenchmark,'XLK');
+assert.equal(nvda.marketBenchmark,'SPY');
+assert.equal(benchmarkContextFor('UNKNOWN').marketBenchmark,'SPY');
+
+const stock=[...Array(55)].map((_,i)=>candle(i+1,100+i));
+const sector=[...Array(55)].map((_,i)=>candle(i+1,100+i*.5));
+assert.ok(relativeStrengthFor(stock,sector,20)>0);
+const context=buildBenchmarkEvidenceContext('NVDA',{stockCandles:stock,industryCandles:sector,sectorCandles:sector,marketCandles:sector});
+assert.ok(context.industryRelativeStrength>0&&context.sectorRelativeStrength>0&&context.marketRelativeStrength>0);
+
+const observation={id:9,symbol:'NVDA',observedAt:Date.UTC(2026,7,3,15),entryPrice:100,target:120,thesisBreak:90,benchmarkContext:nvda};
+const stockFuture=[candle(3,100),candle(4,102),candle(5,104),candle(6,106),candle(7,108),candle(10,110),candle(11,112),candle(12,114),candle(13,116),candle(14,118),candle(17,120),candle(18,122),candle(19,124),candle(20,126),candle(21,128),candle(24,130),candle(25,132),candle(26,134),candle(27,136),candle(28,138),candle(31,140)];
+const benchmark=(growth)=>[candle(3,100),candle(4,100+growth),candle(5,100+growth*2),candle(6,100+growth*3),candle(7,100+growth*4),candle(10,100+growth*5),candle(11,100+growth*6),candle(12,100+growth*7),candle(13,100+growth*8),candle(14,100+growth*9),candle(17,100+growth*10),candle(18,100+growth*11),candle(19,100+growth*12),candle(20,100+growth*13),candle(21,100+growth*14),candle(24,100+growth*15),candle(25,100+growth*16),candle(26,100+growth*17),candle(27,100+growth*18),candle(28,100+growth*19),candle(31,100+growth*20)];
+const outcomes=evaluateObservationOutcomes(observation,stockFuture,{now:Date.UTC(2026,8,1),benchmarkCandles:{SMH:benchmark(.5),XLK:benchmark(.25),SPY:benchmark(.1)}});
+const one=outcomes.find(x=>x.horizonSessions===1),twenty=outcomes.find(x=>x.horizonSessions===20);
+assert.ok(Math.abs(one.industryReturn-.005)<1e-9,'Benchmark return must start from the last completed session at/before observation, not future data.');
+assert.ok(one.marketExcessReturn>one.industryExcessReturn,'Slower SPY should produce larger excess return.');
+assert.ok(twenty.sectorExcessReturn>0&&twenty.marketExcessReturn>0);
+assert.equal(twenty.outcomeSession,'2026-08-31');
+
+console.log('Stage 11.3 benchmark-context regression tests passed');
