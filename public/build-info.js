@@ -1,1 +1,1 @@
-window.SIGNALFORGE_BUILD=Object.freeze({version:'2.30.12',release:'participation-confirmation',shell:'v30-12'});
+window.SIGNALFORGE_BUILD=Object.freeze({version:'2.30.13',release:'chart-buy-pipeline-reliability',shell:'v30-13'});
