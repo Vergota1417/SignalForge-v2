@@ -86,9 +86,19 @@ This file is the persistent source of truth for the build sequence. Complete and
 - [x] Keep a forward pass evidence-only: it nominates a challenger for deliberate review but never mutates production gates automatically.
 - [x] Add Stage 14 regression coverage to the complete validation suite.
 
+### Stage 14.1 — Unified Action Experience ✅
+
+- [x] Combine Early Movement and saved deep-analysis state into one primary action without weakening BUY NOW gates.
+- [x] Present QUIET → WATCH → BUILDING → READY SOON → BUY NOW as the visible opportunity progression.
+- [x] Preserve WAIT FOR PULLBACK, AVOID, and SELL / EXIT as explicit protective overrides rather than hiding them inside a score.
+- [x] Show movement, readiness, gate count, and the blocking reason directly on Opportunity Radar cards.
+- [x] Mirror the same unified action language on the selected-symbol dashboard so tapping a Radar candidate does not change interpretation.
+- [x] Keep BUY NOW as the only entry-permission state; BUILDING and READY SOON remain preparation states.
+- [x] Add Stage 14.1 regression and syntax coverage to the complete validation suite.
+
 ## CURRENT
 
-Stage 14 is complete. SignalForge now has the full loop from point-in-time evidence → forward outcomes → retrospective optimization → forward-only challenger validation. The current challenger remains in COLLECTING until enough post-rollout 10-session outcomes resolve.
+Stage 14.1 is complete. SignalForge now presents one consistent action hierarchy from early discovery through deep-analysis confirmation while retaining the evidence-first production rules. The forward challenger remains in COLLECTING until enough post-rollout 10-session outcomes resolve.
 
 ## NEXT RULE
 
