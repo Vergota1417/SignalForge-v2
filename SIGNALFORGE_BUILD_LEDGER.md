@@ -76,10 +76,20 @@ This file is the persistent source of truth for the build sequence. Complete and
 - [x] Keep Early Movement evidence-only; it does not bypass the live BUY gates or automatically open paper positions.
 - [x] Add Stage 13 regression coverage to the complete validation suite.
 
+### Stage 14 — Forward Shadow Validation ✅
+
+- [x] Add a persistent D1 challenger registry with a fixed rollout timestamp so pre-rollout evidence cannot leak into the forward test.
+- [x] Evaluate Champion vs Challenger using only post-rollout resolved analysis outcomes.
+- [x] Require a minimum forward sample before leaving COLLECTING state.
+- [x] Persist COLLECTING / FORWARD_PASS / FORWARD_FAIL results and the full evaluation payload.
+- [x] Include forward-shadow results inside the existing evidence optimization report without spending additional market-data requests.
+- [x] Keep a forward pass evidence-only: it nominates a challenger for deliberate review but never mutates production gates automatically.
+- [x] Add Stage 14 regression coverage to the complete validation suite.
+
 ## CURRENT
 
-Stage 13 is complete. Early Movement can now collect forward evidence alongside the existing decision engine. The next optimization should be selected from measured Early Movement outcomes and Champion/Challenger evidence rather than promoting the new score by assumption.
+Stage 14 is complete. SignalForge now has the full loop from point-in-time evidence → forward outcomes → retrospective optimization → forward-only challenger validation. The current challenger remains in COLLECTING until enough post-rollout 10-session outcomes resolve.
 
 ## NEXT RULE
 
-Use measured evidence to choose candidate improvements. Production bugs may be fixed immediately. New critical gates or major model changes must first beat the current Champion retrospectively, then survive forward shadow validation before promotion.
+Do not invent another production model change while the forward cohort is immature. Continue collecting Early Movement and Challenger evidence. The next strategy change must be selected from measured outcomes, beat the current Champion retrospectively, and independently pass Stage 14 forward shadow validation before deliberate production review.
