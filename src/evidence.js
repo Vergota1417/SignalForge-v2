@@ -61,9 +61,9 @@ export async function recordRadarEvidence(env,quote,{source='radar',now=Date.now
   return row;
 }
 
-export async function recordAnalysisEvidence(env,analysis,{source='deep-analysis',timeframe='6M',quote=null,now=Date.now(),modelVersion=ANALYSIS_MODEL_VERSION}={}){
+export async function recordAnalysisEvidence(env,analysis,{source='deep-analysis',timeframe='6M',quote=null,now=Date.now(),modelVersion=ANALYSIS_MODEL_VERSION,benchmarkContext=null}={}){
   await ensureEvidenceSchema(env);
-  const row=analysisEvidenceRow(analysis,{source,timeframe,quote,now,modelVersion});
+  const row=analysisEvidenceRow(analysis,{source,timeframe,quote,now,modelVersion,benchmarkContext});
   if(!row.symbol)return null;
   await env.DB.prepare(`INSERT OR IGNORE INTO evidence_observations(
     symbol,observation_type,source,timeframe,model_version,observed_at,observed_bucket,
@@ -108,8 +108,8 @@ export function radarEvidenceRow(quote,{source='radar',now=Date.now()}={}){
   };
 }
 
-export function analysisEvidenceRow(analysis,{source='deep-analysis',timeframe='6M',quote=null,now=Date.now(),modelVersion=ANALYSIS_MODEL_VERSION}={}){
-  const engines=analysis?.engines||{},gateList=Object.values(engines).filter(Boolean),symbol=sanitizeSymbol(analysis?.symbol),benchmarkContext=benchmarkContextFor(symbol);
+export function analysisEvidenceRow(analysis,{source='deep-analysis',timeframe='6M',quote=null,now=Date.now(),modelVersion=ANALYSIS_MODEL_VERSION,benchmarkContext=null}={}){
+  const engines=analysis?.engines||{},gateList=Object.values(engines).filter(Boolean),symbol=sanitizeSymbol(analysis?.symbol),resolvedBenchmarkContext=normalizeBenchmarkContext(benchmarkContext)||benchmarkContextFor(symbol);
   const gatesReady=gateList.filter(x=>x?.ready).length,gateTotal=gateList.length||4;
   return{
     symbol,observationType:'ANALYSIS',source:String(source||'deep-analysis'),timeframe:String(timeframe||''),modelVersion:String(modelVersion||ANALYSIS_MODEL_VERSION),
@@ -117,11 +117,12 @@ export function analysisEvidenceRow(analysis,{source='deep-analysis',timeframe='
     discoveryScore:numOrNull(quote?.rollingDiscoveryScore??quote?.discoveryScore??quote?.score),scoreVelocity:numOrNull(quote?.scoreVelocity),relativeVolume:numOrNull(quote?.relativeVolume),dollarVolume:numOrNull(quote?.dollarVolume),
     gatesReady,gateTotal,trendReady:Boolean(engines?.trend?.ready),entryReady:Boolean(engines?.entry?.ready),probabilityReady:Boolean(engines?.probability?.ready),riskRewardReady:Boolean(engines?.riskReward?.ready),
     preferredEntryLow:numOrNull(analysis?.preferredEntryLow),preferredEntryHigh:numOrNull(analysis?.preferredEntryHigh),overextension:numOrNull(analysis?.overextension),thesisBreak:numOrNull(analysis?.thesisBreak),target:numOrNull(analysis?.target),rr:numOrNull(analysis?.rr),
-    benchmarkSymbol:String(analysis?.benchmark?.symbol||benchmarkContext.marketBenchmark||''),benchmarkBull:analysis?.benchmark?Boolean(analysis.benchmark.bull):null,benchmarkRiskOff:analysis?.benchmark?Boolean(analysis.benchmark.riskOff):null,
-    payload:{benchmarkContext,criticalFailed:Array.isArray(analysis?.criticalFailed)?analysis.criticalFailed:[],reason:String(analysis?.reason||''),wf:{sample:Number(analysis?.wf?.sample)||0,winRate:numOrNull(analysis?.wf?.winRate),avgReturn:numOrNull(analysis?.wf?.avgReturn)},relativeStrength20:numOrNull(analysis?.relativeStrength20),rsi:numOrNull(analysis?.rsi)}
+    benchmarkSymbol:String(analysis?.benchmark?.symbol||resolvedBenchmarkContext.marketBenchmark||''),benchmarkBull:analysis?.benchmark?Boolean(analysis.benchmark.bull):null,benchmarkRiskOff:analysis?.benchmark?Boolean(analysis.benchmark.riskOff):null,
+    payload:{benchmarkContext:resolvedBenchmarkContext,criticalFailed:Array.isArray(analysis?.criticalFailed)?analysis.criticalFailed:[],reason:String(analysis?.reason||''),wf:{sample:Number(analysis?.wf?.sample)||0,winRate:numOrNull(analysis?.wf?.winRate),avgReturn:numOrNull(analysis?.wf?.avgReturn)},relativeStrength20:numOrNull(analysis?.relativeStrength20),rsi:numOrNull(analysis?.rsi)}
   };
 }
 
+function normalizeBenchmarkContext(value){if(!value||typeof value!=='object')return null;return{...value,industryRelativeStrength:numOrNull(value.industryRelativeStrength),sectorRelativeStrength:numOrNull(value.sectorRelativeStrength),marketRelativeStrength:numOrNull(value.marketRelativeStrength)};}
 function bucket(now){const n=Number(now)||Date.now();return Math.floor(n/FIFTEEN_MINUTES)*FIFTEEN_MINUTES;}
 function sanitizeSymbol(v){const s=String(v||'').trim().toUpperCase().replace(/[^A-Z.]/g,'').slice(0,6);return/^[A-Z]{1,5}(?:\.[A-Z])?$/.test(s)?s:'';}
 function numOrNull(v){const n=Number(v);return Number.isFinite(n)?n:null;}
