@@ -4,6 +4,7 @@ import { buildAnalysisExpectations } from './analysis-expectation.js';
 import { recordRadarEvidence } from './evidence.js';
 import { getTieredScannerBatch } from './scanner-budget.js';
 import { reserveProviderPurpose } from './provider-usage.js';
+import { earlyMovementSignal } from './early-movement.js';
 
 export function radarUniverse(env){const raw=String(env.RADAR_UNIVERSE||'').trim(),pinned=raw?raw.split(',').map(sanitizeSymbol).filter(Boolean):[];return[...new Set([...pinned,...CORE_DISCOVERY_SYMBOLS])].slice(0,120);}
 
@@ -11,7 +12,7 @@ export async function runRadarDiscovery(env,{batchSize=6,now=Date.now()}={}){
   const previous=await getRadarState(env),batch=await getTieredScannerBatch(env,{limit:batchSize,exploreCursor:Number(previous?.cursor)||0,now});
   if(!batch.symbols.length)return{mode:'discovery',scanned:[],leaders:[],cursor:batch.nextExploreCursor,universeSize:batch.universeSize,tiers:batch.tiers,selected:batch.selected};
   const scanned=[];
-  for(const symbol of batch.symbols){try{const quote=await fetchQuote(env,symbol),observation=await recordDiscoveryObservation(env,quote,{now}),enriched={...quote,scannerTier:tierFor(symbol,batch.selected),rollingDiscoveryScore:observation?.rollingScore??quote.discoveryScore,scoreVelocity:observation?.scoreVelocity??0,dollarVolume:observation?.dollarVolume??quote.price*quote.volume};await putRadarQuote(env,enriched);await recordRadarEvidence(env,enriched,{source:'scheduled-radar',now});scanned.push(enriched);}catch(error){console.error(JSON.stringify({event:'radar_quote_error',symbol,message:error?.message||String(error)}));}}
+  for(const symbol of batch.symbols){try{const quote=await fetchQuote(env,symbol),observation=await recordDiscoveryObservation(env,quote,{now}),enriched={...quote,scannerTier:tierFor(symbol,batch.selected),rollingDiscoveryScore:observation?.rollingScore??quote.discoveryScore,scoreVelocity:observation?.scoreVelocity??0,dollarVolume:observation?.dollarVolume??quote.price*quote.volume};enriched.earlyMovement=earlyMovementSignal(enriched);await putRadarQuote(env,enriched);await recordRadarEvidence(env,enriched,{source:'scheduled-radar',now});scanned.push(enriched);}catch(error){console.error(JSON.stringify({event:'radar_quote_error',symbol,message:error?.message||String(error)}));}}
   const leaders=rankQuotes(await listRadarQuotes(env,14_400_000,40)).slice(0,6),updatedAt=await putRadarState(env,batch.nextExploreCursor,leaders.map(q=>q.symbol));return{mode:'discovery',scanned,leaders,cursor:batch.nextExploreCursor,updatedAt,universeSize:batch.universeSize,tiers:batch.tiers,selected:batch.selected};
 }
 
@@ -19,7 +20,7 @@ export async function getRadarSnapshot(env){
   const pool=await getDiscoveryPool(env,{limit:120});
   const[state,quotes,status]=await Promise.all([getRadarState(env),listRadarQuotes(env,14_400_000,40),getDiscoveryStatus(env)]),ranked=rankQuotes(quotes),bySymbol=new Map(ranked.map(q=>[q.symbol,q])),leaders=(state?.symbols||[]).map(s=>bySymbol.get(s)).filter(Boolean),fallback=ranked.filter(q=>!leaders.some(x=>x.symbol===q.symbol)),symbols=[...leaders,...fallback].slice(0,6);
   const expectations=await buildAnalysisExpectations(env,{symbols:symbols.map(x=>x.symbol),pool,cursor:state?.cursor||0,now:Date.now()});
-  return{symbols:symbols.map(row=>({...row,expectation:expectations[row.symbol]||null})),updatedAt:state?.updatedAt||0,cursor:state?.cursor||0,universeSize:pool.length,catalogSize:status.catalogSize,scannedSymbols:status.scannedSymbols,catalogUpdatedAt:status.catalogUpdatedAt,marketTimezone:'America/New_York'};
+  return{symbols:symbols.map(row=>({...row,earlyMovement:earlyMovementSignal(row),expectation:expectations[row.symbol]||null})),updatedAt:state?.updatedAt||0,cursor:state?.cursor||0,universeSize:pool.length,catalogSize:status.catalogSize,scannedSymbols:status.scannedSymbols,catalogUpdatedAt:status.catalogUpdatedAt,marketTimezone:'America/New_York'};
 }
 export async function getRadarSymbols(env){const snapshot=await getRadarSnapshot(env);return snapshot.symbols.map(x=>x.symbol).filter(Boolean);}
 
