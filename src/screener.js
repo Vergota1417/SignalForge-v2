@@ -6,7 +6,6 @@ import { getResearchMap } from './research.js';
 import { runPaperSimulation } from './simulation.js';
 import { buildWeekendIntelligenceReport, getWeekendIntelligenceReport } from './weekend.js';
 import { recordAnalysisEvidence } from './evidence.js';
-import { loadBenchmarkEvidence } from './benchmark-loader.js';
 import { refreshExecutionAnalysis } from './execution-confirmation.js';
 import { broadcastSignalPush } from './push.js';
 
@@ -38,7 +37,7 @@ export async function getSmartScreenerSnapshot(env,{limit=30}={}){
   let weekendIntelligence=await getWeekendIntelligenceReport(env);
   const marketMode=marketModeFor(now);
   if(marketMode.weekend&&marketMode.weekendResearchWindowOpen&&(!weekendIntelligence||weekendIntelligence.weekKey!==marketMode.weekKey))weekendIntelligence=await buildWeekendIntelligenceReport(env,{now});
-  return{rows,simulation,weekendIntelligence,marketMode,updatedAt:Math.max(0,...rows.map(row=>Number(row.quoteUpdatedAt)||0)),coverage:{weeklyPool:pool.length,catalogSize:status.catalogSize,scannedSymbols:status.scannedSymbols,rankedNow:rows.length,deepAnalyzed:analyzed,researchConfirmed},methodology:{stage1:'Discovery score: movement + relative volume + liquidity + score velocity.',stage2:'Top discovery candidates are automatically promoted into higher-cost four-engine analysis.',stage3:'After-hours 1-year historical research adds a bounded confirmation adjustment; it cannot override AVOID or SELL / EXIT.',stage4:'Saved live deep-analysis status remains authoritative for trade state.',stage5:'Forward paper trading opens only on new BUY NOW events and never uses future data.',stage6:'Near-ready candidates are rechecked every 15 minutes; daily-ready setups use a lightweight 15m execution refresh before BUY NOW.',weekend:'Weekend Intelligence converts stale executable-looking states into research-only Monday planning labels; fresh Monday data must reconfirm any BUY.',rule:'Historical research strengthens evidence and ranking, but never replaces the live decision gates.'}};
+  return{rows,simulation,weekendIntelligence,marketMode,updatedAt:Math.max(0,...rows.map(row=>Number(row.quoteUpdatedAt)||0)),coverage:{weeklyPool:pool.length,catalogSize:status.catalogSize,scannedSymbols:status.scannedSymbols,rankedNow:rows.length,deepAnalyzed:analyzed,researchConfirmed},methodology:{stage1:'Discovery score: movement + relative volume + liquidity + score velocity.',stage2:'Top discovery candidates are automatically promoted into higher-cost four-engine analysis.',stage3:'After-hours 1-year historical research adds a bounded confirmation adjustment; it cannot override AVOID or SELL / EXIT.',stage4:'Saved live deep-analysis status remains authoritative for trade state.',stage5:'Forward paper trading opens only on new BUY NOW events and never uses future data.',stage6:'Near-ready candidates are rechecked every 15 minutes; daily-ready setups use a lightweight 15m execution refresh before BUY NOW.',stage7:'Live promotion uses SPY plus the candidate only; sector/industry evidence is deferred so execution checks stay within the provider budget.',weekend:'Weekend Intelligence converts stale executable-looking states into research-only Monday planning labels; fresh Monday data must reconfirm any BUY.',rule:'Historical research strengthens evidence and ranking, but never replaces the live decision gates.'}};
 }
 
 export async function runScreenerPromotion(env,{maxPromotions=2,now=Date.now()}={}){
@@ -56,7 +55,7 @@ export async function runScreenerPromotion(env,{maxPromotions=2,now=Date.now()}=
   for(const candidate of candidates){
     try{
       const previousSignal=signalMap.get(candidate.symbol)||null,previousAnalysis=previousSignal?.analysis||null,ageMs=Math.max(0,Number(now)-Number(previousSignal?.updatedAt||0));
-      let analysis=null,benchmarkContext=null,benchmarkErrors=[],mode='FULL';
+      let analysis=null,mode='FULL';
       if(previousAnalysis?.dailyGatesReady&&ageMs<PROMOTION_STALE_MS){
         const intraday=await getMarketData(env,candidate.symbol,'5D',false,{purpose:'execution-confirmation-15m'}),confirmation=assessIntradayConfirmation(intraday.candles);
         analysis=refreshExecutionAnalysis(previousAnalysis,confirmation);mode='EXECUTION';
@@ -68,18 +67,14 @@ export async function runScreenerPromotion(env,{maxPromotions=2,now=Date.now()}=
           const intraday=await getMarketData(env,candidate.symbol,'5D',false,{purpose:'execution-confirmation-15m'}),confirmation=assessIntradayConfirmation(intraday.candles);
           analysis=refreshExecutionAnalysis(analysis,confirmation);
         }
-        if(!previousAnalysis||ageMs>=PROMOTION_STALE_MS){
-          const benchmarkEvidence=await loadBenchmarkEvidence(env,candidate.symbol,{stockCandles:market.candles,timeframe:'6M',purposePrefix:'promotion-benchmark-context',preloaded:{SPY:benchmark}});
-          benchmarkContext=benchmarkEvidence.context;benchmarkErrors=benchmarkEvidence.errors;
-        }
       }
       const event=await recordSignal(env,analysis);
-      await recordAnalysisEvidence(env,analysis,{source:mode==='EXECUTION'?'execution-recheck':'screener-promotion',timeframe:mode==='EXECUTION'?'6M+5D':'6M',quote:candidate,now,modelVersion:EXECUTION_MODEL_VERSION,benchmarkContext});
+      await recordAnalysisEvidence(env,analysis,{source:mode==='EXECUTION'?'execution-recheck':'screener-promotion',timeframe:mode==='EXECUTION'?'6M+5D':'6M',quote:candidate,now,modelVersion:EXECUTION_MODEL_VERSION});
       if(event.changed){
         try{const push=await broadcastSignalPush(env,analysis,event.previousStatus,event.now);console.log(JSON.stringify({event:'signal_status_push',symbol:candidate.symbol,status:analysis.status,previousStatus:event.previousStatus,mode,...push}));}
         catch(error){console.error(JSON.stringify({event:'signal_status_push_error',symbol:candidate.symbol,status:analysis.status,message:error?.message||String(error)}));}
       }
-      promoted.push({symbol:candidate.symbol,screenScore:candidate.screenScore,researchScore:candidate.research?.confirmationScore||0,status:analysis.status,readiness:analysis.readiness,changed:event.changed,mode,modelVersion:EXECUTION_MODEL_VERSION,participation:analysis.intradayConfirmation?{pass:Boolean(analysis.intradayConfirmation.pass),corePass:Boolean(analysis.intradayConfirmation.participationPass),passes:Number(analysis.intradayConfirmation.passes)||0,total:Number(analysis.intradayConfirmation.total)||5}:null,benchmarkContext,benchmarkErrors});
+      promoted.push({symbol:candidate.symbol,screenScore:candidate.screenScore,researchScore:candidate.research?.confirmationScore||0,status:analysis.status,readiness:analysis.readiness,changed:event.changed,mode,modelVersion:EXECUTION_MODEL_VERSION,participation:analysis.intradayConfirmation?{pass:Boolean(analysis.intradayConfirmation.pass),corePass:Boolean(analysis.intradayConfirmation.participationPass),passes:Number(analysis.intradayConfirmation.passes)||0,total:Number(analysis.intradayConfirmation.total)||5}:null});
       signalMap.set(candidate.symbol,{symbol:candidate.symbol,status:analysis.status,analysis,updatedAt:event.now});
     }catch(error){console.error(JSON.stringify({event:'screener_promotion_error',symbol:candidate.symbol,message:error?.message||String(error)}));break;}
   }
