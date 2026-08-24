@@ -98,18 +98,27 @@ function volatilityRegime(values,period=20){
 }
 
 export function assessIntradayConfirmation(candles){
-  if(!Array.isArray(candles)||candles.length<30)return{pass:false,passes:0,total:5,state:'INSUFFICIENT',timeframe:'15m',reason:'Not enough completed 15-minute candles.'};
+  if(!Array.isArray(candles)||candles.length<30)return{pass:false,passes:0,total:5,state:'INSUFFICIENT',timeframe:'15m',participationRequired:true,participationPass:false,reason:'Not enough completed 15-minute candles to confirm participation.'};
   const completed=candles.slice(0,-1),closes=completed.map(c=>c.close),latest=completed.at(-1),s20=sma(closes,20)||latest.close,r14=wildersRsi(closes,14),momentum4=closes.length>4?latest.close/closes[closes.length-5]-1:0;
   const avwap=weeklyAvwap(completed)||latest.close,rvol=timeOfDayRvol(completed),volatility=volatilityRegime(closes,20);
+  const aboveAvwap=latest.close>=avwap,rvolPass=rvol.value>=1.0,momentumPass=momentum4>0,rsiPass=r14>=45&&r14<=68,trendPass=latest.close>s20;
   const metrics=[
-    {name:'Price vs weekly AVWAP',value:`${latest.close>=avwap?'Above':'Below'} weekly AVWAP`,pass:latest.close>=avwap},
-    {name:'Time-of-day RVOL',value:`${rvol.value.toFixed(2)}x (${rvol.sample} matched sessions)`,pass:rvol.value>=1.0,warn:rvol.value>=.8},
-    {name:'1-hour momentum',value:`${(momentum4*100).toFixed(2)}%`,pass:momentum4>0},
-    {name:'15m Wilder RSI',value:r14.toFixed(1),pass:r14>=45&&r14<=68,warn:r14>68&&r14<76},
-    {name:'15m trend vs 20-bar',value:`Price ${latest.close>s20?'above':'below'} 20-bar average`,pass:latest.close>s20}
+    {name:'Price vs weekly AVWAP',value:`${aboveAvwap?'Above':'Below'} weekly AVWAP`,pass:aboveAvwap,role:'execution-location'},
+    {name:'Time-of-day RVOL',value:`${rvol.value.toFixed(2)}x (${rvol.sample} matched sessions)`,pass:rvolPass,warn:rvol.value>=.8,role:'participation-core'},
+    {name:'1-hour momentum',value:`${(momentum4*100).toFixed(2)}%`,pass:momentumPass,role:'participation-core'},
+    {name:'15m Wilder RSI',value:r14.toFixed(1),pass:rsiPass,warn:r14>68&&r14<76,role:'execution-quality'},
+    {name:'15m trend vs 20-bar',value:`Price ${trendPass?'above':'below'} 20-bar average`,pass:trendPass,role:'execution-quality'}
   ];
-  const passes=metrics.filter(m=>m.pass).length,pass=passes>=4;
-  return{pass,passes,total:metrics.length,state:pass?'PASS':passes===3?'WARN':'FAIL',timeframe:'15m',latestTime:latest.time,latestPrice:latest.close,sma20:s20,rsi:r14,momentum4,relativeVolume:rvol.value,rvolSample:rvol.sample,avwap,volatility,metrics,reason:pass?'Entry timing is constructive: price, participation, momentum, and weekly AVWAP are aligned.':'Entry timing is not attractive enough yet; the higher-timeframe thesis is unchanged.'};
+  const passes=metrics.filter(m=>m.pass).length,participationPass=rvolPass&&momentumPass,pass=participationPass&&passes>=4;
+  const state=pass?'PASS':participationPass&&passes===3?'WARN':'FAIL';
+  const reason=pass
+    ?'Participation confirmed: relative volume is healthy, price response is positive, and at least four execution checks agree.'
+    :!rvolPass
+      ?`BUY blocked by participation: time-of-day RVOL is ${rvol.value.toFixed(2)}x and must reach at least 1.00x.`
+      :!momentumPass
+        ?'BUY blocked by participation: volume is present, but the last-hour price response is not positive.'
+        :'Participation is present, but one more execution-quality check is needed before BUY NOW.';
+  return{pass,passes,total:metrics.length,state,timeframe:'15m',latestTime:latest.time,latestPrice:latest.close,sma20:s20,rsi:r14,momentum4,relativeVolume:rvol.value,rvolSample:rvol.sample,avwap,volatility,metrics,participationRequired:true,participationPass,participationCore:{relativeVolume:rvolPass,positivePriceResponse:momentumPass},reason};
 }
 
 export function analyze(candles,symbol,context={}){
@@ -153,10 +162,10 @@ export function analyze(candles,symbol,context={}){
   else if(!engines.trend.ready){status='AVOID';reason='Trend quality is not strong enough to justify a new investment.';}
   else if(benchmark?.riskOff&&!engines.probability.ready){status='WAIT — SETUP NOT READY';reason='The stock setup is improving, but the broad-market regime is risk-off.';}
   else if(latest.close>overextension||r14>=76){status='WAIT FOR PULLBACK';reason='Trend is strong, but price is too extended to chase.';}
-  else if(dailyGatesReady&&intradayConfirmation?.pass){status='BUY NOW';reason='All higher-timeframe gates cleared and optional entry timing is attractive.';}
-  else if(dailyGatesReady){status='SETUP — READY SOON';reason='All higher-timeframe gates cleared. Intraday timing is optional and does not control the thesis.';}
+  else if(dailyGatesReady&&intradayConfirmation?.pass){status='BUY NOW';reason='Environment, location, higher-timeframe gates, and participation/execution confirmation are aligned.';}
+  else if(dailyGatesReady){status='SETUP — READY SOON';reason=intradayConfirmation?.reason||'All higher-timeframe gates cleared. BUY NOW still requires participation/execution confirmation.';}
   else if(engines.trend.ready&&nearEntry&&(engines.probability.ready||engines.riskReward.ready)){status='SETUP — READY SOON';reason='Price is near the preferred entry zone, but one higher-timeframe gate is still missing.';}
   else{status='WAIT — SETUP NOT READY';reason='Several checks pass, but at least one higher-timeframe gate still blocks a buy setup.';}
   let readiness=Math.round((passed/total)*55+((4-criticalFailed.length)/4)*45);if(dailyGatesReady&&intradayConfirmation?.pass)readiness=Math.max(readiness,92);else if(dailyGatesReady)readiness=Math.max(readiness,82);if(status==='AVOID'||status==='SELL / EXIT')readiness=Math.min(readiness,35);if(status==='WAIT FOR PULLBACK')readiness=Math.min(readiness,68);
-  return{symbol,latest,changePct:previous.close?latest.close/previous.close-1:0,sma20:s20,sma50:s50,atr:a14,rsi:r14,momentum20,relativeStrength20,benchmark,intradayConfirmation,dailyGatesReady,preferredEntryLow,preferredEntryHigh,overextension,thesisBreak,target,rr,wf,structure,engines,passed,total,criticalFailed,status,reason,readiness};
+  return{symbol,latest,changePct:previous.close?latest.close/previous.close-1:0,sma20:s20,sma50:s50,atr:a14,rsi:r14,momentum20,relativeStrength20,extensionPct,pullbackDepth,trendStrength,benchmark,intradayConfirmation,dailyGatesReady,preferredEntryLow,preferredEntryHigh,overextension,thesisBreak,target,rr,wf,structure,engines,passed,total,criticalFailed,status,reason,readiness};
 }

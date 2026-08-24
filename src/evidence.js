@@ -1,7 +1,7 @@
 import { benchmarkContextFor } from './benchmark-context.js';
 
 const FIFTEEN_MINUTES=15*60*1000;
-export const ANALYSIS_MODEL_VERSION='sf-analysis-v1';
+export const ANALYSIS_MODEL_VERSION='sf-analysis-v2-participation';
 
 export async function ensureEvidenceSchema(env){
   await env.DB.batch([
@@ -102,11 +102,20 @@ export function radarEvidenceRow(quote,{source='radar',now=Date.now()}={}){
 }
 
 export function analysisEvidenceRow(analysis,{source='deep-analysis',timeframe='6M',quote=null,now=Date.now(),modelVersion=ANALYSIS_MODEL_VERSION,benchmarkContext=null}={}){
-  const engines=analysis?.engines||{},gateList=Object.values(engines).filter(Boolean),symbol=sanitizeSymbol(analysis?.symbol),resolvedBenchmarkContext=normalizeBenchmarkContext(benchmarkContext)||benchmarkContextFor(symbol);
+  const engines=analysis?.engines||{},gateList=Object.values(engines).filter(Boolean),symbol=sanitizeSymbol(analysis?.symbol),resolvedBenchmarkContext=normalizeBenchmarkContext(benchmarkContext)||benchmarkContextFor(symbol),participation=analysis?.intradayConfirmation||null;
   const gatesReady=gateList.filter(x=>x?.ready).length,gateTotal=gateList.length||4;
   return{
     symbol,observationType:'ANALYSIS',source:String(source||'deep-analysis'),timeframe:String(timeframe||''),modelVersion:String(modelVersion||ANALYSIS_MODEL_VERSION),observedAt:Number(now)||Date.now(),observedBucket:bucket(now),price:numOrNull(analysis?.latest?.close),changePct:numOrNull(analysis?.changePct),status:String(analysis?.status||''),readiness:numOrNull(analysis?.readiness),
-    discoveryScore:numOrNull(quote?.rollingDiscoveryScore??quote?.discoveryScore??quote?.score),scoreVelocity:numOrNull(quote?.scoreVelocity),relativeVolume:numOrNull(quote?.relativeVolume),dollarVolume:numOrNull(quote?.dollarVolume),gatesReady,gateTotal,trendReady:Boolean(engines?.trend?.ready),entryReady:Boolean(engines?.entry?.ready),probabilityReady:Boolean(engines?.probability?.ready),riskRewardReady:Boolean(engines?.riskReward?.ready),preferredEntryLow:numOrNull(analysis?.preferredEntryLow),preferredEntryHigh:numOrNull(analysis?.preferredEntryHigh),overextension:numOrNull(analysis?.overextension),thesisBreak:numOrNull(analysis?.thesisBreak),target:numOrNull(analysis?.target),rr:numOrNull(analysis?.rr),benchmarkSymbol:String(analysis?.benchmark?.symbol||resolvedBenchmarkContext.marketBenchmark||''),benchmarkBull:analysis?.benchmark?Boolean(analysis.benchmark.bull):null,benchmarkRiskOff:analysis?.benchmark?Boolean(analysis.benchmark.riskOff):null,payload:{benchmarkContext:resolvedBenchmarkContext,criticalFailed:Array.isArray(analysis?.criticalFailed)?analysis.criticalFailed:[],reason:String(analysis?.reason||''),wf:{sample:Number(analysis?.wf?.sample)||0,winRate:numOrNull(analysis?.wf?.winRate),avgReturn:numOrNull(analysis?.wf?.avgReturn)},relativeStrength20:numOrNull(analysis?.relativeStrength20),rsi:numOrNull(analysis?.rsi)}
+    discoveryScore:numOrNull(quote?.rollingDiscoveryScore??quote?.discoveryScore??quote?.score),scoreVelocity:numOrNull(quote?.scoreVelocity),relativeVolume:numOrNull(quote?.relativeVolume),dollarVolume:numOrNull(quote?.dollarVolume),gatesReady,gateTotal,trendReady:Boolean(engines?.trend?.ready),entryReady:Boolean(engines?.entry?.ready),probabilityReady:Boolean(engines?.probability?.ready),riskRewardReady:Boolean(engines?.riskReward?.ready),preferredEntryLow:numOrNull(analysis?.preferredEntryLow),preferredEntryHigh:numOrNull(analysis?.preferredEntryHigh),overextension:numOrNull(analysis?.overextension),thesisBreak:numOrNull(analysis?.thesisBreak),target:numOrNull(analysis?.target),rr:numOrNull(analysis?.rr),benchmarkSymbol:String(analysis?.benchmark?.symbol||resolvedBenchmarkContext.marketBenchmark||''),benchmarkBull:analysis?.benchmark?Boolean(analysis.benchmark.bull):null,benchmarkRiskOff:analysis?.benchmark?Boolean(analysis.benchmark.riskOff):null,
+    payload:{
+      benchmarkContext:resolvedBenchmarkContext,
+      criticalFailed:Array.isArray(analysis?.criticalFailed)?analysis.criticalFailed:[],
+      reason:String(analysis?.reason||''),
+      wf:{sample:Number(analysis?.wf?.sample)||0,winRate:numOrNull(analysis?.wf?.winRate),avgReturn:numOrNull(analysis?.wf?.avgReturn)},
+      features:{sma20:numOrNull(analysis?.sma20),sma50:numOrNull(analysis?.sma50),atr:numOrNull(analysis?.atr),rsi:numOrNull(analysis?.rsi),momentum20:numOrNull(analysis?.momentum20),relativeStrength20:numOrNull(analysis?.relativeStrength20),extensionPct:numOrNull(analysis?.extensionPct),pullbackDepth:numOrNull(analysis?.pullbackDepth),trendStrength:numOrNull(analysis?.trendStrength)},
+      participation:participation?{pass:Boolean(participation.pass),state:String(participation.state||''),passes:Number(participation.passes)||0,total:Number(participation.total)||5,participationPass:Boolean(participation.participationPass),relativeVolume:numOrNull(participation.relativeVolume),rvolSample:Number(participation.rvolSample)||0,avwap:numOrNull(participation.avwap),momentum4:numOrNull(participation.momentum4),rsi15:numOrNull(participation.rsi),sma20_15m:numOrNull(participation.sma20),latestPrice:numOrNull(participation.latestPrice),latestTime:numOrNull(participation.latestTime),volatility:participation.volatility||null,metrics:Array.isArray(participation.metrics)?participation.metrics.map(m=>({name:String(m.name||''),value:String(m.value||''),pass:Boolean(m.pass),warn:Boolean(m.warn),role:String(m.role||'')})):[]}:null,
+      thresholds:{rewardRiskMin:1.8,walkForwardWinRateMin:.57,dailyRsiMin:42,dailyRsiMax:69,participationRvolMin:1.0,participationMomentumMin:0,participationTotalPassesMin:4}
+    }
   };
 }
 

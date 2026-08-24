@@ -1,16 +1,22 @@
 import assert from 'node:assert/strict';
 import { unifiedActionState } from '../src/unified-action.js';
 
-function signal(status,{readiness=70,ready=3,failed=['Entry engine'],reason=''}={}){
+function confirmation(pass=true){return{pass,participationPass:pass,passes:pass?4:3,total:5,state:pass?'PASS':'FAIL',relativeVolume:pass?1.2:.8,momentum4:pass ? .01 : -.01,reason:pass?'Participation confirmed.':'Participation blocked.'};}
+function signal(status,{readiness=70,ready=3,failed=['Entry engine'],reason='',intradayConfirmation=null}={}){
   const names=['trend','entry','probability','riskReward'];
   const engines=Object.fromEntries(names.map((name,i)=>[name,{ready:i<ready}]));
-  return{status,analysis:{status,readiness,engines,criticalFailed:failed,reason}};
+  return{status,analysis:{status,readiness,engines,criticalFailed:failed,reason,intradayConfirmation}};
 }
 
-let u=unifiedActionState({signal:signal('BUY NOW',{readiness:94,ready:4,failed:[]}),earlyMovement:{state:'EARLY MOVEMENT — BUILDING',acceleration:86,reasons:['RVOL 1.8x']}});
+let u=unifiedActionState({signal:signal('BUY NOW',{readiness:94,ready:4,failed:[],intradayConfirmation:confirmation(true)}),earlyMovement:{state:'EARLY MOVEMENT — BUILDING',acceleration:86,reasons:['RVOL 1.8x']}});
 assert.equal(u.state,'BUY NOW');
 assert.equal(u.action,'BUY WINDOW OPEN');
 assert.equal(u.gatesReady,4);
+assert.equal(u.participation.pass,true);
+
+u=unifiedActionState({signal:signal('BUY NOW',{readiness:94,ready:4,failed:[]}),earlyMovement:{state:'EARLY MOVEMENT — BUILDING',acceleration:86}});
+assert.equal(u.state,'READY SOON','A stale BUY without participation confirmation must be downgraded.');
+assert.equal(u.action,'WAIT FOR PARTICIPATION');
 
 u=unifiedActionState({signal:signal('SETUP — READY SOON',{readiness:88,ready:3,failed:['Entry engine']}),earlyMovement:{state:'EARLY MOVEMENT — BUILDING',acceleration:82}});
 assert.equal(u.state,'READY SOON');
