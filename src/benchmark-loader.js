@@ -1,14 +1,15 @@
 import { benchmarkContextFor, buildBenchmarkEvidenceContext } from './benchmark-context.js';
 import { getMarketData } from './market.js';
 
-export async function loadBenchmarkEvidence(env,symbol,{stockCandles,timeframe='6M',completedOnly=false,purposePrefix='benchmark-context'}={}){
+export async function loadBenchmarkEvidence(env,symbol,{stockCandles,timeframe='6M',completedOnly=false,purposePrefix='benchmark-context',preloaded={}}={}){
   const mapping=benchmarkContextFor(symbol);
   const requested=[mapping.industryBenchmark,mapping.sectorBenchmark,mapping.marketBenchmark].filter(Boolean);
   const unique=[...new Set(requested.filter(x=>x!==symbol))];
-  const candlesBySymbol=new Map();
+  const candlesBySymbol=new Map(Object.entries(preloaded||{}).filter(([,candles])=>Array.isArray(candles)&&candles.length));
   const errors=[];
 
   for(const benchmarkSymbol of unique){
+    if(candlesBySymbol.has(benchmarkSymbol))continue;
     try{
       const market=await getMarketData(env,benchmarkSymbol,timeframe,false,{completedOnly,purpose:`${purposePrefix}-${String(timeframe).toLowerCase()}`});
       candlesBySymbol.set(benchmarkSymbol,market.candles);
