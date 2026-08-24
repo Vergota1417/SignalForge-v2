@@ -8,7 +8,7 @@ function row({good=true,forwardReturn=.05,marketExcessReturn=.03,mae=-.02}={}){
     relativeVolume:good?2.0:.8,
     gatesReady:good?4:3,
     benchmarkRiskOff:good?0:1,
-    payload:{benchmarkContext:{sectorRelativeStrength20:good?.04:-.03}},
+    payload:{benchmarkContext:{sectorRelativeStrength20:good ? .04 : -.03}},
     forwardReturn,
     marketExcessReturn,
     mae
