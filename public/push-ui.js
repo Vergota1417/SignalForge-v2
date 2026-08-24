@@ -10,10 +10,10 @@
     const actions=document.querySelector('.top-actions');
     if(!actions) return null;
     const btn=document.createElement('button');
-    btn.id='pushAlertsBtn';btn.type='button';btn.className='btn ghost push-alert-btn';btn.textContent='Enable Alerts';
+    btn.id='pushAlertsBtn';btn.type='button';btn.className='btn ghost push-alert-btn';btn.textContent='Alerts';
     actions.appendChild(btn);
     const test=document.createElement('button');
-    test.id='pushTestBtn';test.type='button';test.className='btn ghost push-test-btn';test.textContent='Send Test Alert';test.hidden=true;
+    test.id='pushTestBtn';test.type='button';test.className='btn ghost push-test-btn';test.textContent='Test Alert';test.hidden=true;
     actions.appendChild(test);
     const note=document.createElement('div');note.id='pushAlertNote';note.className='push-alert-note';note.hidden=true;actions.appendChild(note);
     return btn;
@@ -60,10 +60,10 @@
     const btn=ensureUi(),test=$('pushTestBtn');if(!btn)return;
     if(!supported()){btn.hidden=true;if(test)test.hidden=true;return;}
     const cfg=config||await api('/api/push/config');
-    if(!cfg.configured){btn.textContent='Alerts Setup Needed';btn.disabled=true;if(test)test.hidden=true;return;}
+    if(!cfg.configured){btn.textContent='Alerts Setup';btn.title='Push alert keys are not configured';btn.disabled=true;if(test)test.hidden=true;return;}
     const sub=await currentSubscription();
-    btn.disabled=false;btn.textContent=sub?'Disable Alerts':'Enable Alerts';btn.dataset.enabled=sub?'1':'0';
-    if(test){test.hidden=!sub;test.disabled=false;}
+    btn.disabled=false;btn.textContent=sub?'Alerts On':'Alerts Off';btn.title=sub?'Tap to disable phone alerts':'Tap to enable phone alerts';btn.setAttribute('aria-label',btn.title);btn.dataset.enabled=sub?'1':'0';
+    if(test){test.hidden=!sub;test.disabled=false;test.textContent='Test Alert';test.title='Send a test phone alert';}
     if(sub) await syncSubscription(sub);
   }
 
