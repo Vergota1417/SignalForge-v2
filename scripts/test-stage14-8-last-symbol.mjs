@@ -8,14 +8,15 @@ const sw=read('public/service-worker.js');
 
 const checks=[
   ['last-symbol storage key exists',/signalforge_last_symbol_v1/.test(last)],
-  ['deep-link symbol keeps priority',/if\(!deepLink&&remembered\)/.test(last)],
-  ['remembered symbol is restored into URL before app load',/history\.replaceState/.test(last)&&index.indexOf('last-symbol-ui.js')<index.indexOf('app.js')],
-  ['displayed ticker changes persist the successful symbol',/MutationObserver\(rememberDisplayedSymbol\)/.test(last)&&/localStorage\.setItem\(KEY,symbol\)/.test(last)],
-  ['release version v2.30.9',/version:'2\.30\.9'/.test(build)],
-  ['PWA shell v30-9 caches module',/signalforge-shell-v30-9/.test(sw)&&/last-symbol-ui\.js/.test(sw)]
+  ['deep-link symbol keeps startup priority',/if\(!deepLink&&remembered\)/.test(last)],
+  ['remembered symbol is restored before app load',/history\.replaceState/.test(last)&&index.indexOf('last-symbol-ui.js')<index.indexOf('app.js')],
+  ['displayed ticker changes persist successful symbol',/MutationObserver\(rememberDisplayedSymbol\)/.test(last)&&/localStorage\.setItem\(KEY,symbol\)/.test(last)],
+  ['successful displayed ticker synchronizes URL',/sanitize\(params\.get\('symbol'\)\)!==symbol/.test(last)&&/params\.set\('symbol',symbol\)/.test(last)&&/history\.replaceState/.test(last)],
+  ['release version v2.30.11',/version:'2\.30\.11'/.test(build)],
+  ['PWA shell v30-11 caches module',/signalforge-shell-v30-11/.test(sw)&&/last-symbol-ui\.js/.test(sw)]
 ];
 
 let failed=0;
 for(const [name,ok] of checks){console.log(`${ok?'PASS':'FAIL'} ${name}`);if(!ok)failed++;}
 if(failed){console.error(`${failed} last-symbol checks failed.`);process.exit(1);}
-console.log(`PASS ${checks.length}/${checks.length} Stage 14.8 last-symbol checks.`);
+console.log(`PASS ${checks.length}/${checks.length} last-symbol refresh checks.`);

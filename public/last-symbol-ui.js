@@ -3,14 +3,14 @@
   const KEY='signalforge_last_symbol_v1';
   const sanitize=value=>{const s=String(value||'').trim().toUpperCase();return/^[A-Z]{1,5}(?:\.[A-Z])?$/.test(s)?s:'';};
 
-  const params=new URLSearchParams(location.search);
-  const deepLink=sanitize(params.get('symbol'));
+  const startupParams=new URLSearchParams(location.search);
+  const deepLink=sanitize(startupParams.get('symbol'));
   let remembered='';
   try{remembered=sanitize(localStorage.getItem(KEY));}catch{}
 
   if(!deepLink&&remembered){
-    params.set('symbol',remembered);
-    const query=params.toString();
+    startupParams.set('symbol',remembered);
+    const query=startupParams.toString();
     history.replaceState(history.state,'',`${location.pathname}${query?`?${query}`:''}${location.hash}`);
   }
 
@@ -19,6 +19,13 @@
     const symbol=sanitize(badge?.textContent);
     if(!symbol)return;
     try{localStorage.setItem(KEY,symbol);}catch{}
+
+    const params=new URLSearchParams(location.search);
+    if(sanitize(params.get('symbol'))!==symbol){
+      params.set('symbol',symbol);
+      const query=params.toString();
+      history.replaceState(history.state,'',`${location.pathname}${query?`?${query}`:''}${location.hash}`);
+    }
   }
 
   function observe(){
