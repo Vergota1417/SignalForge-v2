@@ -21,6 +21,7 @@ const STATUS_BOOST={
 
 const PROMOTION_STALE_MS=4*60*60*1000;
 const NEAR_READY_RECHECK_MS=15*60*1000;
+const EXECUTION_MODEL_VERSION='sf-analysis-v3-execution';
 
 export async function getSmartScreenerSnapshot(env,{limit=30}={}){
   const now=Date.now();
@@ -65,7 +66,7 @@ export async function runScreenerPromotion(env,{maxPromotions=2,now=Date.now()}=
         analysis=analyze(market.candles,candidate.symbol,{benchmarkCandles:benchmark});
         if(analysis.dailyGatesReady){
           const intraday=await getMarketData(env,candidate.symbol,'5D',false,{purpose:'execution-confirmation-15m'}),confirmation=assessIntradayConfirmation(intraday.candles);
-          analysis=analyze(market.candles,candidate.symbol,{benchmarkCandles:benchmark,intradayConfirmation:confirmation});
+          analysis=refreshExecutionAnalysis(analysis,confirmation);
         }
         if(!previousAnalysis||ageMs>=PROMOTION_STALE_MS){
           const benchmarkEvidence=await loadBenchmarkEvidence(env,candidate.symbol,{stockCandles:market.candles,timeframe:'6M',purposePrefix:'promotion-benchmark-context',preloaded:{SPY:benchmark}});
@@ -73,12 +74,12 @@ export async function runScreenerPromotion(env,{maxPromotions=2,now=Date.now()}=
         }
       }
       const event=await recordSignal(env,analysis);
-      await recordAnalysisEvidence(env,analysis,{source:mode==='EXECUTION'?'execution-recheck':'screener-promotion',timeframe:mode==='EXECUTION'?'6M+5D':'6M',quote:candidate,now,benchmarkContext});
+      await recordAnalysisEvidence(env,analysis,{source:mode==='EXECUTION'?'execution-recheck':'screener-promotion',timeframe:mode==='EXECUTION'?'6M+5D':'6M',quote:candidate,now,modelVersion:EXECUTION_MODEL_VERSION,benchmarkContext});
       if(event.changed){
         try{const push=await broadcastSignalPush(env,analysis,event.previousStatus,event.now);console.log(JSON.stringify({event:'signal_status_push',symbol:candidate.symbol,status:analysis.status,previousStatus:event.previousStatus,mode,...push}));}
         catch(error){console.error(JSON.stringify({event:'signal_status_push_error',symbol:candidate.symbol,status:analysis.status,message:error?.message||String(error)}));}
       }
-      promoted.push({symbol:candidate.symbol,screenScore:candidate.screenScore,researchScore:candidate.research?.confirmationScore||0,status:analysis.status,readiness:analysis.readiness,changed:event.changed,mode,participation:analysis.intradayConfirmation?{pass:Boolean(analysis.intradayConfirmation.pass),corePass:Boolean(analysis.intradayConfirmation.participationPass),passes:Number(analysis.intradayConfirmation.passes)||0,total:Number(analysis.intradayConfirmation.total)||5}:null,benchmarkContext,benchmarkErrors});
+      promoted.push({symbol:candidate.symbol,screenScore:candidate.screenScore,researchScore:candidate.research?.confirmationScore||0,status:analysis.status,readiness:analysis.readiness,changed:event.changed,mode,modelVersion:EXECUTION_MODEL_VERSION,participation:analysis.intradayConfirmation?{pass:Boolean(analysis.intradayConfirmation.pass),corePass:Boolean(analysis.intradayConfirmation.participationPass),passes:Number(analysis.intradayConfirmation.passes)||0,total:Number(analysis.intradayConfirmation.total)||5}:null,benchmarkContext,benchmarkErrors});
       signalMap.set(candidate.symbol,{symbol:candidate.symbol,status:analysis.status,analysis,updatedAt:event.now});
     }catch(error){console.error(JSON.stringify({event:'screener_promotion_error',symbol:candidate.symbol,message:error?.message||String(error)}));break;}
   }
