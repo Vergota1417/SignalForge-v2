@@ -6,15 +6,19 @@ import { getTieredScannerBatch } from './scanner-budget.js';
 import { reserveProviderPurpose } from './provider-usage.js';
 import { earlyMovementSignal } from './early-movement.js';
 import { unifiedActionState } from './unified-action.js';
+import { recordOperation } from './operations.js';
 
 export function radarUniverse(env){const raw=String(env.RADAR_UNIVERSE||'').trim(),pinned=raw?raw.split(',').map(sanitizeSymbol).filter(Boolean):[];return[...new Set([...pinned,...CORE_DISCOVERY_SYMBOLS])].slice(0,120);}
 
 export async function runRadarDiscovery(env,{batchSize=6,now=Date.now()}={}){
-  const previous=await getRadarState(env),batch=await getTieredScannerBatch(env,{limit:batchSize,exploreCursor:Number(previous?.cursor)||0,now});
-  if(!batch.symbols.length)return{mode:'discovery',scanned:[],leaders:[],cursor:batch.nextExploreCursor,universeSize:batch.universeSize,tiers:batch.tiers,selected:batch.selected};
-  const scanned=[];
-  for(const symbol of batch.symbols){try{const quote=await fetchQuote(env,symbol),observation=await recordDiscoveryObservation(env,quote,{now}),enriched={...quote,scannerTier:tierFor(symbol,batch.selected),rollingDiscoveryScore:observation?.rollingScore??quote.discoveryScore,scoreVelocity:observation?.scoreVelocity??0,dollarVolume:observation?.dollarVolume??quote.price*quote.volume};enriched.earlyMovement=earlyMovementSignal(enriched);await putRadarQuote(env,enriched);await recordRadarEvidence(env,enriched,{source:'scheduled-radar',now});scanned.push(enriched);}catch(error){console.error(JSON.stringify({event:'radar_quote_error',symbol,message:error?.message||String(error)}));}}
-  const leaders=rankQuotes(await listRadarQuotes(env,14_400_000,40)).slice(0,6),updatedAt=await putRadarState(env,batch.nextExploreCursor,leaders.map(q=>q.symbol));return{mode:'discovery',scanned,leaders,cursor:batch.nextExploreCursor,updatedAt,universeSize:batch.universeSize,tiers:batch.tiers,selected:batch.selected};
+  try{
+    const previous=await getRadarState(env),batch=await getTieredScannerBatch(env,{limit:batchSize,exploreCursor:Number(previous?.cursor)||0,now});
+    if(!batch.symbols.length){const result={mode:'discovery',scanned:[],leaders:[],cursor:batch.nextExploreCursor,universeSize:batch.universeSize,tiers:batch.tiers,selected:batch.selected};await recordOperation(env,'radar-scan',{status:'IDLE',at:now,detail:{reason:'no-due-symbols',universeSize:batch.universeSize}});return result;}
+    const scanned=[],errors=[];
+    for(const symbol of batch.symbols){try{const quote=await fetchQuote(env,symbol),observation=await recordDiscoveryObservation(env,quote,{now}),enriched={...quote,scannerTier:tierFor(symbol,batch.selected),rollingDiscoveryScore:observation?.rollingScore??quote.discoveryScore,scoreVelocity:observation?.scoreVelocity??0,dollarVolume:observation?.dollarVolume??quote.price*quote.volume};enriched.earlyMovement=earlyMovementSignal(enriched);await putRadarQuote(env,enriched);await recordRadarEvidence(env,enriched,{source:'scheduled-radar',now});scanned.push(enriched);}catch(error){errors.push({symbol,message:error?.message||String(error)});console.error(JSON.stringify({event:'radar_quote_error',symbol,message:error?.message||String(error)}));}}
+    const leaders=rankQuotes(await listRadarQuotes(env,14_400_000,40)).slice(0,6),updatedAt=await putRadarState(env,batch.nextExploreCursor,leaders.map(q=>q.symbol)),result={mode:'discovery',scanned,leaders,cursor:batch.nextExploreCursor,updatedAt,universeSize:batch.universeSize,tiers:batch.tiers,selected:batch.selected};
+    await recordOperation(env,'radar-scan',{status:scanned.length?'OK':errors.length?'ERROR':'IDLE',at:now,detail:{requested:batch.symbols,scanned:scanned.map(x=>x.symbol),leaders:leaders.map(x=>x.symbol),errors}});return result;
+  }catch(error){await recordOperation(env,'radar-scan',{status:'ERROR',at:now,detail:{message:error?.message||String(error)}}).catch(()=>{});throw error;}
 }
 
 export async function getRadarSnapshot(env){
