@@ -1,6 +1,7 @@
 import { ensureEvidenceSchema } from './evidence.js';
 import { getMarketData } from './market.js';
 import { benchmarkContextFor } from './benchmark-context.js';
+import { recordOperation } from './operations.js';
 
 export const OUTCOME_HORIZONS=[1,3,5,10,20];
 const MAX_PENDING_ROWS=750;
@@ -19,16 +20,19 @@ export async function ensureOutcomeSchema(env){
 }
 
 export async function runOutcomeTracker(env,{now=Date.now(),maxSymbols=4}={}){
-  await ensureOutcomeSchema(env);const cutoff=now-12*60*60*1000;
-  const rows=await env.DB.prepare(`SELECT e.id,e.symbol,e.observed_at AS observedAt,e.price,e.target,e.thesis_break AS thesisBreak,e.payload_json AS payloadJson FROM evidence_observations e WHERE e.observed_at<=? AND e.price>0 AND NOT EXISTS(SELECT 1 FROM evidence_outcomes o WHERE o.observation_id=e.id AND o.horizon_sessions=20) ORDER BY e.observed_at ASC,e.id ASC LIMIT ?`).bind(cutoff,MAX_PENDING_ROWS).all();
-  const pending=(rows.results||[]).map(normalizeObservation).filter(x=>x.symbol&&x.entryPrice>0),grouped=groupBySymbol(pending),symbols=[...grouped.keys()].slice(0,Math.max(1,Math.min(12,Number(maxSymbols)||4))),completed=[],deferred=[],errors=[];
-  for(const symbol of symbols){try{
-    const observations=grouped.get(symbol)||[],mapping=observations[0]?.benchmarkContext||benchmarkContextFor(symbol),benchmarkSymbols=[...new Set([mapping?.industryBenchmark,mapping?.sectorBenchmark,mapping?.marketBenchmark].filter(Boolean).filter(x=>x!==symbol))];
-    const stock=(await getMarketData(env,symbol,'3M',false,{completedOnly:true,purpose:'outcome-stock-3m'})).candles,benchmarks={};
-    for(const b of benchmarkSymbols){try{benchmarks[b]=(await getMarketData(env,b,'3M',false,{completedOnly:true,purpose:'outcome-benchmark-3m'})).candles;}catch(error){errors.push({symbol:b,contextSymbol:symbol,message:String(error?.message||error)});if(/quota|429|too many requests/i.test(String(error?.message||'')))break;}}
-    for(const observation of observations){const results=evaluateObservationOutcomes(observation,stock,{now,benchmarkCandles:benchmarks});for(const result of results){await saveOutcome(env,result);completed.push({observationId:observation.id,symbol,horizon:result.horizonSessions,forwardReturn:result.forwardReturn,marketExcessReturn:result.marketExcessReturn,sectorExcessReturn:result.sectorExcessReturn,firstHit:result.firstHit});}if(results.length<OUTCOME_HORIZONS.length)deferred.push({observationId:observation.id,symbol,completedHorizons:results.map(x=>x.horizonSessions)});}
-  }catch(error){errors.push({symbol,message:String(error?.message||error)});if(/quota|429|too many requests/i.test(String(error?.message||'')))break;}}
-  return{symbolsProcessed:symbols.length,observationsConsidered:pending.length,outcomesCompleted:completed.length,deferred:deferred.length,errors,completed};
+  try{
+    await ensureOutcomeSchema(env);const cutoff=now-12*60*60*1000;
+    const rows=await env.DB.prepare(`SELECT e.id,e.symbol,e.observed_at AS observedAt,e.price,e.target,e.thesis_break AS thesisBreak,e.payload_json AS payloadJson FROM evidence_observations e WHERE e.observed_at<=? AND e.price>0 AND NOT EXISTS(SELECT 1 FROM evidence_outcomes o WHERE o.observation_id=e.id AND o.horizon_sessions=20) ORDER BY e.observed_at ASC,e.id ASC LIMIT ?`).bind(cutoff,MAX_PENDING_ROWS).all();
+    const pending=(rows.results||[]).map(normalizeObservation).filter(x=>x.symbol&&x.entryPrice>0),grouped=groupBySymbol(pending),symbols=[...grouped.keys()].slice(0,Math.max(1,Math.min(12,Number(maxSymbols)||4))),completed=[],deferred=[],errors=[];
+    for(const symbol of symbols){try{
+      const observations=grouped.get(symbol)||[],mapping=observations[0]?.benchmarkContext||benchmarkContextFor(symbol),benchmarkSymbols=[...new Set([mapping?.industryBenchmark,mapping?.sectorBenchmark,mapping?.marketBenchmark].filter(Boolean).filter(x=>x!==symbol))];
+      const stock=(await getMarketData(env,symbol,'3M',false,{completedOnly:true,purpose:'outcome-stock-3m'})).candles,benchmarks={};
+      for(const b of benchmarkSymbols){try{benchmarks[b]=(await getMarketData(env,b,'3M',false,{completedOnly:true,purpose:'outcome-benchmark-3m'})).candles;}catch(error){errors.push({symbol:b,contextSymbol:symbol,message:String(error?.message||error)});if(/quota|429|too many requests/i.test(String(error?.message||'')))break;}}
+      for(const observation of observations){const results=evaluateObservationOutcomes(observation,stock,{now,benchmarkCandles:benchmarks});for(const result of results){await saveOutcome(env,result);completed.push({observationId:observation.id,symbol,horizon:result.horizonSessions,forwardReturn:result.forwardReturn,marketExcessReturn:result.marketExcessReturn,sectorExcessReturn:result.sectorExcessReturn,firstHit:result.firstHit});}if(results.length<OUTCOME_HORIZONS.length)deferred.push({observationId:observation.id,symbol,completedHorizons:results.map(x=>x.horizonSessions)});}
+    }catch(error){errors.push({symbol,message:String(error?.message||error)});if(/quota|429|too many requests/i.test(String(error?.message||'')))break;}}
+    const result={symbolsProcessed:symbols.length,observationsConsidered:pending.length,outcomesCompleted:completed.length,deferred:deferred.length,errors,completed};
+    await recordOperation(env,'outcome-tracker',{status:errors.length&&!completed.length?'ERROR':pending.length?'OK':'IDLE',at:now,detail:{symbolsProcessed:result.symbolsProcessed,observationsConsidered:result.observationsConsidered,outcomesCompleted:result.outcomesCompleted,deferred:result.deferred,errors:errors.slice(0,6)}});return result;
+  }catch(error){await recordOperation(env,'outcome-tracker',{status:'ERROR',at:now,detail:{message:error?.message||String(error)}}).catch(()=>{});throw error;}
 }
 
 export function evaluateObservationOutcomes(observation,candles,{now=Date.now(),benchmarkCandles={}}={}){
