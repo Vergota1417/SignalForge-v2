@@ -1,10 +1,11 @@
-import { getRadarState, listRadarQuotes, putRadarQuote, putRadarState } from './db.js';
+import { getRadarState, listRadarQuotes, listSignals, putRadarQuote, putRadarState } from './db.js';
 import { CORE_DISCOVERY_SYMBOLS, getDiscoveryPool, getDiscoveryStatus, recordDiscoveryObservation } from './discovery.js';
 import { buildAnalysisExpectations } from './analysis-expectation.js';
 import { recordRadarEvidence } from './evidence.js';
 import { getTieredScannerBatch } from './scanner-budget.js';
 import { reserveProviderPurpose } from './provider-usage.js';
 import { earlyMovementSignal } from './early-movement.js';
+import { unifiedActionState } from './unified-action.js';
 
 export function radarUniverse(env){const raw=String(env.RADAR_UNIVERSE||'').trim(),pinned=raw?raw.split(',').map(sanitizeSymbol).filter(Boolean):[];return[...new Set([...pinned,...CORE_DISCOVERY_SYMBOLS])].slice(0,120);}
 
@@ -18,9 +19,9 @@ export async function runRadarDiscovery(env,{batchSize=6,now=Date.now()}={}){
 
 export async function getRadarSnapshot(env){
   const pool=await getDiscoveryPool(env,{limit:120});
-  const[state,quotes,status]=await Promise.all([getRadarState(env),listRadarQuotes(env,14_400_000,40),getDiscoveryStatus(env)]),ranked=rankQuotes(quotes),bySymbol=new Map(ranked.map(q=>[q.symbol,q])),leaders=(state?.symbols||[]).map(s=>bySymbol.get(s)).filter(Boolean),fallback=ranked.filter(q=>!leaders.some(x=>x.symbol===q.symbol)),symbols=[...leaders,...fallback].slice(0,6);
+  const[state,quotes,status,signals]=await Promise.all([getRadarState(env),listRadarQuotes(env,14_400_000,40),getDiscoveryStatus(env),listSignals(env)]),ranked=rankQuotes(quotes),bySymbol=new Map(ranked.map(q=>[q.symbol,q])),signalMap=new Map((signals||[]).map(s=>[s.symbol,s])),leaders=(state?.symbols||[]).map(s=>bySymbol.get(s)).filter(Boolean),fallback=ranked.filter(q=>!leaders.some(x=>x.symbol===q.symbol)),symbols=[...leaders,...fallback].slice(0,6);
   const expectations=await buildAnalysisExpectations(env,{symbols:symbols.map(x=>x.symbol),pool,cursor:state?.cursor||0,now:Date.now()});
-  return{symbols:symbols.map(row=>({...row,earlyMovement:earlyMovementSignal(row),expectation:expectations[row.symbol]||null})),updatedAt:state?.updatedAt||0,cursor:state?.cursor||0,universeSize:pool.length,catalogSize:status.catalogSize,scannedSymbols:status.scannedSymbols,catalogUpdatedAt:status.catalogUpdatedAt,marketTimezone:'America/New_York'};
+  return{symbols:symbols.map(row=>{const earlyMovement=earlyMovementSignal(row),signal=signalMap.get(row.symbol)||null;return{...row,earlyMovement,unifiedAction:unifiedActionState({signal,earlyMovement}),expectation:expectations[row.symbol]||null};}),updatedAt:state?.updatedAt||0,cursor:state?.cursor||0,universeSize:pool.length,catalogSize:status.catalogSize,scannedSymbols:status.scannedSymbols,catalogUpdatedAt:status.catalogUpdatedAt,marketTimezone:'America/New_York'};
 }
 export async function getRadarSymbols(env){const snapshot=await getRadarSnapshot(env);return snapshot.symbols.map(x=>x.symbol).filter(Boolean);}
 
