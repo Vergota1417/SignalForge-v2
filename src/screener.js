@@ -7,7 +7,7 @@ import { runPaperSimulation } from './simulation.js';
 import { buildWeekendIntelligenceReport, getWeekendIntelligenceReport } from './weekend.js';
 import { recordAnalysisEvidence } from './evidence.js';
 import { refreshExecutionAnalysis } from './execution-confirmation.js';
-import { assessSessionRange } from './session-range.js';
+import { assessSessionRange, recordSessionRangeShadow } from './session-range.js';
 import { broadcastSignalPush } from './push.js';
 
 const STATUS_BOOST={
@@ -69,8 +69,9 @@ export async function runScreenerPromotion(env,{maxPromotions=2,now=Date.now()}=
           analysis={...refreshExecutionAnalysis(analysis,confirmation),sessionRangeShadow};
         }
       }
-      const event=await recordSignal(env,analysis);
-      await recordAnalysisEvidence(env,analysis,{source:mode==='EXECUTION'?'execution-recheck':'screener-promotion',timeframe:mode==='EXECUTION'?'6M+5D':'6M',quote:candidate,now,modelVersion:EXECUTION_MODEL_VERSION});
+      const event=await recordSignal(env,analysis),evidenceSource=mode==='EXECUTION'?'execution-recheck':'screener-promotion';
+      await recordAnalysisEvidence(env,analysis,{source:evidenceSource,timeframe:mode==='EXECUTION'?'6M+5D':'6M',quote:candidate,now,modelVersion:EXECUTION_MODEL_VERSION});
+      await recordSessionRangeShadow(env,analysis,{source:evidenceSource,now});
       if(event.changed){
         try{const push=await broadcastSignalPush(env,analysis,event.previousStatus,event.now);console.log(JSON.stringify({event:'signal_status_push',symbol:candidate.symbol,status:analysis.status,previousStatus:event.previousStatus,mode,...push}));}
         catch(error){console.error(JSON.stringify({event:'signal_status_push_error',symbol:candidate.symbol,status:analysis.status,message:error?.message||String(error)}));}
