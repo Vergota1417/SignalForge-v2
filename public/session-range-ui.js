@@ -19,7 +19,7 @@
   function ensurePanel(){
     ensureStyles();
     let panel=document.getElementById('sfSessionRangeShadow');if(panel)return panel;
-    const anchor=document.getElementById('chartAction')||document.querySelector('.chart-card');if(!anchor)return null;
+    const anchor=document.getElementById('chartAction');if(!anchor)return null;
     panel=document.createElement('section');panel.id='sfSessionRangeShadow';panel.className='sf-range-shadow insufficient';panel.setAttribute('aria-live','polite');panel.innerHTML=`
       <div><div class="sf-range-shadow-head"><span class="sf-range-shadow-title">ROOM TO RUN</span><span class="sf-range-shadow-badge" data-range-state>SHADOW</span></div><div class="sf-range-shadow-copy" data-range-copy>Waiting for the next 15-minute execution scan.</div><div class="sf-range-shadow-note">Experimental only · does not block or create BUY NOW.</div></div>
       <div class="sf-range-metrics"><div class="sf-range-metric"><small>ATR used</small><strong data-atr-usage>—</strong></div><div class="sf-range-metric"><small>Vs median day</small><strong data-median-usage>—</strong></div><div class="sf-range-metric"><small>Same-time pace</small><strong data-pace>—</strong></div><div class="sf-range-metric"><small>Price in range</small><strong data-position>—</strong></div></div>`;
