@@ -67,13 +67,18 @@ This file is the persistent source of truth for the build sequence. Complete and
 - [x] Keep retrospective promotion findings evidence-only and require forward shadow validation before any production gate change.
 - [x] Expose the optimization report through the backend API and include Stage 12 regression checks in the complete validation suite.
 
+### Stage 13 — Earlier Movement Detection ✅
+
+- [x] Score developing movement from discovery-score velocity, RVOL participation, price expansion, and discovery strength before a setup reaches BUY NOW.
+- [x] Penalize already-extended price moves so late momentum does not outrank healthier developing movement.
+- [x] Persist Early Movement observations in the evidence database under a separate model version for later forward evaluation.
+- [x] Surface EARLY MOVEMENT — BUILDING / MOVEMENT WATCH / QUIET states in radar cards with the contributing measurements and an explicit non-BUY action label.
+- [x] Keep Early Movement evidence-only; it does not bypass the live BUY gates or automatically open paper positions.
+- [x] Add Stage 13 regression coverage to the complete validation suite.
+
 ## CURRENT
 
-### Stage 13 — Earlier Movement Detection
-
-Use Stage 12 findings to test whether acceleration, RVOL change, discovery-score velocity, sector leadership, price/volume expansion, and setup-transition speed identify strong moves earlier without materially increasing false positives or drawdown.
-
-No Stage 13 signal may become a production BUY gate until it passes the Champion/Challenger forward-shadow process created in Stage 12.
+Stage 13 is complete. Early Movement can now collect forward evidence alongside the existing decision engine. The next optimization should be selected from measured Early Movement outcomes and Champion/Challenger evidence rather than promoting the new score by assumption.
 
 ## NEXT RULE
 
