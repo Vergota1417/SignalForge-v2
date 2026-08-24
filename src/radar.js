@@ -9,27 +9,30 @@ import { earlyMovementSignal } from './early-movement.js';
 import { unifiedActionState } from './unified-action.js';
 import { recordOperation } from './operations.js';
 
-const PROVIDER_404_QUARANTINE_MS=7*86_400_000;
+const PERMANENT_PROVIDER_RETIRE_MS=10*365*86_400_000;
 
 export function radarUniverse(env){const raw=String(env.RADAR_UNIVERSE||'').trim(),pinned=raw?raw.split(',').map(sanitizeSymbol).filter(Boolean):[];return[...new Set([...pinned,...CORE_DISCOVERY_SYMBOLS])].slice(0,120);}
 
 export async function runRadarDiscovery(env,{batchSize=6,now=Date.now()}={}){
   try{
+    await hardenPreviousProviderRejects(env,now);
     const previous=await getRadarState(env),batch=await getTieredScannerBatch(env,{limit:batchSize,exploreCursor:Number(previous?.cursor)||0,now});
     if(!batch.symbols.length){const result={mode:'discovery',scanned:[],leaders:[],cursor:batch.nextExploreCursor,universeSize:batch.universeSize,tiers:batch.tiers,selected:batch.selected,cooldownCount:batch.cooldownCount||0};await recordOperation(env,'radar-scan',{status:'IDLE',at:now,detail:{reason:'no-due-symbols',universeSize:batch.universeSize,cooldownCount:batch.cooldownCount||0}});return result;}
-    const scanned=[],errors=[];
+    const scanned=[],errors=[],retired=[];
     for(const symbol of batch.symbols){
       try{
         const quote=await fetchQuote(env,symbol),observation=await recordDiscoveryObservation(env,quote,{now}),enriched={...quote,scannerTier:tierFor(symbol,batch.selected),rollingDiscoveryScore:observation?.rollingScore??quote.discoveryScore,scoreVelocity:observation?.scoreVelocity??0,dollarVolume:observation?.dollarVolume??quote.price*quote.volume};
         enriched.earlyMovement=earlyMovementSignal(enriched);await putRadarQuote(env,enriched);await recordRadarEvidence(env,enriched,{source:'scheduled-radar',now});scanned.push(enriched);
       }catch(error){
-        let quarantine=null;
-        if(isPermanentProviderSymbolError(error))quarantine=await quarantineDiscoverySymbol(env,symbol,{now,cooldownMs:PROVIDER_404_QUARANTINE_MS,reason:'twelve-data-symbol-rejected'}).catch(()=>null);
-        const row={symbol,status:Number(error?.status)||null,message:error?.message||String(error),quarantined:Boolean(quarantine),cooldownUntil:quarantine?.cooldownUntil||null};errors.push(row);console.error(JSON.stringify({event:'radar_quote_error',...row}));
+        if(isPermanentProviderSymbolError(error)){
+          const quarantine=await quarantineDiscoverySymbol(env,symbol,{now,cooldownMs:PERMANENT_PROVIDER_RETIRE_MS,reason:'twelve-data-symbol-permanently-rejected'}).catch(()=>null);
+          const row={symbol,status:Number(error?.status)||null,message:error?.message||String(error),retired:Boolean(quarantine),cooldownUntil:quarantine?.cooldownUntil||null};retired.push(row);console.warn(JSON.stringify({event:'radar_symbol_retired',...row}));continue;
+        }
+        const row={symbol,status:Number(error?.status)||null,message:error?.message||String(error)};errors.push(row);console.error(JSON.stringify({event:'radar_quote_error',...row}));
       }
     }
-    const leaders=rankQuotes(await listRadarQuotes(env,14_400_000,40)).slice(0,6),updatedAt=await putRadarState(env,batch.nextExploreCursor,leaders.map(q=>q.symbol)),result={mode:'discovery',scanned,leaders,cursor:batch.nextExploreCursor,updatedAt,universeSize:batch.universeSize,tiers:batch.tiers,selected:batch.selected,cooldownCount:batch.cooldownCount||0};
-    await recordOperation(env,'radar-scan',{status:scanned.length?'OK':errors.length?'ERROR':'IDLE',at:now,detail:{requested:batch.symbols,scanned:scanned.map(x=>x.symbol),leaders:leaders.map(x=>x.symbol),errors,cooldownCount:batch.cooldownCount||0}});return result;
+    const leaders=rankQuotes(await listRadarQuotes(env,14_400_000,40)).slice(0,6),updatedAt=await putRadarState(env,batch.nextExploreCursor,leaders.map(q=>q.symbol)),result={mode:'discovery',scanned,leaders,cursor:batch.nextExploreCursor,updatedAt,universeSize:batch.universeSize,tiers:batch.tiers,selected:batch.selected,cooldownCount:batch.cooldownCount||0,retired};
+    await recordOperation(env,'radar-scan',{status:scanned.length||retired.length?'OK':errors.length?'ERROR':'IDLE',at:now,detail:{requested:batch.symbols,scanned:scanned.map(x=>x.symbol),leaders:leaders.map(x=>x.symbol),retired,errors,cooldownCount:batch.cooldownCount||0}});return result;
   }catch(error){await recordOperation(env,'radar-scan',{status:'ERROR',at:now,detail:{message:error?.message||String(error)}}).catch(()=>{});throw error;}
 }
 
@@ -40,6 +43,15 @@ export async function getRadarSnapshot(env){
   return{symbols:symbols.map(row=>{const earlyMovement=earlyMovementSignal(row),signal=signalMap.get(row.symbol)||null;return{...row,earlyMovement,unifiedAction:unifiedActionState({signal,earlyMovement}),expectation:expectations[row.symbol]||null};}),updatedAt:state?.updatedAt||0,cursor:state?.cursor||0,universeSize:pool.length,catalogSize:status.catalogSize,scannedSymbols:status.scannedSymbols,catalogUpdatedAt:status.catalogUpdatedAt,marketTimezone:'America/New_York'};
 }
 export async function getRadarSymbols(env){const snapshot=await getRadarSnapshot(env);return snapshot.symbols.map(x=>x.symbol).filter(Boolean);}
+
+async function hardenPreviousProviderRejects(env,now){
+  if(!env?.DB)return;
+  try{
+    const row=await env.DB.prepare(`SELECT detail_json AS detailJson FROM operation_status WHERE operation_key='radar-scan'`).first();if(!row?.detailJson)return;
+    const detail=JSON.parse(row.detailJson||'{}'),candidates=[...(Array.isArray(detail.errors)?detail.errors:[]),...(Array.isArray(detail.retired)?detail.retired:[])];
+    for(const item of candidates){if(!item?.symbol)continue;const permanent=Boolean(item.quarantined||item.retired||Number(item.status)===404||String(item.message||'').toLowerCase().includes('symbol'));if(!permanent)continue;await quarantineDiscoverySymbol(env,item.symbol,{now,cooldownMs:PERMANENT_PROVIDER_RETIRE_MS,reason:'provider-reject-hardening'}).catch(()=>{});}
+  }catch{}
+}
 
 async function fetchQuote(env,symbol){
   if(!env.TWELVE_DATA_API_KEY)throw new Error('Twelve Data API key is not configured.');await reserveProviderPurpose(env,'radar-quote');
