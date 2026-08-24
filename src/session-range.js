@@ -1,17 +1,20 @@
+import { assessOpeningRange, recordOpeningRangeShadow } from './opening-range.js';
+
 export const SESSION_RANGE_SHADOW_VERSION='sf-session-range-shadow-v1';
 const FIFTEEN_MINUTES=15*60*1000;
 
 export function assessSessionRange(candles,{atr=null,currentPrice=null}={}){
-  if(!Array.isArray(candles)||candles.length<30)return insufficient('Not enough 15-minute history to estimate session range.');
+  const openingRangeShadow=assessOpeningRange(candles,{currentPrice});
+  if(!Array.isArray(candles)||candles.length<30)return insufficient('Not enough 15-minute history to estimate session range.',openingRangeShadow);
   const completed=candles.slice(0,-1).filter(validCandle);
   const sessions=groupSessions(completed);
-  if(sessions.length<3)return insufficient('At least three regular sessions are needed for a room-to-run shadow estimate.');
+  if(sessions.length<3)return insufficient('At least three regular sessions are needed for a room-to-run shadow estimate.',openingRangeShadow);
 
   const current=sessions.at(-1),prior=sessions.slice(0,-1),currentSummary=summarize(current.bars,currentPrice);
-  if(!currentSummary)return insufficient('Current regular-session range could not be resolved.');
+  if(!currentSummary)return insufficient('Current regular-session range could not be resolved.',openingRangeShadow);
   const fullPrior=prior.map(s=>summarize(s.bars)).filter(Boolean).filter(s=>s.bars>=16);
   const sameTimePrior=prior.map(s=>summarize(s.bars.slice(0,Math.max(1,currentSummary.bars)))).filter(Boolean);
-  if(fullPrior.length<2||sameTimePrior.length<2)return insufficient('Historical session-range sample is still too small.');
+  if(fullPrior.length<2||sameTimePrior.length<2)return insufficient('Historical session-range sample is still too small.',openingRangeShadow);
 
   const fullRanges=fullPrior.map(s=>s.rangePct),sameTimeRanges=sameTimePrior.map(s=>s.rangePct);
   const medianFullRangePct=median(fullRanges),p80FullRangePct=quantile(fullRanges,.8),sameTimeMedianRangePct=median(sameTimeRanges);
@@ -42,6 +45,7 @@ export function assessSessionRange(candles,{atr=null,currentPrice=null}={}){
     affectsBuyNow:false,
     state,
     reason,
+    openingRangeShadow,
     sessionDate:current.key,
     barsElapsed:currentSummary.bars,
     historicalSample:fullPrior.length,
@@ -80,6 +84,9 @@ export async function recordSessionRangeShadow(env,analysis,{source='execution-r
     numOrNull(range.atrUsage),numOrNull(range.medianRangeUsage),numOrNull(range.p80RangeUsage),numOrNull(range.sameTimePace),numOrNull(range.rangePosition),numOrNull(range.currentRangePct),
     numOrNull(range.remainingAtrPct),Number(range.historicalSample)||0,JSON.stringify(range),Date.now()
   ).run();
+  if(range.openingRangeShadow){
+    await recordOpeningRangeShadow(env,{...analysis,openingRangeShadow:range.openingRangeShadow},{source,now});
+  }
   return{symbol,observedAt,observedBucket,state:String(range.state||'INSUFFICIENT'),modelVersion:String(range.version||SESSION_RANGE_SHADOW_VERSION)};
 }
 
@@ -149,4 +156,4 @@ function positive(v){const n=Number(v);return Number.isFinite(n)&&n>0?n:null;}
 function numOrNull(v){const n=Number(v);return Number.isFinite(n)?n:null;}
 function sanitizeSymbol(v){const s=String(v||'').trim().toUpperCase().replace(/[^A-Z.]/g,'').slice(0,6);return/^[A-Z]{1,5}(?:\.[A-Z])?$/.test(s)?s:'';}
 function clamp(v,lo,hi){return Math.min(hi,Math.max(lo,v));}
-function insufficient(reason){return{version:SESSION_RANGE_SHADOW_VERSION,shadowOnly:true,affectsBuyNow:false,state:'INSUFFICIENT',reason,historicalSample:0,sameTimeSample:0};}
+function insufficient(reason,openingRangeShadow=null){return{version:SESSION_RANGE_SHADOW_VERSION,shadowOnly:true,affectsBuyNow:false,state:'INSUFFICIENT',reason,historicalSample:0,sameTimeSample:0,openingRangeShadow};}
