@@ -49,17 +49,19 @@ This file is the persistent source of truth for the build sequence. Complete and
 - [x] Compare SignalForge against the appropriate market and sector benchmarks rather than merely checking whether observations made money.
 - [x] Qualify evidence-backed probability calibration only after a sufficiently large resolved BUY cohort, while keeping model-version cohorts separate.
 
+### Stage 11.5 — Paper Simulator Hardening ✅
+
+- [x] Mark open paper positions from the freshest available radar quote or saved signal observation.
+- [x] Calculate lifetime aggregate metrics from the full closed-trade history independently from the recent 100-trade UI list.
+- [x] Retain the full equity history for lifetime drawdown while downsampling the UI curve to a bounded representative series.
+- [x] Add cached SPY benchmark return and SignalForge excess return without spending a provider request merely to render simulation results.
+- [x] Save analysis model/config version with every new paper position and closed paper trade while preserving legacy rows as LEGACY/UNKNOWN.
+- [x] Separate lifetime paper results by model cohort when algorithms change.
+
 ## CURRENT
 
-### Stage 11.5 — Paper Simulator Hardening
-
-- [ ] Mark open paper positions from fresher market observations.
-- [ ] Calculate lifetime aggregate metrics independently from the recent-trade UI limit.
-- [ ] Fix long-run equity-curve retention/downsampling.
-- [ ] Add benchmark return and excess return.
-- [ ] Save model/config version with every paper trade.
-- [ ] Separate results by model cohort when algorithms change.
+Evidence foundation Stages 11–11.5 are complete. The next large feature/model stage must be selected from measured evidence rather than added ahead of validation.
 
 ## NEXT RULE
 
-Do not add another large UI feature until Stages 11–11.5 are working. Production bugs may be fixed immediately, but feature requests should be placed in this ledger and resumed after the evidence foundation.
+Use the Stage 11 evidence database, benchmark-relative outcomes, model evaluation, and hardened paper simulator to decide what improves real forward performance. Production bugs may be fixed immediately. New critical gates or major UI/model features should be justified by forward evidence before promotion.
