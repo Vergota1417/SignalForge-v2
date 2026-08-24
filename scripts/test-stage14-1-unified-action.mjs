@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { unifiedActionState } from '../src/unified-action.js';
 
-function confirmation(pass=true){return{pass,participationPass:pass,passes:pass?4:3,total:5,state:pass?'PASS':'FAIL',relativeVolume:pass?1.2:.8,momentum4:pass?.01:-.01,reason:pass?'Participation confirmed.':'Participation blocked.'};}
+function confirmation(pass=true){return{pass,participationPass:pass,passes:pass?4:3,total:5,state:pass?'PASS':'FAIL',relativeVolume:pass?1.2:.8,momentum4:pass ? .01 : -.01,reason:pass?'Participation confirmed.':'Participation blocked.'};}
 function signal(status,{readiness=70,ready=3,failed=['Entry engine'],reason='',intradayConfirmation=null}={}){
   const names=['trend','entry','probability','riskReward'];
   const engines=Object.fromEntries(names.map((name,i)=>[name,{ready:i<ready}]));
