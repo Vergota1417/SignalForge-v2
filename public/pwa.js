@@ -3,7 +3,12 @@
   const installBtn = document.getElementById('installAppBtn');
   const updateBanner = document.getElementById('updateBanner');
   const updateBtn = document.getElementById('updateAppBtn');
+  const updateCopy = document.getElementById('updateBannerCopy');
   const symbolInput = document.getElementById('symbolInput');
+  const build=window.SIGNALFORGE_BUILD||{};
+
+  renderBuild();
+  injectBuildStyles();
 
   if (symbolInput) {
     symbolInput.removeAttribute('maxlength');
@@ -55,13 +60,19 @@
     refreshing = true;
     window.location.reload();
   });
+  navigator.serviceWorker.addEventListener('message',event=>{
+    if(event.data?.type!=='SHELL_VERSION')return;
+    const shell=document.getElementById('sfBuildShell');if(shell)shell.textContent=` · ${event.data.cacheName}`;
+  });
 
   window.addEventListener('load', async () => {
     try {
-      const registration = await navigator.serviceWorker.register('/service-worker.js', { scope: '/' });
+      const registration = await navigator.serviceWorker.register('/service-worker.js', { scope: '/', updateViaCache:'none' });
+      await registration.update().catch(()=>{});
 
       const showUpdate = worker => {
         if (!worker || !navigator.serviceWorker.controller) return;
+        if (updateCopy) updateCopy.textContent=`SignalForge v${build.version||'new'} is ready. Tap Update to load the newest interface.`;
         if (updateBanner) updateBanner.hidden = false;
         updateBtn?.addEventListener('click', () => worker.postMessage({ type: 'SKIP_WAITING' }), { once: true });
       };
@@ -73,11 +84,14 @@
           if (worker.state === 'installed') showUpdate(worker);
         });
       });
+      navigator.serviceWorker.controller?.postMessage({type:'GET_SHELL_VERSION'});
     } catch (error) {
       console.error('[SignalForge PWA] Service worker registration failed', error);
     }
   });
 
+  function renderBuild(){const badge=document.getElementById('sfBuildBadge'),shell=document.getElementById('sfBuildShell');if(badge)badge.textContent=`v${build.version||'unknown'}`;if(shell)shell.textContent=build.shell?` · shell ${build.shell}`:'';}
+  function injectBuildStyles(){if(document.getElementById('sfBuildStyles'))return;const style=document.createElement('style');style.id='sfBuildStyles';style.textContent='.brand-line{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.sf-build-badge{display:inline-flex;align-items:center;border:1px solid rgba(126,188,255,.35);background:rgba(126,188,255,.08);color:#7ebcff;border-radius:999px;padding:2px 6px;font-size:9px;font-weight:900;letter-spacing:.04em}.sf-build-shell{font-size:9px;color:#60758d;text-transform:none;letter-spacing:0}@media(max-width:700px){.sf-build-badge{font-size:8px}}';document.head.appendChild(style);}
   function loadFinancialCharting(){
     if(window.LightweightCharts?.createChart){loadModuleScript('/chart-adapter.js','sf-financial-chart');return;}
     if(document.querySelector('script[data-sf-lightweight]'))return;
