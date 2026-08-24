@@ -42,14 +42,14 @@ This file is the persistent source of truth for the build sequence. Complete and
 - [x] Add 1/3/5/10/20-session industry, sector, and market benchmark returns plus excess returns using the last completed benchmark session at/before the observation as the no-lookahead baseline.
 - [x] Add a sector-rotation cohort evaluator and regression coverage while explicitly keeping rotation evidence-only rather than silently promoting it to a critical gate.
 
+### Stage 11.4 — Evidence / Model Evaluation ✅
+
+- [x] Measure win rate, expectancy, profit factor, drawdown, false positives, false negatives, and missed winners.
+- [x] Segment performance by readiness, gate configuration, research score, RVOL, regime, sector, holding horizon, and model version.
+- [x] Compare SignalForge against the appropriate market and sector benchmarks rather than merely checking whether observations made money.
+- [x] Qualify evidence-backed probability calibration only after a sufficiently large resolved BUY cohort, while keeping model-version cohorts separate.
+
 ## CURRENT
-
-### Stage 11.4 — Evidence / Model Evaluation
-
-- [ ] Measure win rate, expectancy, profit factor, drawdown, false positives, false negatives, and missed winners.
-- [ ] Segment performance by readiness, gate configuration, research score, RVOL, regime, sector, holding horizon, and model version.
-- [ ] Compare SignalForge against the appropriate benchmark rather than merely checking whether trades made money.
-- [ ] Calibrate displayed probabilities only from sufficiently large forward evidence cohorts.
 
 ### Stage 11.5 — Paper Simulator Hardening
 
