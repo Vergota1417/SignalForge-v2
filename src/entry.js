@@ -25,26 +25,31 @@ export default {
   scheduled(controller,env,ctx){
     const scheduledTime=Number(controller.scheduledTime)||Date.now(),now=new Date(scheduledTime),parts=easternParts(now),minutes=Number(parts.hour)*60+Number(parts.minute),weekday=parts.weekday;
     if(isWeekday(weekday)&&OPENING_SCAN_MINUTES.has(minutes)){
-      ctx.waitUntil(runOpeningCycle(env,{now:scheduledTime,weekday,minutes}));
+      ctx.waitUntil(runMarketScanCycle(env,{now:scheduledTime,weekday,minutes,phase:openingLabel(minutes)}));
+      return;
+    }
+    if(weekday==='Fri'&&minutes>=585&&minutes<840&&minutes%15===0){
+      ctx.waitUntil(runMarketScanCycle(env,{now:scheduledTime,weekday,minutes,phase:'FRIDAY REGULAR'}));
       return;
     }
     return app.scheduled(controller,env,ctx);
   }
 };
 
-async function runOpeningCycle(env,{now,weekday,minutes}){
+async function runMarketScanCycle(env,{now,weekday,minutes,phase}){
+  const operationKey=OPENING_SCAN_MINUTES.has(minutes)?'opening-pipeline':'radar-scan-cycle';
   try{
     await ensureSchema(env);
-    await recordOperation(env,'cron-heartbeat',{status:'OK',at:now,detail:{weekday,minutes,marketDataConfigured:Boolean(env.TWELVE_DATA_API_KEY),phase:'OPENING'}});
-    if(!env.TWELVE_DATA_API_KEY){await recordOperation(env,'opening-pipeline',{status:'ERROR',at:now,detail:{phase:openingLabel(minutes),message:'Market-data provider is not configured.'}});return;}
+    await recordOperation(env,'cron-heartbeat',{status:'OK',at:now,detail:{weekday,minutes,marketDataConfigured:Boolean(env.TWELVE_DATA_API_KEY),phase}});
+    if(!env.TWELVE_DATA_API_KEY){await recordOperation(env,operationKey,{status:'ERROR',at:now,detail:{phase,message:'Market-data provider is not configured.'}});return;}
     const radar=await runRadarDiscovery(env,{batchSize:5,now}),promotion=await runScreenerPromotion(env,{maxPromotions:1,now});
-    const detail={phase:openingLabel(minutes),requested:radar.selected||null,scanned:(radar.scanned||[]).map(x=>x.symbol),leaders:(radar.leaders||[]).map(x=>x.symbol),promoted:(promotion.promoted||[]).map(x=>({symbol:x.symbol,status:x.status,readiness:x.readiness})),candidates:promotion.candidates||[],universeSize:Number(radar.universeSize)||0};
-    await recordOperation(env,'opening-pipeline',{status:detail.scanned.length?'OK':'IDLE',at:now,detail});
-    console.log(JSON.stringify({event:'opening_market_cycle',...detail}));
-  }catch(error){await recordOperation(env,'opening-pipeline',{status:'ERROR',at:now,detail:{phase:openingLabel(minutes),message:error?.message||String(error)}}).catch(()=>{});console.error(JSON.stringify({event:'opening_market_cycle_error',message:error?.message||String(error)}));}
+    const detail={phase,requested:radar.selected||null,scanned:(radar.scanned||[]).map(x=>x.symbol),leaders:(radar.leaders||[]).map(x=>x.symbol),promoted:(promotion.promoted||[]).map(x=>({symbol:x.symbol,status:x.status,readiness:x.readiness})),candidates:promotion.candidates||[],universeSize:Number(radar.universeSize)||0};
+    await recordOperation(env,operationKey,{status:detail.scanned.length?'OK':'IDLE',at:now,detail});
+    console.log(JSON.stringify({event:'scheduled_market_scan_cycle',...detail}));
+  }catch(error){await recordOperation(env,operationKey,{status:'ERROR',at:now,detail:{phase,message:error?.message||String(error)}}).catch(()=>{});console.error(JSON.stringify({event:'scheduled_market_scan_cycle_error',phase,message:error?.message||String(error)}));}
 }
 
-function openingLabel(minutes){return minutes===570?'OPEN':'OPEN +5M';}
+function openingLabel(minutes){return minutes===570?'OPENING SWEEP 1':minutes===575?'OPENING SWEEP 2':'OPENING SWEEP 3';}
 function isWeekday(day){return day==='Mon'||day==='Tue'||day==='Wed'||day==='Thu'||day==='Fri';}
 function easternParts(date){const parts=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',weekday:'short',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(date);return Object.fromEntries(parts.map(x=>[x.type,x.value]));}
 async function readJson(request){const text=await request.text();if(text.length>10_000)throw new Error('Self-test request is too large.');try{return text?JSON.parse(text):{};}catch{throw new Error('Invalid JSON payload.');}}
