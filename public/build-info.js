@@ -1,1 +1,1 @@
-window.SIGNALFORGE_BUILD=Object.freeze({version:'2.30.35',release:'emergency-request-guard',shell:'v30-35'});
+window.SIGNALFORGE_BUILD=Object.freeze({version:'2.30.36',release:'pattern-network-layer-disabled',shell:'v30-36'});
