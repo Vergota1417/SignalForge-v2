@@ -11,9 +11,20 @@ export const DEFAULT_SHADOW_CONFIG={
   requireNormalRegime:true,
   requireStrongSector:true
 };
+const shadowValidationSchemaReadyByDb=new WeakMap();
 
 export async function ensureShadowValidationSchema(env,{now=Date.now()}={}){
   await ensureOutcomeSchema(env);
+  if(!env?.DB)throw new Error('D1 binding DB is not configured.');
+  let ready=shadowValidationSchemaReadyByDb.get(env.DB);
+  if(!ready){
+    ready=initializeShadowValidationSchema(env,now).catch(error=>{shadowValidationSchemaReadyByDb.delete(env.DB);throw error;});
+    shadowValidationSchemaReadyByDb.set(env.DB,ready);
+  }
+  return ready;
+}
+
+async function initializeShadowValidationSchema(env,now){
   await env.DB.prepare(`CREATE TABLE IF NOT EXISTS shadow_challengers (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
