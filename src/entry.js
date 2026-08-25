@@ -22,6 +22,12 @@ export default {
         const plan=buildTradePlan(saved.analysis);return json({symbol,updatedAt:saved.updatedAt,status:saved.analysis.status,readiness:saved.analysis.readiness,plan});
       }catch(error){console.error(JSON.stringify({event:'trade_plan_request_error',message:error?.message||String(error)}));return json({error:'Trade plan is temporarily unavailable.'},500);}
     }
+    if(url.pathname==='/api/portfolio'&&request.method==='GET'){
+      const response=await app.fetch(request,env,ctx);if(!response.ok)return response;const body=await response.json();if(Array.isArray(body.positions))body.positions.sort(managedPositionSort);return json(body);
+    }
+    if(url.pathname==='/api/health'&&request.method==='GET'){
+      const response=await app.fetch(request,env,ctx);if(!response.ok)return response;const body=await response.json();return json({...body,tradePlan:true,postBuyManager:true,portfolioPricePulseMinutes:5,partialProfitManagement:true});
+    }
     if(url.pathname!=='/api/backend-self-test')return app.fetch(request,env,ctx);
     if(request.method!=='POST')return json({error:'Method not allowed.'},405);
     try{
@@ -76,6 +82,7 @@ async function runMarketScanCycle(env,{now,weekday,minutes,phase}){
   }catch(error){await recordOperation(env,operationKey,{status:'ERROR',at:now,detail:{phase,message:error?.message||String(error)}}).catch(()=>{});console.error(JSON.stringify({event:'scheduled_market_scan_cycle_error',phase,message:error?.message||String(error)}));}
 }
 
+function managedPositionSort(a,b){const order={'SELL / EXIT':5,'TAKE PARTIAL PROFIT':4,'REDUCE':3,'PROTECT PROFIT':2,'HOLD':1};const d=(order[b?.strategy?.state]||0)-(order[a?.strategy?.state]||0);if(d)return d;return(Number(b?.strategy?.continuationWeakness)||0)-(Number(a?.strategy?.continuationWeakness)||0);}
 function openingLabel(minutes){return minutes===570?'OPENING SWEEP 1':minutes===575?'OPENING SWEEP 2':'OPENING SWEEP 3';}
 function isWeekday(day){return day==='Mon'||day==='Tue'||day==='Wed'||day==='Thu'||day==='Fri';}
 function easternParts(date){const parts=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',weekday:'short',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(date);return Object.fromEntries(parts.map(x=>[x.type,x.value]));}
