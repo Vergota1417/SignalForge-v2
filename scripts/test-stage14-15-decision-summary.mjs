@@ -20,6 +20,6 @@ assert.match(radar,/radar_symbol_retired/,'provider-rejected symbols must be rec
 assert.match(radar,/retired\.length\?'OK'/,'a successfully retired bad symbol must not make the scanner unhealthy');
 assert.match(operations,/provider-rejected symbol retired/,'operations UI must explain retired provider symbols');
 assert.match(operations,/Latest actionable error/,'operations UI must distinguish actionable errors from retired-symbol maintenance');
-assert.match(build,/2\.30\.16/,'visible build must be v2.30.16');
+assert.match(build,/version:'2\.30\.\d+'/,'production must expose a SignalForge 2.30.x build');
 
 console.log('Stage 14.15 decision summary/provider retirement regression passed');
