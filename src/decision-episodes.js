@@ -22,8 +22,8 @@ export function decisionEpisodeDiagnostics(rows=[],options={}){
 
 function normalize(row,index){
   let payload={};try{payload=row?.payload||JSON.parse(row?.payloadJson||'{}');}catch{}
-  const observedAt=numberOrNaN(row?.observedAt??row?.observed_at??payload?.observedAt??index);
-  return{...row,payload,symbol:String(row?.symbol||payload?.symbol||'').trim().toUpperCase(),status:String(row?.status||payload?.status||'').trim(),modelVersion:String(row?.modelVersion||row?.model_version||payload?.modelVersion||'UNKNOWN'),source:String(row?.source||payload?.source||''),observedAt};
+  const observedAt=numberOrNaN(row?.observedAt??row?.observed_at??payload?.observedAt??index),symbol=String(row?.symbol||payload?.symbol||`__ROW_${index}`).trim().toUpperCase();
+  return{...row,payload,symbol,status:String(row?.status||payload?.status||'').trim(),modelVersion:String(row?.modelVersion||row?.model_version||payload?.modelVersion||'UNKNOWN'),source:String(row?.source||payload?.source||''),observedAt};
 }
 function sortRows(a,b){return String(a.symbol).localeCompare(String(b.symbol))||Number(a.observedAt)-Number(b.observedAt);}
 function numberOrNaN(v){const n=Number(v);return Number.isFinite(n)?n:Number.NaN;}
