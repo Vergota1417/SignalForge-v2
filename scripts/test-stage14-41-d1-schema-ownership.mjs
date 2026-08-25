@@ -55,7 +55,7 @@ assert.deepEqual(offenders,[],'every runtime schema/migration owner must use onc
 
 const activity=fs.readFileSync(path.join(srcDir,'activity-rhythm.js'),'utf8');
 assert.match(activity,/async function ensureSchema\(env\)/,'Activity Rhythm shadow persistence must define its schema initializer instead of calling an undefined function');
-assert.match(activity,/activitySchemaReadyByDb=new WeakMap\(\)/,'Activity Rhythm schema must be once-per-D1-binding');
+assert.match(activity,/activityRhythmSchemaReadyByDb=new WeakMap\(\)/,'Activity Rhythm schema must be once-per-D1-binding');
 
 const outcomes=fs.readFileSync(path.join(srcDir,'outcomes.js'),'utf8');
 assert.match(outcomes,/outcomeSchemaReadyByDb=new WeakMap\(\)/,'outcome schema and migrations must be once-per-D1-binding');
