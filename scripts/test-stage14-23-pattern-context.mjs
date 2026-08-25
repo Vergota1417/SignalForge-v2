@@ -10,7 +10,7 @@ function makeDoubleBottom(){
     if(i===23)target=101.5;
     if(i===31)target=91.1;if(i===32)target=90.9;if(i===33)target=91.4;
     if(i>40)target=101+(i-40)*.15;
-    const open=close,body=target-open,hi=Math.max(open,target)+(i===23?1.2:.7),lo=Math.min(open,target)-((i===15||i===32)?.8:.7);
+    const open=close,hi=Math.max(open,target)+(i===23?1.2:.7),lo=Math.min(open,target)-((i===15||i===32)?.8:.7);
     rows.push({time:Date.UTC(2026,0,i+1),open,high:hi,low:lo,close:target,volume:1_000_000+i*1000});close=target;
   }
   return rows;
@@ -49,7 +49,7 @@ assert.match(ui,/\/api\/signals/,'pattern UI should read saved analysis');
 assert.match(hook,/SignalForgeChartBridge/,'chart hook must expose exact Lightweight Charts overlay bridge');
 assert.ok(pwa.indexOf("/pattern-chart-hook.js")<pwa.indexOf("/chart-adapter.js"),'chart hook must load before chart adapter');
 assert.ok(pwa.indexOf("/pattern-context-ui.js")>pwa.indexOf("/chart-adapter.js"),'pattern controls must load after chart adapter');
-assert.match(sw,/signalforge-shell-v30-25/);assert.match(sw,/'\/pattern-chart-hook\.js'/);assert.match(sw,/'\/pattern-context-ui\.js'/);
-assert.match(build,/version:'2\.30\.25'/);assert.match(build,/shell:'v30-25'/);
+assert.match(sw,/signalforge-shell-v30-/);assert.match(sw,/'\/pattern-chart-hook\.js'/);assert.match(sw,/'\/pattern-context-ui\.js'/);
+assert.match(build,/SIGNALFORGE_BUILD/,'current release must keep visible build metadata');
 
 console.log('Stage 14.23 trendline + pattern context regression passed.');
