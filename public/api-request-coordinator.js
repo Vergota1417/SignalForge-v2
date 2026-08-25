@@ -4,37 +4,20 @@
   if(window.__sfApiCoordinatorInstalled)return;
   window.__sfApiCoordinatorInstalled=true;
 
-  const FIVE_MINUTES=5*60_000;
-  const THIRTY_MINUTES=30*60_000;
-  const TTL_BY_PATH=new Map([
-    ['/api/signals',FIVE_MINUTES],
-    ['/api/opportunity-radar',FIVE_MINUTES],
-    ['/api/screener',FIVE_MINUTES],
-    ['/api/alerts',FIVE_MINUTES],
-    ['/api/operations-status',FIVE_MINUTES],
-    ['/api/research-status',FIVE_MINUTES],
-    ['/api/detection-latency',FIVE_MINUTES],
-    ['/api/evidence-evaluation',FIVE_MINUTES],
-    ['/api/evidence-optimization',FIVE_MINUTES],
-    ['/api/health',FIVE_MINUTES]
-  ]);
+  const policy=window.SignalForgeApiRequestPolicy;
+  if(!policy?.ttlFor)throw new Error('SignalForge API request policy must load before the request coordinator.');
 
   const nativeFetch=window.fetch.bind(window);
   const memory=new Map();
   const inflight=new Map();
-  const stats={network:0,memoryHits:0,deduped:0,lastNetworkAt:0,blockedBackgroundBursts:0};
-
-  function ttlFor(url){
-    if(url.pathname==='/api/market-data'&&url.searchParams.get('cacheOnly')==='1')return THIRTY_MINUTES;
-    return TTL_BY_PATH.get(url.pathname)||0;
-  }
+  const stats={network:0,memoryHits:0,deduped:0,lastNetworkAt:0,blockedBackgroundBursts:0,networkByPath:{}};
 
   function eligible(input,init){
     const method=String(init?.method||input?.method||'GET').toUpperCase();
     if(method!=='GET')return null;
     let url;try{url=new URL(typeof input==='string'?input:input?.url||'',location.origin);}catch{return null;}
     if(url.origin!==location.origin)return null;
-    const ttl=ttlFor(url);if(!ttl)return null;
+    const ttl=policy.ttlFor(url,location.origin);if(!ttl)return null;
     return{url,ttl,key:url.href};
   }
 
@@ -50,7 +33,7 @@
   }
 
   function emit(){
-    window.dispatchEvent(new CustomEvent('signalforge:api-usage',{detail:{...stats,cacheEntries:memory.size,inflight:inflight.size}}));
+    window.dispatchEvent(new CustomEvent('signalforge:api-usage',{detail:{...stats,networkByPath:{...stats.networkByPath},cacheEntries:memory.size,inflight:inflight.size}}));
   }
 
   window.fetch=async function coordinatedFetch(input,init){
@@ -68,8 +51,11 @@
     const task=(async()=>{
       const response=await nativeFetch(input,init);
       const snapshot=await snapshotResponse(response);
-      stats.network++;stats.lastNetworkAt=Date.now();
-      if(response.ok)memory.set(rule.key,{expiresAt:Date.now()+rule.ttl,snapshot});
+      stats.network++;stats.lastNetworkAt=Date.now();stats.networkByPath[rule.url.pathname]=(stats.networkByPath[rule.url.pathname]||0)+1;
+      if(response.ok){
+        memory.set(rule.key,{expiresAt:Date.now()+rule.ttl,snapshot});
+        window.dispatchEvent(new CustomEvent('signalforge:api-snapshot',{detail:{url:rule.url.href,path:rule.url.pathname,expiresAt:Date.now()+rule.ttl}}));
+      }
       emit();
       return snapshot;
     })();
@@ -78,9 +64,9 @@
   };
 
   window.SignalForgeApiCoordinator=Object.freeze({
-    stats:()=>({...stats,cacheEntries:memory.size,inflight:inflight.size}),
+    stats:()=>({...stats,networkByPath:{...stats.networkByPath},cacheEntries:memory.size,inflight:inflight.size}),
     clear:()=>memory.clear(),
-    ttlForPath:path=>TTL_BY_PATH.get(String(path||''))||0,
-    policy:Object.freeze({backgroundReadMs:FIVE_MINUTES,cacheOnlyMarketDataMs:THIRTY_MINUTES})
+    ttlForPath:path=>policy.ttlFor(String(path||''),location.origin),
+    policy
   });
 })();
