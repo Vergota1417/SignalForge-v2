@@ -1,4 +1,5 @@
 export const DECISION_EPISODE_MAX_GAP_MS=36*60*60*1000;
+export const SETUP_THESIS_MAX_GAP_MS=7*24*60*60*1000;
 const TERMINAL_STATUSES=new Set(['AVOID','SELL / EXIT']);
 
 export function buildDecisionEpisodes(rows=[],{maxGapMs=DECISION_EPISODE_MAX_GAP_MS}={}){
@@ -14,18 +15,18 @@ export function buildDecisionEpisodes(rows=[],{maxGapMs=DECISION_EPISODE_MAX_GAP
   return episodes.sort(sortRows).map(row=>({...row,episodeSources:[...row.episodeSources]}));
 }
 
-export function buildSetupStateSamples(rows=[],{maxGapMs=DECISION_EPISODE_MAX_GAP_MS}={}){
+export function buildSetupStateSamples(rows=[],{maxGapMs=SETUP_THESIS_MAX_GAP_MS}={}){
   const normalized=normalizeRows(rows),bySymbol=groupBySymbol(normalized),samples=[];
   let setupSequence=0;
   for(const symbolRows of bySymbol.values()){
     let active=null;
     for(const row of symbolRows){
       const terminalTransition=Boolean(active?.terminalStatus&&row.status!==active.terminalStatus),sameSetup=Boolean(active&&active.modelVersion===row.modelVersion&&continuous(active.lastObservedAt,row.observedAt,maxGapMs)&&!terminalTransition);
-      if(!sameSetup){setupSequence+=1;active={id:`setup-${setupSequence}`,symbol:row.symbol,modelVersion:row.modelVersion,startAt:row.observedAt,lastObservedAt:row.observedAt,endAt:row.observedAt,observationCount:0,stateFirst:new Set(),terminalStatus:null};}
-      active.lastObservedAt=row.observedAt;active.endAt=row.observedAt;active.observationCount+=1;
+      if(!sameSetup){setupSequence+=1;active={id:`setup-${setupSequence}`,symbol:row.symbol,modelVersion:row.modelVersion,startAt:row.observedAt,lastObservedAt:row.observedAt,stateFirst:new Set(),terminalStatus:null};}
+      active.lastObservedAt=row.observedAt;
       if(!active.stateFirst.has(row.status)){
         active.stateFirst.add(row.status);
-        samples.push({...row,setupEpisodeId:active.id,setupStartAt:active.startAt,setupEndAt:active.endAt,setupStateFirstAt:row.observedAt});
+        samples.push({...row,setupEpisodeId:active.id,setupStartAt:active.startAt,setupStateFirstAt:row.observedAt});
       }
       if(TERMINAL_STATUSES.has(row.status))active.terminalStatus=row.status;
     }
@@ -40,7 +41,7 @@ export function decisionEpisodeDiagnostics(rows=[],options={}){
 
 export function setupThesisDiagnostics(rows=[],options={}){
   const samples=buildSetupStateSamples(rows,options),setupIds=new Set(samples.map(row=>row.setupEpisodeId)),raw=(rows||[]).length;
-  return{rawObservations:raw,setupEpisodeCount:setupIds.size,stateSampleCount:samples.length,collapsedObservations:Math.max(0,raw-samples.length),policy:'A continuous ticker/model thesis may contribute at most one validation sample per decision state. State flicker such as BUY → READY → BUY does not create a second BUY sample. A model change, gap over 36 hours, or transition away from a terminal AVOID/SELL state starts a new setup thesis.'};
+  return{rawObservations:raw,setupEpisodeCount:setupIds.size,stateSampleCount:samples.length,collapsedObservations:Math.max(0,raw-samples.length),policy:'A continuous ticker/model thesis may contribute at most one validation sample per decision state. State flicker such as BUY → READY → BUY does not create a second BUY sample. A model change, observation gap over 7 days, or transition away from a terminal AVOID/SELL state starts a new setup thesis; normal market-closed weekends do not.'};
 }
 
 function normalizeRows(rows){return(rows||[]).map((row,index)=>normalize(row,index)).filter(row=>row.symbol&&row.status&&Number.isFinite(row.observedAt)).sort(sortRows);}
