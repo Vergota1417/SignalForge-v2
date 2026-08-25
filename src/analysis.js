@@ -1,4 +1,5 @@
 import { assessPatternContext } from './pattern-context.js';
+import { evaluateHardBuyGuardrails } from './hard-guardrails.js';
 
 const average = arr => arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : 0;
 
@@ -159,15 +160,18 @@ export function analyze(candles,symbol,context={}){
   ];
   const engines={trend:engineState('TREND',trendMetrics,3),entry:engineState('ENTRY',entryMetrics,3),probability:engineState('PROBABILITY',probabilityMetrics,3),riskReward:engineState('RISK / REWARD',rrMetrics,3)};
   const allMetrics=[...trendMetrics,...entryMetrics,...probabilityMetrics,...rrMetrics],passed=allMetrics.filter(m=>m.pass).length,total=allMetrics.length,criticalFailed=Object.values(engines).filter(e=>!e.ready).map(e=>e.name),nearEntry=latest.close>=preferredEntryLow*.99&&latest.close<=preferredEntryHigh*1.02,dailyGatesReady=Object.values(engines).every(e=>e.ready);
+  const hardBuyGuardrails=evaluateHardBuyGuardrails({rewardRisk:rr,targetResolved:Boolean(target),thesisIntact:latest.close>thesisBreak,overextended:latest.close>overextension||r14>=76,higherTimeframeReady:dailyGatesReady,intradayConfirmation});
   let status,reason;
   if(latest.close<=thesisBreak){status='SELL / EXIT';reason='Price broke structure-based thesis support. The original setup is invalid until structure repairs.';}
   else if(!engines.trend.ready){status='AVOID';reason='Trend quality is not strong enough to justify a new investment.';}
   else if(benchmark?.riskOff&&!engines.probability.ready){status='WAIT — SETUP NOT READY';reason='The stock setup is improving, but the broad-market regime is risk-off.';}
   else if(latest.close>overextension||r14>=76){status='WAIT FOR PULLBACK';reason='Trend is strong, but price is too extended to chase.';}
-  else if(dailyGatesReady&&intradayConfirmation?.pass){status='BUY NOW';reason='Environment, location, higher-timeframe gates, and participation/execution confirmation are aligned.';}
-  else if(dailyGatesReady){status='SETUP — READY SOON';reason=intradayConfirmation?.reason||'All higher-timeframe gates cleared. BUY NOW still requires participation/execution confirmation.';}
+  else if(dailyGatesReady&&!hardBuyGuardrails.rules.targetResolved.pass){status='WAIT — SETUP NOT READY';reason='BUY blocked by hard guardrail: no defensible structure target is resolved, so reward/risk cannot be authorized.';}
+  else if(dailyGatesReady&&!hardBuyGuardrails.rules.rewardRisk.pass){status='WAIT — SETUP NOT READY';reason=`BUY blocked by hard guardrail: reward/risk is ${Number.isFinite(rr)?rr.toFixed(2):'unresolved'}:1 and must be at least ${hardBuyGuardrails.minRewardRisk.toFixed(2)}:1.`;}
+  else if(dailyGatesReady&&hardBuyGuardrails.pass){status='BUY NOW';reason='All scored engines and every non-negotiable BUY guardrail passed, including 1.80:1 reward/risk and participation confirmation.';}
+  else if(dailyGatesReady){status='SETUP — READY SOON';reason=intradayConfirmation?.reason||hardBuyGuardrails.reason||'All higher-timeframe gates cleared. BUY NOW still requires participation/execution confirmation.';}
   else if(engines.trend.ready&&nearEntry&&(engines.probability.ready||engines.riskReward.ready)){status='SETUP — READY SOON';reason='Price is near the preferred entry zone, but one higher-timeframe gate is still missing.';}
   else{status='WAIT — SETUP NOT READY';reason='Several checks pass, but at least one higher-timeframe gate still blocks a buy setup.';}
-  let readiness=Math.round((passed/total)*55+((4-criticalFailed.length)/4)*45);if(dailyGatesReady&&intradayConfirmation?.pass)readiness=Math.max(readiness,92);else if(dailyGatesReady)readiness=Math.max(readiness,82);if(status==='AVOID'||status==='SELL / EXIT')readiness=Math.min(readiness,35);if(status==='WAIT FOR PULLBACK')readiness=Math.min(readiness,68);
-  return{symbol,latest,changePct:previous.close?latest.close/previous.close-1:0,sma20:s20,sma50:s50,atr:a14,rsi:r14,momentum20,relativeStrength20,extensionPct,pullbackDepth,trendStrength,benchmark,intradayConfirmation,dailyGatesReady,preferredEntryLow,preferredEntryHigh,overextension,thesisBreak,target,rr,wf,structure,patternContext,engines,passed,total,criticalFailed,status,reason,readiness};
+  let readiness=Math.round((passed/total)*55+((4-criticalFailed.length)/4)*45);if(hardBuyGuardrails.pass)readiness=Math.max(readiness,92);else if(dailyGatesReady&&hardBuyGuardrails.rules.targetResolved.pass&&hardBuyGuardrails.rules.rewardRisk.pass)readiness=Math.max(readiness,82);if(!hardBuyGuardrails.rules.targetResolved.pass||!hardBuyGuardrails.rules.rewardRisk.pass)readiness=Math.min(readiness,79);if(status==='AVOID'||status==='SELL / EXIT')readiness=Math.min(readiness,35);if(status==='WAIT FOR PULLBACK')readiness=Math.min(readiness,68);
+  return{symbol,latest,changePct:previous.close?latest.close/previous.close-1:0,sma20:s20,sma50:s50,atr:a14,rsi:r14,momentum20,relativeStrength20,extensionPct,pullbackDepth,trendStrength,benchmark,intradayConfirmation,dailyGatesReady,hardBuyGuardrails,preferredEntryLow,preferredEntryHigh,overextension,thesisBreak,target,rr,wf,structure,patternContext,engines,passed,total,criticalFailed,status,reason,readiness};
 }
