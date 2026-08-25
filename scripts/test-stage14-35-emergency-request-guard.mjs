@@ -13,9 +13,11 @@ assert.match(sw,/signalforge-api-snapshots-v2/,'emergency service-worker cache m
 assert.match(sw,/FIVE_MINUTES=5\*60_000/,'service worker must suppress repeated dashboard reads for five minutes');
 assert.match(sw,/THIRTY_MINUTES=30\*60_000/,'service worker must suppress repeated cache-only market-data reads for thirty minutes');
 assert.match(wrangler,/"crons": \["\*\/5 \* \* \* \*"\]/,'backend scheduler must remain on five-minute boundaries');
-assert.match(wrangler,/"head_sampling_rate": 0\.1/,'observability sampling must be reduced from full capture');
-assert.match(build,/2\.30\.35/,'visible release must advance');
-assert.match(build,/emergency-request-guard/,'release must identify the emergency usage fix');
-assert.match(sw,/signalforge-shell-v30-35/,'PWA shell must advance so clients receive the emergency guard');
+assert.match(wrangler,/"head_sampling_rate": 0\.1/,'observability sampling must stay reduced from full capture');
+assert.match(build,/version:'2\.30\.\d+'/,'current release must expose a SignalForge 2.30.x version');
+const swShell=sw.match(/CACHE_NAME='signalforge-shell-(v30-\d+)'/)?.[1];
+const visibleShell=build.match(/shell:'(v30-\d+)'/)?.[1];
+assert.ok(swShell&&visibleShell,'current release must expose versioned v30 shell metadata');
+assert.equal(swShell,visibleShell,'service-worker shell must match visible build shell');
 
-console.log('Stage 14.35 emergency request guard regression checks passed.');
+console.log('Stage 14.35/current emergency request guard regression checks passed.');
