@@ -1,3 +1,5 @@
+import { assessPatternContext } from './pattern-context.js';
+
 const average = arr => arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : 0;
 
 function sma(values,period){if(values.length<period)return null;return average(values.slice(-period));}
@@ -128,7 +130,7 @@ export function analyze(candles,symbol,context={}){
   const legacyRelativeStrengthProxy=momentum20-average(closes.slice(-10).map((v,i,a)=>i?v/a[i-1]-1:0)),intradayConfirmation=context.intradayConfirmation||null;
   const preferredEntryLow=Math.max(.01,s20-.40*a14),preferredEntryHigh=s20+.18*a14,overextension=s20+1.45*a14;
   const structure=structureLevels(candles,a14),thesisBreak=structure.stop||Math.max(.01,s50-.75*a14),target=structure.target;
-  const risk=Math.max(.01,latest.close-thesisBreak),reward=target?Math.max(0,target-latest.close):0,rr=target?reward/risk:0,wf=walkForward(candles);
+  const risk=Math.max(.01,latest.close-thesisBreak),reward=target?Math.max(0,target-latest.close):0,rr=target?reward/risk:0,wf=walkForward(candles),patternContext=assessPatternContext(candles,{atr:a14,symbol});
 
   const trendMetrics=[
     {name:'50-period trend',value:`Price ${latest.close>=s50?'above':'below'} 50-period trend`,pass:latest.close>s50},
@@ -167,5 +169,5 @@ export function analyze(candles,symbol,context={}){
   else if(engines.trend.ready&&nearEntry&&(engines.probability.ready||engines.riskReward.ready)){status='SETUP — READY SOON';reason='Price is near the preferred entry zone, but one higher-timeframe gate is still missing.';}
   else{status='WAIT — SETUP NOT READY';reason='Several checks pass, but at least one higher-timeframe gate still blocks a buy setup.';}
   let readiness=Math.round((passed/total)*55+((4-criticalFailed.length)/4)*45);if(dailyGatesReady&&intradayConfirmation?.pass)readiness=Math.max(readiness,92);else if(dailyGatesReady)readiness=Math.max(readiness,82);if(status==='AVOID'||status==='SELL / EXIT')readiness=Math.min(readiness,35);if(status==='WAIT FOR PULLBACK')readiness=Math.min(readiness,68);
-  return{symbol,latest,changePct:previous.close?latest.close/previous.close-1:0,sma20:s20,sma50:s50,atr:a14,rsi:r14,momentum20,relativeStrength20,extensionPct,pullbackDepth,trendStrength,benchmark,intradayConfirmation,dailyGatesReady,preferredEntryLow,preferredEntryHigh,overextension,thesisBreak,target,rr,wf,structure,engines,passed,total,criticalFailed,status,reason,readiness};
+  return{symbol,latest,changePct:previous.close?latest.close/previous.close-1:0,sma20:s20,sma50:s50,atr:a14,rsi:r14,momentum20,relativeStrength20,extensionPct,pullbackDepth,trendStrength,benchmark,intradayConfirmation,dailyGatesReady,preferredEntryLow,preferredEntryHigh,overextension,thesisBreak,target,rr,wf,structure,patternContext,engines,passed,total,criticalFailed,status,reason,readiness};
 }
