@@ -1,1 +1,1 @@
-window.SIGNALFORGE_BUILD=Object.freeze({version:'2.30.19',release:'alert-deeplink-summary-anchor',shell:'v30-19'});
+window.SIGNALFORGE_BUILD=Object.freeze({version:'2.30.20',release:'adaptive-api-scheduler',shell:'v30-20'});
