@@ -8,7 +8,7 @@ const allGood={
   thesisIntact:true,
   overextended:false,
   higherTimeframeReady:true,
-  intradayConfirmation:{pass:true}
+  intradayConfirmation:{pass:true,participationPass:true}
 };
 
 assert.equal(evaluateHardBuyGuardrails(allGood).pass,true,'1.80:1 with every hard gate passing must be eligible');
@@ -18,7 +18,8 @@ assert.equal(evaluateHardBuyGuardrails({...allGood,targetResolved:false}).pass,f
 assert.equal(evaluateHardBuyGuardrails({...allGood,thesisIntact:false}).pass,false,'broken thesis must hard-block BUY');
 assert.equal(evaluateHardBuyGuardrails({...allGood,overextended:true}).pass,false,'overextension must hard-block BUY');
 assert.equal(evaluateHardBuyGuardrails({...allGood,higherTimeframeReady:false}).pass,false,'uncleared higher-timeframe gates must hard-block BUY');
-assert.equal(evaluateHardBuyGuardrails({...allGood,intradayConfirmation:{pass:false}}).pass,false,'missing participation must hard-block BUY');
+assert.equal(evaluateHardBuyGuardrails({...allGood,intradayConfirmation:{pass:false,participationPass:true}}).pass,false,'failed final execution confirmation must hard-block BUY');
+assert.equal(evaluateHardBuyGuardrails({...allGood,intradayConfirmation:{pass:true,participationPass:false}}).pass,false,'failed participation core must hard-block BUY');
 
 const analysis=fs.readFileSync(new URL('../src/analysis.js',import.meta.url),'utf8');
 const entry=fs.readFileSync(new URL('../src/entry.js',import.meta.url),'utf8');
@@ -39,13 +40,15 @@ assert.match(coordinator,/FIVE_MINUTES=5\*60_000/,'browser background API reads 
 assert.match(coordinator,/THIRTY_MINUTES=30\*60_000/,'cache-only chart reads must remain guarded at thirty minutes');
 assert.match(sw,/FIVE_MINUTES=5\*60_000/,'service worker must independently enforce the five-minute request guard');
 assert.match(sw,/THIRTY_MINUTES=30\*60_000/,'service worker must independently enforce the cache-only chart guard');
-assert.match(sw,/signalforge-shell-v30-37/,'guardrail release must evict older PWA shells');
 assert.doesNotMatch(pwa,/loadScriptThen\('\/pattern-context-ui\.js'/,'pattern polling UI must remain disabled until rebuilt as passive-only');
-assert.doesNotMatch(pwa,/loadScriptThen\('\/pattern-overlay-stable\.js'/,'pattern network overlay must remain disabled until rebuilt as passive-only');
+assert.doesNotMatch(pwa,/loadScriptThen\('\/pattern-overlay-(?:stable|reliability)\.js'/,'pattern network overlay must remain disabled until rebuilt as passive-only');
 assert.ok(index.indexOf('api-request-coordinator.js')<index.indexOf('app.js'),'API coordinator must load before application modules');
-assert.match(build,/2\.30\.37/,'visible release must identify the hard-guardrails build');
-assert.match(workflow,/npm run check/,'CI must execute the existing regression suite');
-assert.match(workflow,/run-reliability-guardrails\.mjs/,'CI must execute the post-14.27 reliability guardrails');
-for(const stage of ['14-28','14-29','14-30','14-31','14-33','14-35','14-36','14-37'])assert.match(runner,new RegExp(`test-stage${stage}`),`reliability runner must include Stage ${stage.replace('-', '.')}`);
+assert.match(build,/version:'2\.30\.\d+'/,'visible release must remain in the SignalForge 2.30.x line');
+const shell=build.match(/shell:'(v30-\d+)'/)?.[1];assert.ok(shell,'visible release must expose a versioned v30 shell');
+assert.ok(sw.includes(`signalforge-shell-${shell}`),'service-worker shell must match the visible release');
+assert.match(workflow,/npm run check/,'CI must execute the regression suite');
+assert.match(workflow,/run-reliability-guardrails\.mjs/,'CI must execute the active production reliability guardrails');
+for(const stage of ['14-28','14-29','14-33','14-35','14-36','14-37'])assert.match(runner,new RegExp(`test-stage${stage}`),`active reliability runner must include Stage ${stage.replace('-', '.')}`);
+for(const disabled of ['14-30','14-31'])assert.doesNotMatch(runner,new RegExp(`test-stage${disabled}`),`disabled Pattern-network Stage ${disabled.replace('-', '.')} must not be required production behavior`);
 
-console.log('Stage 14.37 hard trading, resource, health, and CI guardrail checks passed.');
+console.log('Stage 14.37/current hard trading, resource, health, and CI guardrail checks passed.');
