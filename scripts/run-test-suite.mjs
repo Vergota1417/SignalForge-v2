@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BASELINE_TESTS, HISTORICAL_DISABLED_TESTS, PRODUCTION_GUARDRAIL_TESTS, SYNTAX_ROOTS, TEST_GROUPS } from './test-manifest.mjs';
+import { BASELINE_TESTS, HISTORICAL_DISABLED_TESTS, PRODUCTION_GUARDRAIL_TESTS, SYNTAX_ROOTS, TEST_GROUPS } from './suite-manifest.mjs';
 
 const ROOT=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const mode=String(process.argv[2]||'all').toLowerCase();
