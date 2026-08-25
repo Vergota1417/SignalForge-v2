@@ -1,9 +1,12 @@
 import app from './index.js';
-import { authorizeDevice, ensureSchema } from './db.js';
+import { authorizeDevice, ensureSchema, getSignalAnalysis } from './db.js';
 import { getOperationsStatus, recordOperation } from './operations.js';
 import { runRadarDiscovery } from './radar.js';
 import { runScreenerPromotion } from './screener.js';
 import { runBackendSelfTest } from './self-test.js';
+import { buildTradePlan } from './trade-plan.js';
+import { runPortfolioPricePulse } from './weekly.js';
+import { broadcastPortfolioStrategyPush } from './push.js';
 
 const SELF_TEST_COOLDOWN_MS=60_000;
 const OPENING_SCAN_MINUTES=new Set([570,575,580]);
@@ -11,6 +14,14 @@ const OPENING_SCAN_MINUTES=new Set([570,575,580]);
 export default {
   async fetch(request,env,ctx){
     const url=new URL(request.url);
+    if(url.pathname==='/api/trade-plan'){
+      if(request.method!=='GET')return json({error:'Method not allowed.'},405);
+      try{
+        await ensureSchema(env);const symbol=sanitizeSymbol(url.searchParams.get('symbol'));if(!symbol)return json({error:'Valid symbol is required.'},400);
+        const saved=await getSignalAnalysis(env,symbol);if(!saved?.analysis)return json({error:'No saved SignalForge analysis exists for this symbol yet.'},404);
+        const plan=buildTradePlan(saved.analysis);return json({symbol,updatedAt:saved.updatedAt,status:saved.analysis.status,readiness:saved.analysis.readiness,plan});
+      }catch(error){console.error(JSON.stringify({event:'trade_plan_request_error',message:error?.message||String(error)}));return json({error:'Trade plan is temporarily unavailable.'},500);}
+    }
     if(url.pathname!=='/api/backend-self-test')return app.fetch(request,env,ctx);
     if(request.method!=='POST')return json({error:'Method not allowed.'},405);
     try{
@@ -32,9 +43,25 @@ export default {
       ctx.waitUntil(runMarketScanCycle(env,{now:scheduledTime,weekday,minutes,phase:'FRIDAY REGULAR'}));
       return;
     }
+    const prioritySlot=isWeekday(weekday)&&minutes>=590&&minutes<=955&&minutes%5===0&&minutes%15!==0;
+    if(prioritySlot){
+      app.scheduled(controller,env,ctx);
+      ctx.waitUntil(runPortfolioPulseCycle(env,{now:scheduledTime,weekday,minutes}));
+      return;
+    }
     return app.scheduled(controller,env,ctx);
   }
 };
+
+async function runPortfolioPulseCycle(env,{now,weekday,minutes}){
+  try{
+    await ensureSchema(env);if(!env.TWELVE_DATA_API_KEY)return;
+    const pulse=await runPortfolioPricePulse(env,{maxPositions:1,now});
+    for(const row of pulse.reviewed||[]){if(!row?.event?.changed||!row.strategy)continue;try{const push=await broadcastPortfolioStrategyPush(env,{symbol:row.symbol,strategy:row.strategy,previousState:row.event.previousState,occurredAt:row.event.now});console.log(JSON.stringify({event:'portfolio_price_pulse_push',symbol:row.symbol,state:row.strategy.state,...push}));}catch(error){console.error(JSON.stringify({event:'portfolio_price_pulse_push_error',symbol:row.symbol,message:error?.message||String(error)}));}}
+    await recordOperation(env,'portfolio-price-pulse',{status:(pulse.reviewed||[]).length?'OK':'IDLE',at:now,detail:{weekday,minutes,candidates:pulse.candidates||[],reviewed:(pulse.reviewed||[]).map(row=>({symbol:row.symbol,state:row.strategy?.state||null,price:row.price||null,changed:Boolean(row.event?.changed),skipped:row.skipped||null,error:row.error||null}))}});
+    console.log(JSON.stringify({event:'portfolio_price_pulse_cycle',...pulse}));
+  }catch(error){await recordOperation(env,'portfolio-price-pulse',{status:'ERROR',at:now,detail:{weekday,minutes,message:error?.message||String(error)}}).catch(()=>{});console.error(JSON.stringify({event:'portfolio_price_pulse_cycle_error',message:error?.message||String(error)}));}
+}
 
 async function runMarketScanCycle(env,{now,weekday,minutes,phase}){
   const operationKey=OPENING_SCAN_MINUTES.has(minutes)?'opening-pipeline':'radar-scan-cycle';
