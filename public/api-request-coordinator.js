@@ -5,10 +5,10 @@
   window.__sfApiCoordinatorInstalled=true;
 
   const TTL_BY_PATH=new Map([
-    ['/api/signals',55_000],
-    ['/api/opportunity-radar',55_000],
-    ['/api/screener',55_000],
-    ['/api/alerts',55_000],
+    ['/api/signals',20_000],
+    ['/api/opportunity-radar',20_000],
+    ['/api/screener',20_000],
+    ['/api/alerts',20_000],
     ['/api/operations-status',120_000],
     ['/api/research-status',180_000],
     ['/api/detection-latency',180_000],
@@ -32,7 +32,7 @@
     return{url,ttl,key:url.href};
   }
   function makeResponse(snapshot){
-    return new Response(snapshot.body,{status:snapshot.status,statusText:snapshot.statusText,headers:new Headers(snapshot.headers)});
+    return new Response(snapshot.body.slice(0),{status:snapshot.status,statusText:snapshot.statusText,headers:new Headers(snapshot.headers)});
   }
   async function snapshotResponse(response){
     const body=await response.clone().arrayBuffer();
