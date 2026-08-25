@@ -2,8 +2,19 @@ import { listRadarQuotes, listSignals } from './db.js';
 import { getResearchMap } from './research.js';
 
 const WEEK_MS=7*86_400_000;
+const weekendSchemaReadyByDb=new WeakMap();
 
 export async function ensureWeekendSchema(env){
+  if(!env?.DB)throw new Error('D1 binding DB is not configured.');
+  let ready=weekendSchemaReadyByDb.get(env.DB);
+  if(!ready){
+    ready=initializeWeekendSchema(env).catch(error=>{weekendSchemaReadyByDb.delete(env.DB);throw error;});
+    weekendSchemaReadyByDb.set(env.DB,ready);
+  }
+  return ready;
+}
+
+async function initializeWeekendSchema(env){
   await env.DB.prepare(`CREATE TABLE IF NOT EXISTS weekend_intelligence_reports (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     week_key TEXT NOT NULL UNIQUE,

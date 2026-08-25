@@ -3,9 +3,20 @@ import { recordPatternContextShadow } from './pattern-evidence.js';
 import { MIN_BUY_REWARD_RISK } from './hard-guardrails.js';
 
 const FIFTEEN_MINUTES=15*60*1000;
+const evidenceSchemaReadyByDb=new WeakMap();
 export const ANALYSIS_MODEL_VERSION='sf-analysis-v2-participation';
 
 export async function ensureEvidenceSchema(env){
+  if(!env.DB)throw new Error('D1 binding DB is not configured.');
+  let ready=evidenceSchemaReadyByDb.get(env.DB);
+  if(!ready){
+    ready=initializeEvidenceSchema(env).catch(error=>{evidenceSchemaReadyByDb.delete(env.DB);throw error;});
+    evidenceSchemaReadyByDb.set(env.DB,ready);
+  }
+  return ready;
+}
+
+async function initializeEvidenceSchema(env){
   await env.DB.batch([
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS evidence_observations (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

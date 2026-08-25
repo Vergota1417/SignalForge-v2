@@ -5,9 +5,19 @@ import { recordOperation } from './operations.js';
 
 export const OUTCOME_HORIZONS=[1,3,5,10,20];
 const MAX_PENDING_ROWS=750;
+const outcomeSchemaReadyByDb=new WeakMap();
 
 export async function ensureOutcomeSchema(env){
   await ensureEvidenceSchema(env);
+  let ready=outcomeSchemaReadyByDb.get(env.DB);
+  if(!ready){
+    ready=initializeOutcomeSchema(env).catch(error=>{outcomeSchemaReadyByDb.delete(env.DB);throw error;});
+    outcomeSchemaReadyByDb.set(env.DB,ready);
+  }
+  return ready;
+}
+
+async function initializeOutcomeSchema(env){
   await env.DB.batch([
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS evidence_outcomes (
       observation_id INTEGER NOT NULL,horizon_sessions INTEGER NOT NULL,evaluated_at INTEGER NOT NULL,entry_price REAL NOT NULL,outcome_price REAL NOT NULL,forward_return REAL NOT NULL,mfe REAL NOT NULL,mae REAL NOT NULL,target_hit INTEGER,stop_hit INTEGER,first_hit TEXT NOT NULL DEFAULT 'NONE',outcome_session TEXT NOT NULL,

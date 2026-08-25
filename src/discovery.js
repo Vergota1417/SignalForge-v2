@@ -9,15 +9,22 @@ const CATALOG_TTL=86_400_000;
 const DEFAULT_DISCOVERY_SIZE=120;
 const DEFAULT_WEEKLY_SIZE=36;
 const WEAK_COOLDOWN_MS=30*86_400_000;
+const discoverySchemaReadyByDb=new WeakMap();
 
 export async function ensureDiscoverySchema(env){
-  await env.DB.batch([
-    env.DB.prepare(`CREATE TABLE IF NOT EXISTS discovery_catalog (symbol TEXT PRIMARY KEY,name TEXT NOT NULL DEFAULT '',exchange TEXT NOT NULL DEFAULT '',country TEXT NOT NULL DEFAULT '',security_type TEXT NOT NULL DEFAULT '',source TEXT NOT NULL DEFAULT 'twelve-data',eligible INTEGER NOT NULL DEFAULT 1,updated_at INTEGER NOT NULL)`),
-    env.DB.prepare(`CREATE TABLE IF NOT EXISTS discovery_stats (symbol TEXT PRIMARY KEY,last_scanned INTEGER NOT NULL DEFAULT 0,scan_count INTEGER NOT NULL DEFAULT 0,current_score REAL NOT NULL DEFAULT 0,previous_score REAL NOT NULL DEFAULT 0,rolling_score REAL NOT NULL DEFAULT 0,score_velocity REAL NOT NULL DEFAULT 0,price REAL NOT NULL DEFAULT 0,dollar_volume REAL NOT NULL DEFAULT 0,relative_volume REAL NOT NULL DEFAULT 0,cooldown_until INTEGER NOT NULL DEFAULT 0,updated_at INTEGER NOT NULL DEFAULT 0)`),
-    env.DB.prepare(`CREATE TABLE IF NOT EXISTS discovery_meta (id INTEGER PRIMARY KEY CHECK(id=1),catalog_updated_at INTEGER NOT NULL DEFAULT 0,exploration_cursor INTEGER NOT NULL DEFAULT 0,updated_at INTEGER NOT NULL DEFAULT 0)`),
-    env.DB.prepare(`CREATE TABLE IF NOT EXISTS discovery_weekly_pool (week_key TEXT NOT NULL,position INTEGER NOT NULL,symbol TEXT NOT NULL,created_at INTEGER NOT NULL,PRIMARY KEY(week_key,position),UNIQUE(week_key,symbol))`),
-    env.DB.prepare(`CREATE TABLE IF NOT EXISTS discovery_weekly_universe (week_key TEXT NOT NULL,position INTEGER NOT NULL,symbol TEXT NOT NULL,source TEXT NOT NULL DEFAULT 'promoted',created_at INTEGER NOT NULL,PRIMARY KEY(week_key,position),UNIQUE(week_key,symbol))`)
-  ]);
+  if(!env?.DB)throw new Error('D1 binding DB is not configured.');
+  let ready=discoverySchemaReadyByDb.get(env.DB);
+  if(!ready){
+    ready=env.DB.batch([
+      env.DB.prepare(`CREATE TABLE IF NOT EXISTS discovery_catalog (symbol TEXT PRIMARY KEY,name TEXT NOT NULL DEFAULT '',exchange TEXT NOT NULL DEFAULT '',country TEXT NOT NULL DEFAULT '',security_type TEXT NOT NULL DEFAULT '',source TEXT NOT NULL DEFAULT 'twelve-data',eligible INTEGER NOT NULL DEFAULT 1,updated_at INTEGER NOT NULL)`),
+      env.DB.prepare(`CREATE TABLE IF NOT EXISTS discovery_stats (symbol TEXT PRIMARY KEY,last_scanned INTEGER NOT NULL DEFAULT 0,scan_count INTEGER NOT NULL DEFAULT 0,current_score REAL NOT NULL DEFAULT 0,previous_score REAL NOT NULL DEFAULT 0,rolling_score REAL NOT NULL DEFAULT 0,score_velocity REAL NOT NULL DEFAULT 0,price REAL NOT NULL DEFAULT 0,dollar_volume REAL NOT NULL DEFAULT 0,relative_volume REAL NOT NULL DEFAULT 0,cooldown_until INTEGER NOT NULL DEFAULT 0,updated_at INTEGER NOT NULL DEFAULT 0)`),
+      env.DB.prepare(`CREATE TABLE IF NOT EXISTS discovery_meta (id INTEGER PRIMARY KEY CHECK(id=1),catalog_updated_at INTEGER NOT NULL DEFAULT 0,exploration_cursor INTEGER NOT NULL DEFAULT 0,updated_at INTEGER NOT NULL DEFAULT 0)`),
+      env.DB.prepare(`CREATE TABLE IF NOT EXISTS discovery_weekly_pool (week_key TEXT NOT NULL,position INTEGER NOT NULL,symbol TEXT NOT NULL,created_at INTEGER NOT NULL,PRIMARY KEY(week_key,position),UNIQUE(week_key,symbol))`),
+      env.DB.prepare(`CREATE TABLE IF NOT EXISTS discovery_weekly_universe (week_key TEXT NOT NULL,position INTEGER NOT NULL,symbol TEXT NOT NULL,source TEXT NOT NULL DEFAULT 'promoted',created_at INTEGER NOT NULL,PRIMARY KEY(week_key,position),UNIQUE(week_key,symbol))`)
+    ]).catch(error=>{discoverySchemaReadyByDb.delete(env.DB);throw error;});
+    discoverySchemaReadyByDb.set(env.DB,ready);
+  }
+  return ready;
 }
 
 export async function refreshDiscoveryCatalog(env,{force=false}={}){

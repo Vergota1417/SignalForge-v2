@@ -3,6 +3,7 @@ import { assessActivityRhythm, recordActivityRhythmShadow } from './activity-rhy
 
 export const SESSION_RANGE_SHADOW_VERSION='sf-session-range-shadow-v1';
 const FIFTEEN_MINUTES=15*60*1000;
+const sessionRangeSchemaReadyByDb=new WeakMap();
 
 export function assessSessionRange(candles,{atr=null,currentPrice=null}={}){
   const openingRangeShadow=assessOpeningRange(candles,{currentPrice});
@@ -107,29 +108,37 @@ export async function getSessionRangeShadowStatus(env){
 }
 
 async function ensureShadowSchema(env){
-  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS session_range_shadow_observations(
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    symbol TEXT NOT NULL,
-    model_version TEXT NOT NULL,
-    source TEXT NOT NULL,
-    observed_at INTEGER NOT NULL,
-    observed_bucket INTEGER NOT NULL,
-    production_status TEXT NOT NULL DEFAULT '',
-    price REAL,
-    shadow_state TEXT NOT NULL,
-    atr_usage REAL,
-    median_range_usage REAL,
-    p80_range_usage REAL,
-    same_time_pace REAL,
-    range_position REAL,
-    current_range_pct REAL,
-    remaining_atr_pct REAL,
-    historical_sample INTEGER NOT NULL DEFAULT 0,
-    payload_json TEXT NOT NULL DEFAULT '{}',
-    created_at INTEGER NOT NULL,
-    UNIQUE(symbol,model_version,observed_bucket)
-  )`).run();
-  await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_session_range_shadow_time ON session_range_shadow_observations(observed_at DESC)`).run();
+  if(!env?.DB)throw new Error('D1 binding DB is not configured.');
+  let ready=sessionRangeSchemaReadyByDb.get(env.DB);
+  if(!ready){
+    ready=env.DB.batch([
+      env.DB.prepare(`CREATE TABLE IF NOT EXISTS session_range_shadow_observations(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        symbol TEXT NOT NULL,
+        model_version TEXT NOT NULL,
+        source TEXT NOT NULL,
+        observed_at INTEGER NOT NULL,
+        observed_bucket INTEGER NOT NULL,
+        production_status TEXT NOT NULL DEFAULT '',
+        price REAL,
+        shadow_state TEXT NOT NULL,
+        atr_usage REAL,
+        median_range_usage REAL,
+        p80_range_usage REAL,
+        same_time_pace REAL,
+        range_position REAL,
+        current_range_pct REAL,
+        remaining_atr_pct REAL,
+        historical_sample INTEGER NOT NULL DEFAULT 0,
+        payload_json TEXT NOT NULL DEFAULT '{}',
+        created_at INTEGER NOT NULL,
+        UNIQUE(symbol,model_version,observed_bucket)
+      )`),
+      env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_session_range_shadow_time ON session_range_shadow_observations(observed_at DESC)`)
+    ]).catch(error=>{sessionRangeSchemaReadyByDb.delete(env.DB);throw error;});
+    sessionRangeSchemaReadyByDb.set(env.DB,ready);
+  }
+  return ready;
 }
 function groupSessions(candles){
   const map=new Map();

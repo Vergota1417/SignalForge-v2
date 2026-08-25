@@ -1,6 +1,16 @@
+const simulationColumnsReadyByDb=new WeakMap();
+
 export async function ensureSimulationCohortColumns(env){
-  await addColumnIfMissing(env,'paper_positions','model_version',`TEXT NOT NULL DEFAULT 'LEGACY/UNKNOWN'`);
-  await addColumnIfMissing(env,'paper_trades','model_version',`TEXT NOT NULL DEFAULT 'LEGACY/UNKNOWN'`);
+  if(!env.DB)throw new Error('D1 binding DB is not configured.');
+  let ready=simulationColumnsReadyByDb.get(env.DB);
+  if(!ready){
+    ready=(async()=>{
+      await addColumnIfMissing(env,'paper_positions','model_version',`TEXT NOT NULL DEFAULT 'LEGACY/UNKNOWN'`);
+      await addColumnIfMissing(env,'paper_trades','model_version',`TEXT NOT NULL DEFAULT 'LEGACY/UNKNOWN'`);
+    })().catch(error=>{simulationColumnsReadyByDb.delete(env.DB);throw error;});
+    simulationColumnsReadyByDb.set(env.DB,ready);
+  }
+  return ready;
 }
 
 async function addColumnIfMissing(env,table,column,definition){

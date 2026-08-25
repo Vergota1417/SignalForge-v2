@@ -2,17 +2,25 @@ import { getEvidenceStatus } from './evidence.js';
 import { getOutcomeStatus } from './outcomes.js';
 import { getProviderUsageBreakdown } from './provider-usage.js';
 
+const operationsSchemaReadyByDb=new WeakMap();
+
 export async function ensureOperationsSchema(env){
-  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS operation_status(
-    operation_key TEXT PRIMARY KEY,
-    last_run_at INTEGER NOT NULL DEFAULT 0,
-    last_success_at INTEGER NOT NULL DEFAULT 0,
-    last_status TEXT NOT NULL DEFAULT 'UNKNOWN',
-    run_count INTEGER NOT NULL DEFAULT 0,
-    error_count INTEGER NOT NULL DEFAULT 0,
-    detail_json TEXT NOT NULL DEFAULT '{}',
-    updated_at INTEGER NOT NULL DEFAULT 0
-  )`).run();
+  if(!env.DB)throw new Error('D1 binding DB is not configured.');
+  let ready=operationsSchemaReadyByDb.get(env.DB);
+  if(!ready){
+    ready=env.DB.prepare(`CREATE TABLE IF NOT EXISTS operation_status(
+      operation_key TEXT PRIMARY KEY,
+      last_run_at INTEGER NOT NULL DEFAULT 0,
+      last_success_at INTEGER NOT NULL DEFAULT 0,
+      last_status TEXT NOT NULL DEFAULT 'UNKNOWN',
+      run_count INTEGER NOT NULL DEFAULT 0,
+      error_count INTEGER NOT NULL DEFAULT 0,
+      detail_json TEXT NOT NULL DEFAULT '{}',
+      updated_at INTEGER NOT NULL DEFAULT 0
+    )`).run().catch(error=>{operationsSchemaReadyByDb.delete(env.DB);throw error;});
+    operationsSchemaReadyByDb.set(env.DB,ready);
+  }
+  return ready;
 }
 
 export async function recordOperation(env,key,{status='OK',at=Date.now(),detail={}}={}){

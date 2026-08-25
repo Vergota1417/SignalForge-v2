@@ -9,38 +9,45 @@ const DAY_MS=86_400_000;
 const RESEARCH_STALE_MS=20*60*60*1000;
 const DEFAULT_TARGET_PCT=.85;
 const DEFAULT_MAX_PER_RUN=6;
+const researchSchemaReadyByDb=new WeakMap();
 
 export async function ensureResearchSchema(env){
-  await env.DB.batch([
-    env.DB.prepare(`CREATE TABLE IF NOT EXISTS after_hours_research (
-      symbol TEXT PRIMARY KEY,
-      status TEXT NOT NULL DEFAULT 'UNKNOWN',
-      confirmation_score REAL NOT NULL DEFAULT 0,
-      confidence_label TEXT NOT NULL DEFAULT 'UNRESOLVED',
-      sample_size INTEGER NOT NULL DEFAULT 0,
-      win_rate REAL NOT NULL DEFAULT 0,
-      avg_return REAL NOT NULL DEFAULT 0,
-      rr REAL NOT NULL DEFAULT 0,
-      gates_ready INTEGER NOT NULL DEFAULT 0,
-      summary_json TEXT NOT NULL DEFAULT '{}',
-      analysis_json TEXT NOT NULL DEFAULT '{}',
-      researched_at INTEGER NOT NULL DEFAULT 0,
-      updated_at INTEGER NOT NULL DEFAULT 0
-    )`),
-    env.DB.prepare(`CREATE TABLE IF NOT EXISTS after_hours_research_runs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      day_key TEXT NOT NULL,
-      started_at INTEGER NOT NULL,
-      completed_at INTEGER NOT NULL,
-      usage_before INTEGER NOT NULL DEFAULT 0,
-      usage_after INTEGER NOT NULL DEFAULT 0,
-      quota_max INTEGER NOT NULL DEFAULT 0,
-      target_requests INTEGER NOT NULL DEFAULT 0,
-      candidates_json TEXT NOT NULL DEFAULT '[]',
-      researched_json TEXT NOT NULL DEFAULT '[]',
-      skipped_reason TEXT NOT NULL DEFAULT ''
-    )`)
-  ]);
+  if(!env?.DB)throw new Error('D1 binding DB is not configured.');
+  let ready=researchSchemaReadyByDb.get(env.DB);
+  if(!ready){
+    ready=env.DB.batch([
+      env.DB.prepare(`CREATE TABLE IF NOT EXISTS after_hours_research (
+        symbol TEXT PRIMARY KEY,
+        status TEXT NOT NULL DEFAULT 'UNKNOWN',
+        confirmation_score REAL NOT NULL DEFAULT 0,
+        confidence_label TEXT NOT NULL DEFAULT 'UNRESOLVED',
+        sample_size INTEGER NOT NULL DEFAULT 0,
+        win_rate REAL NOT NULL DEFAULT 0,
+        avg_return REAL NOT NULL DEFAULT 0,
+        rr REAL NOT NULL DEFAULT 0,
+        gates_ready INTEGER NOT NULL DEFAULT 0,
+        summary_json TEXT NOT NULL DEFAULT '{}',
+        analysis_json TEXT NOT NULL DEFAULT '{}',
+        researched_at INTEGER NOT NULL DEFAULT 0,
+        updated_at INTEGER NOT NULL DEFAULT 0
+      )`),
+      env.DB.prepare(`CREATE TABLE IF NOT EXISTS after_hours_research_runs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        day_key TEXT NOT NULL,
+        started_at INTEGER NOT NULL,
+        completed_at INTEGER NOT NULL,
+        usage_before INTEGER NOT NULL DEFAULT 0,
+        usage_after INTEGER NOT NULL DEFAULT 0,
+        quota_max INTEGER NOT NULL DEFAULT 0,
+        target_requests INTEGER NOT NULL DEFAULT 0,
+        candidates_json TEXT NOT NULL DEFAULT '[]',
+        researched_json TEXT NOT NULL DEFAULT '[]',
+        skipped_reason TEXT NOT NULL DEFAULT ''
+      )`)
+    ]).catch(error=>{researchSchemaReadyByDb.delete(env.DB);throw error;});
+    researchSchemaReadyByDb.set(env.DB,ready);
+  }
+  return ready;
 }
 
 export async function providerBudget(env,{now=Date.now()}={}){

@@ -5,6 +5,7 @@ const OR60_BARS=4;
 const ACCEPT_CLOSES_REQUIRED=2;
 const ACCEPT_LOOKBACK=3;
 const LEVEL_TOLERANCE=.0015;
+const openingRangeSchemaReadyByDb=new WeakMap();
 
 export function assessOpeningRange(candles,{currentPrice=null}={}){
   if(!Array.isArray(candles)||candles.length<20)return insufficient('Not enough completed 15-minute candles to assess opening structure.');
@@ -118,15 +119,23 @@ function easternSessionKey(time){
   if(p.weekday==='Sat'||p.weekday==='Sun')return'';return`${p.year}-${p.month}-${p.day}`;
 }
 async function ensureShadowSchema(env){
-  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS opening_range_shadow_observations(
-    id INTEGER PRIMARY KEY AUTOINCREMENT,symbol TEXT NOT NULL,model_version TEXT NOT NULL,source TEXT NOT NULL,
-    observed_at INTEGER NOT NULL,observed_bucket INTEGER NOT NULL,production_status TEXT NOT NULL DEFAULT '',price REAL,
-    shadow_state TEXT NOT NULL,direction TEXT NOT NULL DEFAULT 'NONE',active_window TEXT,opening_high REAL,opening_low REAL,
-    opening_width_pct REAL,position_in_range REAL,previous_day_high REAL,previous_day_low REAL,accepted INTEGER,rejected INTEGER,
-    retest_held INTEGER,payload_json TEXT NOT NULL DEFAULT '{}',created_at INTEGER NOT NULL,
-    UNIQUE(symbol,model_version,observed_bucket)
-  )`).run();
-  await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_opening_range_shadow_time ON opening_range_shadow_observations(observed_at DESC)`).run();
+  if(!env?.DB)throw new Error('D1 binding DB is not configured.');
+  let ready=openingRangeSchemaReadyByDb.get(env.DB);
+  if(!ready){
+    ready=env.DB.batch([
+      env.DB.prepare(`CREATE TABLE IF NOT EXISTS opening_range_shadow_observations(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,symbol TEXT NOT NULL,model_version TEXT NOT NULL,source TEXT NOT NULL,
+        observed_at INTEGER NOT NULL,observed_bucket INTEGER NOT NULL,production_status TEXT NOT NULL DEFAULT '',price REAL,
+        shadow_state TEXT NOT NULL,direction TEXT NOT NULL DEFAULT 'NONE',active_window TEXT,opening_high REAL,opening_low REAL,
+        opening_width_pct REAL,position_in_range REAL,previous_day_high REAL,previous_day_low REAL,accepted INTEGER,rejected INTEGER,
+        retest_held INTEGER,payload_json TEXT NOT NULL DEFAULT '{}',created_at INTEGER NOT NULL,
+        UNIQUE(symbol,model_version,observed_bucket)
+      )`),
+      env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_opening_range_shadow_time ON opening_range_shadow_observations(observed_at DESC)`)
+    ]).catch(error=>{openingRangeSchemaReadyByDb.delete(env.DB);throw error;});
+    openingRangeSchemaReadyByDb.set(env.DB,ready);
+  }
+  return ready;
 }
 function validCandle(c){return Number.isFinite(Number(c?.time))&&positive(c?.open)&&positive(c?.high)&&positive(c?.low)&&positive(c?.close)&&Number(c.high)>=Number(c.low);}
 function positive(v){const n=Number(v);return Number.isFinite(n)&&n>0?n:null;}
