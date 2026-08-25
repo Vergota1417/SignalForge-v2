@@ -29,6 +29,12 @@ export function refreshExecutionAnalysis(baseAnalysis,intradayConfirmation){
   else if(!notOverextended){status='WAIT FOR PULLBACK';reason='Higher-timeframe setup remains constructive, but the current execution price is extended. Do not chase.';}
   else if(hardBuyGuardrails.pass&&nearEntry){status='BUY NOW';reason=`Higher-timeframe gates, current price location, at least ${BUY_RR_MIN.toFixed(2)}:1 reward/risk, and live participation/execution confirmation are aligned.`;}
   else if(dailyGatesReady){status='SETUP — READY SOON';reason=executionReason(executionBlockers,confirmation,currentRr,nearEntry);}
+  else if(status==='BUY NOW'){status='WAIT — SETUP NOT READY';reason=hardBuyGuardrails.reason||'A previous BUY state is no longer authorized by the current hard guardrails.';}
+
+  if(status==='BUY NOW'&&!(hardBuyGuardrails.pass&&nearEntry)){
+    status=dailyGatesReady?'SETUP — READY SOON':'WAIT — SETUP NOT READY';
+    reason=hardBuyGuardrails.pass&&!nearEntry?'BUY authorization is blocked because current price is outside the preferred execution area.':hardBuyGuardrails.reason;
+  }
 
   let readiness=Number(baseAnalysis.readiness)||0;
   if(status==='BUY NOW')readiness=Math.max(readiness,92);
