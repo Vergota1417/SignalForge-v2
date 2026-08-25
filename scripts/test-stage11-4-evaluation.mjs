@@ -21,7 +21,7 @@ assert.ok(report.segments.sector.some(x=>x.key==='XLK'&&x.sampleSize===2));
 assert.equal(report.qualifiedSegments.sector.some(x=>x.key==='XLK'),false);
 assert.equal(report.calibration.eligible,false);
 assert.equal(report.calibration.buySampleSize,2);
-assert.match(report.calibration.reason,/Need 1 more resolved BUY observation/);
+assert.match(report.calibration.reason,/Need 1 more resolved BUY episode/);
 const qualified=evaluateEvidenceRows([...rows,row('BUY NOW',.03,.02,.01,{readiness:82,rv:1.7,sector:'XLK'})],{horizon:10,minSample:3});
 assert.equal(qualified.calibration.eligible,true);
 assert.equal(qualified.calibration.bestQualifiedModel.modelVersion,'sf-analysis-v1');
