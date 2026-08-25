@@ -13,12 +13,12 @@ export async function broadcastSignalPush(env, analysis, previousStatus, occurre
 
 export async function broadcastPortfolioStrategyPush(env,{symbol,strategy,previousState,occurredAt=Date.now()}) {
   if(!pushConfigured(env) || !symbol || !strategy?.state) return {sent:0,failed:0,removed:0,skipped:true};
-  const important=new Set(['PROTECT PROFIT','REDUCE','SELL / EXIT']);
+  const important=new Set(['PROTECT PROFIT','REDUCE','TAKE PARTIAL PROFIT','SELL / EXIT']);
   if(!important.has(strategy.state)) return {sent:0,failed:0,removed:0,skipped:true};
-  const price=Number(strategy.price)||0,gainPct=Number(strategy.gainPct)||0,floor=Number(strategy.protection?.protectedPrice)||0;
-  const floorText=floor>0?` · floor $${floor.toFixed(2)}`:'';
+  const price=Number(strategy.price)||0,gainPct=Number(strategy.gainPct)||0,floor=Number(strategy.protection?.protectedPrice)||0,partialShares=Number(strategy.partial?.shares)||0;
+  const floorText=floor>0?` · floor $${floor.toFixed(2)}`:'',partialText=strategy.state==='TAKE PARTIAL PROFIT'&&partialShares>0?` · partial ≈ ${partialShares.toFixed(4)} sh`:'';
   const reason=String(strategy.reason||'Portfolio strategy state changed.');
-  const payload={kind:'portfolio-strategy-change',title:`${symbol} · ${strategy.state}`,body:`${previousState?`${previousState} → `:''}${strategy.state}\n$${price.toFixed(2)} · P/L ${gainPct>=0?'+':''}${(gainPct*100).toFixed(1)}%${floorText}\n${reason}`,symbol,status:strategy.state,previousStatus:previousState||null,price,gainPct,protectedPrice:floor||null,reason,url:buildAlertUrl({symbol,status:strategy.state,previousStatus:previousState,reason,occurredAt,kind:'portfolio-strategy-change'}),occurredAt:new Date(occurredAt).toISOString()};
+  const payload={kind:'portfolio-strategy-change',title:`${symbol} · ${strategy.state}`,body:`${previousState?`${previousState} → `:''}${strategy.state}\n$${price.toFixed(2)} · P/L ${gainPct>=0?'+':''}${(gainPct*100).toFixed(1)}%${floorText}${partialText}\n${reason}`,symbol,status:strategy.state,previousStatus:previousState||null,price,gainPct,protectedPrice:floor||null,partialShares:partialShares||null,reason,url:buildAlertUrl({symbol,status:strategy.state,previousStatus:previousState,reason,occurredAt,kind:'portfolio-strategy-change'}),occurredAt:new Date(occurredAt).toISOString()};
   return broadcast(env,payload,`portfolio-${symbol}-${strategy.state}`,1800);
 }
 
