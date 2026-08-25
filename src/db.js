@@ -1,5 +1,16 @@
+const schemaReadyByDb=new WeakMap();
+
 export async function ensureSchema(env) {
   if (!env.DB) throw new Error('D1 binding DB is not configured.');
+  let ready=schemaReadyByDb.get(env.DB);
+  if(!ready){
+    ready=initializeSchema(env).catch(error=>{schemaReadyByDb.delete(env.DB);throw error;});
+    schemaReadyByDb.set(env.DB,ready);
+  }
+  return ready;
+}
+
+async function initializeSchema(env){
   await env.DB.batch([
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS market_cache (symbol TEXT NOT NULL, timeframe TEXT NOT NULL, fetched_at INTEGER NOT NULL, source TEXT NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(symbol,timeframe))`),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS signal_state (symbol TEXT PRIMARY KEY, status TEXT NOT NULL, readiness INTEGER NOT NULL, price REAL NOT NULL, reason TEXT NOT NULL, analysis_json TEXT NOT NULL, updated_at INTEGER NOT NULL)`),
