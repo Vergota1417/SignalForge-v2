@@ -1,1 +1,1 @@
-window.SIGNALFORGE_BUILD=Object.freeze({version:'2.30.25',release:'trendline-pattern-context',shell:'v30-25'});
+window.SIGNALFORGE_BUILD=Object.freeze({version:'2.30.26',release:'pattern-validation-health',shell:'v30-26'});

@@ -1,11 +1,12 @@
 import { ensureOutcomeSchema } from './outcomes.js';
 import { getEarlyMovementEvaluation } from './early-movement-evaluation.js';
+import { evaluatePatternEvidenceRows } from './pattern-evaluation.js';
 
 export async function getEvidenceEvaluation(env,{horizon=10,minSample=20}={}){
   await ensureOutcomeSchema(env);
-  const h=normalizeHorizon(horizon),rows=await env.DB.prepare(`SELECT e.id,e.symbol,e.status,e.readiness,e.relative_volume AS relativeVolume,e.gates_ready AS gatesReady,e.gate_total AS gateTotal,e.model_version AS modelVersion,e.benchmark_risk_off AS benchmarkRiskOff,e.payload_json AS payloadJson,o.forward_return AS forwardReturn,o.mfe,o.mae,o.first_hit AS firstHit,o.market_excess_return AS marketExcessReturn,o.sector_excess_return AS sectorExcessReturn FROM evidence_observations e JOIN evidence_outcomes o ON o.observation_id=e.id WHERE e.observation_type='ANALYSIS' AND o.horizon_sessions=? ORDER BY e.observed_at ASC,e.id ASC`).bind(h).all();
-  const evaluation=evaluateEvidenceRows(rows.results||[],{horizon:h,minSample}),earlyMovement=await getEarlyMovementEvaluation(env,{horizon:h,minSample});
-  return{...evaluation,earlyMovement};
+  const h=normalizeHorizon(horizon),rows=await env.DB.prepare(`SELECT e.id,e.symbol,e.observed_at AS observedAt,e.status,e.readiness,e.relative_volume AS relativeVolume,e.gates_ready AS gatesReady,e.gate_total AS gateTotal,e.model_version AS modelVersion,e.benchmark_risk_off AS benchmarkRiskOff,e.payload_json AS payloadJson,o.forward_return AS forwardReturn,o.mfe,o.mae,o.first_hit AS firstHit,o.market_excess_return AS marketExcessReturn,o.sector_excess_return AS sectorExcessReturn FROM evidence_observations e JOIN evidence_outcomes o ON o.observation_id=e.id WHERE e.observation_type='ANALYSIS' AND o.horizon_sessions=? ORDER BY e.observed_at ASC,e.id ASC`).bind(h).all();
+  const resolved=rows.results||[],evaluation=evaluateEvidenceRows(resolved,{horizon:h,minSample}),earlyMovement=await getEarlyMovementEvaluation(env,{horizon:h,minSample}),patternContext=evaluatePatternEvidenceRows(resolved,{horizon:h,minSample});
+  return{...evaluation,earlyMovement,patternContext};
 }
 
 export function evaluateEvidenceRows(rows,{horizon=10,minSample=20}={}){
