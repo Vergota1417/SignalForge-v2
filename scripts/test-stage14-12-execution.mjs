@@ -30,7 +30,8 @@ let broken=refreshExecutionAnalysis(base(),confirmation({price:94}));
 assert.equal(broken.status,'SELL / EXIT','A current price below the thesis break must invalidate the setup.');
 
 assert.equal(refreshIntervalFor({status:'SETUP — READY SOON',analysis:base()}),15*60*1000,'Near-ready candidates must recheck every 15 minutes.');
-assert.equal(refreshIntervalFor({status:'WAIT — SETUP NOT READY',analysis:base({dailyGatesReady:false})}),4*60*60*1000,'Ordinary non-ready candidates should keep the lower-cost 4-hour deep refresh.');
+const ordinaryWait=base({dailyGatesReady:false,status:'WAIT — SETUP NOT READY',engines:{probability:engine(false),riskReward:engine(false)}});
+assert.equal(refreshIntervalFor({status:ordinaryWait.status,analysis:ordinaryWait}),4*60*60*1000,'A genuine 2/4 ordinary WAIT candidate should keep the lower-cost 4-hour deep refresh.');
 
 const now=Date.now(),quietQuote={symbol:'TEST',name:'Test',price:100,changePct:0,volume:100_000,averageVolume:200_000,relativeVolume:.5,rollingDiscoveryScore:0,scoreVelocity:0,dollarVolume:10_000_000};
 const persistent=selectPromotionCandidates([quietQuote],[{symbol:'TEST',status:'SETUP — READY SOON',updatedAt:now-16*60*1000,analysis:base()}],{now,limit:1});
