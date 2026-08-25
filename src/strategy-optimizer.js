@@ -1,21 +1,21 @@
-import { buildDecisionEpisodes } from './decision-episodes.js';
+import { buildSetupStateSamples } from './decision-episodes.js';
 
 const DEFAULT_MIN_SAMPLE=20;
 
 export function buildSetupLeaderboard(rows=[],{minSample=DEFAULT_MIN_SAMPLE}={}){
-  const required=Math.max(5,Number(minSample)||DEFAULT_MIN_SAMPLE),normalized=buildDecisionEpisodes(rows).map(normalize).filter(x=>Number.isFinite(x.forwardReturn));
+  const required=Math.max(5,Number(minSample)||DEFAULT_MIN_SAMPLE),normalized=buildSetupStateSamples(rows).map(normalize).filter(x=>Number.isFinite(x.forwardReturn));
   const groups=new Map();
   for(const row of normalized){const key=setupKey(row);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(row);}
   return [...groups.entries()].map(([key,items])=>({key,...cohortMetrics(items),qualified:items.length>=required,profile:profile(items[0])})).sort((a,b)=>Number(b.qualified)-Number(a.qualified)||score(b)-score(a)||b.sampleSize-a.sampleSize);
 }
 
 export function analyzeDecisionErrors(rows=[],{winnerThreshold=.05}={}){
-  const normalized=buildDecisionEpisodes(rows).map(normalize).filter(x=>Number.isFinite(x.forwardReturn)),buys=normalized.filter(x=>x.status==='BUY NOW'),nonBuys=normalized.filter(x=>x.status!=='BUY NOW'),falsePositives=buys.filter(x=>x.forwardReturn<=0),missedWinners=nonBuys.filter(x=>(x.marketExcessReturn??x.forwardReturn)>=winnerThreshold);
-  return{falsePositives:summarizeErrors(falsePositives),missedWinners:summarizeErrors(missedWinners),counts:{decisionEpisodes:normalized.length,rawObservations:(rows||[]).length,buyEpisodes:buys.length,buyObservations:buys.length,falsePositives:falsePositives.length,nonBuyEpisodes:nonBuys.length,nonBuyObservations:nonBuys.length,missedWinners:missedWinners.length}};
+  const normalized=buildSetupStateSamples(rows).map(normalize).filter(x=>Number.isFinite(x.forwardReturn)),buys=normalized.filter(x=>x.status==='BUY NOW'),nonBuys=normalized.filter(x=>x.status!=='BUY NOW'),falsePositives=buys.filter(x=>x.forwardReturn<=0),missedWinners=nonBuys.filter(x=>(x.marketExcessReturn??x.forwardReturn)>=winnerThreshold);
+  return{falsePositives:summarizeErrors(falsePositives),missedWinners:summarizeErrors(missedWinners),counts:{decisionStateSamples:normalized.length,decisionEpisodes:normalized.length,rawObservations:(rows||[]).length,buySetupSamples:buys.length,buyEpisodes:buys.length,buyObservations:buys.length,falsePositives:falsePositives.length,nonBuySetupSamples:nonBuys.length,nonBuyEpisodes:nonBuys.length,nonBuyObservations:nonBuys.length,missedWinners:missedWinners.length}};
 }
 
 export function compareGateValue(rows=[]){
-  const normalized=buildDecisionEpisodes(rows).map(normalize).filter(x=>Number.isFinite(x.forwardReturn)),gateNames=[...new Set(normalized.flatMap(x=>Object.keys(x.gates||{})))];
+  const normalized=buildSetupStateSamples(rows).map(normalize).filter(x=>Number.isFinite(x.forwardReturn)),gateNames=[...new Set(normalized.flatMap(x=>Object.keys(x.gates||{})))];
   return gateNames.map(gate=>{const pass=normalized.filter(x=>x.gates?.[gate]===true),fail=normalized.filter(x=>x.gates?.[gate]===false),a=cohortMetrics(pass),b=cohortMetrics(fail);return{gate,pass:a,fail:b,expectancyLift:nullableDiff(a.expectancy,b.expectancy),marketExcessLift:nullableDiff(a.avgMarketExcessReturn,b.avgMarketExcessReturn),winnerBlockRate:fail.length?fail.filter(x=>x.forwardReturn>0).length/fail.length:null};}).sort((a,b)=>finite(b.expectancyLift)-finite(a.expectancyLift));
 }
 
