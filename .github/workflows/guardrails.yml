@@ -22,8 +22,14 @@ jobs:
       - name: Install dependencies
         run: npm install --ignore-scripts --no-audit --no-fund
 
-      - name: Existing regression suite
-        run: npm run check
+      - name: Test manifest ownership
+        run: npm run test:manifest
 
-      - name: Reliability guardrails 14.28+
-        run: node scripts/run-reliability-guardrails.mjs
+      - name: Discovered JavaScript syntax
+        run: npm run check:syntax
+
+      - name: Baseline regression suite
+        run: npm run test:baseline
+
+      - name: Production reliability guardrails
+        run: npm run test:reliability
