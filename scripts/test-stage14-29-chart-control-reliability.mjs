@@ -7,6 +7,7 @@ const pwa=fs.readFileSync(new URL('../public/pwa.js',import.meta.url),'utf8');
 const sw=fs.readFileSync(new URL('../public/service-worker.js',import.meta.url),'utf8');
 const build=fs.readFileSync(new URL('../public/build-info.js',import.meta.url),'utf8');
 const evidence=fs.readFileSync(new URL('../src/evidence.js',import.meta.url),'utf8');
+const hard=fs.readFileSync(new URL('../src/hard-guardrails.js',import.meta.url),'utf8');
 const screener=fs.readFileSync(new URL('../src/screener.js',import.meta.url),'utf8');
 
 for(const id of ['sfChartBase','sfChartMarkers','sfChartLatest','sfChartReset']){
@@ -36,7 +37,8 @@ assert.ok(swShell&&visibleShell,'current release must expose versioned v30 shell
 assert.equal(swShell,visibleShell,'service-worker shell and visible build shell must agree');
 assert.match(build,/version:'2\.30\.\d+'/,'current release must expose a SignalForge 2.30.x version');
 
-assert.match(evidence,/rewardRiskMin:1\.8/,'1.80:1 production R/R must remain unchanged');
+assert.match(hard,/MIN_BUY_REWARD_RISK=1\.80/,'1.80:1 production R/R must remain unchanged at its authoritative owner');
+assert.match(evidence,/rewardRiskMin:MIN_BUY_REWARD_RISK/,'evidence must consume the authoritative BUY R/R floor');
 assert.match(screener,/NEAR_READY_RECHECK_MS=15\*60\*1000/,'15-minute execution cadence must remain unchanged');
 assert.match(screener,/PRIORITY_PULSE_MS=5\*60\*1000/,'5-minute priority pulse must remain unchanged');
 
