@@ -24,8 +24,8 @@ assert.equal(breached.breached,true,'Dropping through a previously saved floor m
 const reduce=evaluateStrategy(analysis({latest:{close:114},engines:{entry:engine(false),probability:engine(false)}}),{entryPrice:100,shares:2});
 assert.equal(reduce.state,'REDUCE','Meaningful profit plus multiple continuation weaknesses should reduce, not automatically fully exit.');
 
-const protected=evaluateStrategy(analysis({latest:{close:110},rsi:74}),{entryPrice:100,shares:2});
-assert.equal(protected.state,'PROTECT PROFIT','Profitable extended holding should protect profit while thesis remains intact.');
+const protectedPosition=evaluateStrategy(analysis({latest:{close:110},rsi:74}),{entryPrice:100,shares:2});
+assert.equal(protectedPosition.state,'PROTECT PROFIT','Profitable extended holding should protect profit while thesis remains intact.');
 
 const prior={protection:{protectedPrice:109}};
 const exit=evaluateStrategy(analysis({latest:{close:108.5},thesisBreak:94}),{entryPrice:100,shares:2},null,prior);
