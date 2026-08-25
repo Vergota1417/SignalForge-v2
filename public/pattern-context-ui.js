@@ -96,7 +96,7 @@
   function loadPrefs(){try{return{...DEFAULTS,...JSON.parse(localStorage.getItem(PREF_KEY)||'{}')};}catch{return{...DEFAULTS};}}
   function pct(value){const n=Number(value);return Number.isFinite(n)?`${(n*100).toFixed(0)}%`:'—';}
   function signedPct(value){const n=Number(value);return Number.isFinite(n)?`${n>=0?'+':''}${(n*100).toFixed(2)}%`:'—';}
-  function escapeHtml(v){return String(v||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#39;'}[c]));}
+  function escapeHtml(v){return String(v||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 
   function boot(){ensurePanel();refresh();window.addEventListener('signalforge:pattern-chart-ready',()=>setTimeout(applyOverlays,80));window.addEventListener('resize',()=>setTimeout(applyOverlays,100));const ticker=document.getElementById('tickerBadge');if(ticker)new MutationObserver(()=>{patternContext=null;currentMarket=null;setTimeout(refresh,140);}).observe(ticker,{childList:true,subtree:true,characterData:true});timer=setInterval(()=>{if(document.visibilityState!=='hidden')refresh();},60_000);}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
