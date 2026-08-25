@@ -4,7 +4,7 @@
   const API=String(window.SIGNALFORGE_CONFIG?.API_BASE_URL||location.origin).replace(/\/$/,'');
   const PREF_KEY='signalforge_pattern_overlay_v1';
   const DEFAULTS={support:true,resistance:true,channel:'auto',breakout:true,double:false,triangles:false,headShoulders:false,wedges:false,labels:true};
-  let patternContext=null,currentSymbol='',retryCount=0,observer=null,statusNode=null,refreshTimer=null;
+  let patternContext=null,currentSymbol='',retryCount=0,observer=null,statusNode=null,refreshTimer=null,contextSource='none';
 
   injectStyles();
   boot();
@@ -18,9 +18,15 @@
       setTimeout(()=>{syncLabels();applyOverlays(`click:${button.dataset.toggle||button.dataset.action||'control'}`);},0);
     });
     window.addEventListener('signalforge:pattern-chart-ready',()=>setTimeout(()=>applyOverlays('chart-ready'),80));
-    window.addEventListener('signalforge:market-data',()=>setTimeout(()=>applyOverlays('market-data'),100));
+    window.addEventListener('signalforge:market-data',()=>setTimeout(()=>refreshContext('market-data'),80));
+    window.addEventListener('signalforge:pattern-context',event=>{
+      const detail=event?.detail||{},symbol=String(detail.symbol||'').toUpperCase();
+      if(symbol&&symbol===selectedSymbol()&&detail.patternContext){
+        patternContext=detail.patternContext;contextSource='live panel';applyOverlays('pattern-context-event');
+      }
+    });
     const ticker=document.getElementById('tickerBadge');
-    if(ticker)new MutationObserver(()=>{patternContext=null;setTimeout(()=>refreshContext('symbol-change'),150);}).observe(ticker,{childList:true,subtree:true,characterData:true});
+    if(ticker)new MutationObserver(()=>{patternContext=null;contextSource='none';setTimeout(()=>refreshContext('symbol-change'),150);}).observe(ticker,{childList:true,subtree:true,characterData:true});
     observer=new MutationObserver(()=>scheduleUiSync());observer.observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['class']});
     refreshTimer=setInterval(()=>{if(document.visibilityState!=='hidden')refreshContext('timer');},60_000);
   }
@@ -52,17 +58,41 @@
 
   async function refreshContext(source){
     ensureUi();const symbol=selectedSymbol();if(!symbol)return;currentSymbol=symbol;
+    setStatus('Loading structure overlays from saved/current chart data…','warn');
     try{
-      const response=await fetch(`${API}/api/signals`,{headers:{accept:'application/json'},cache:'no-store'}),body=await response.json();if(!response.ok)throw new Error(body.error||`HTTP ${response.status}`);if(currentSymbol!==symbol)return;
-      const row=(body.signals||[]).find(item=>String(item.symbol||'').toUpperCase()===symbol);patternContext=row?.analysis?.patternContext||null;
+      const resolved=await resolvePatternContext(symbol);
+      if(currentSymbol!==symbol)return;
+      patternContext=resolved.context;contextSource=resolved.source;
       syncLabels();applyOverlays(source);
-    }catch(error){setStatus(`Overlay data unavailable: ${String(error?.message||'request failed')}`,'error');}
+    }catch(error){
+      patternContext=null;contextSource='none';
+      setStatus(`Structure data is not available yet: ${String(error?.message||'request failed')}`,'error');
+    }
+  }
+
+  async function resolvePatternContext(symbol){
+    const shared=window.SignalForgePatternContext;
+    if(shared&&String(shared.symbol||'').toUpperCase()===symbol&&shared.patternContext)return{context:shared.patternContext,source:'live panel'};
+
+    try{
+      const response=await fetch(`${API}/api/signals`,{headers:{accept:'application/json'},cache:'no-store'}),body=await response.json();
+      if(response.ok){const row=(body.signals||[]).find(item=>String(item.symbol||'').toUpperCase()===symbol);if(row?.analysis?.patternContext)return{context:row.analysis.patternContext,source:'saved signal'};}
+    }catch{}
+
+    for(const timeframe of ['6M','3M','1Y']){
+      try{
+        const response=await fetch(`${API}/api/market-data?symbol=${encodeURIComponent(symbol)}&timeframe=${timeframe}&cacheOnly=1`,{headers:{accept:'application/json'},cache:'no-store'});
+        if(!response.ok)continue;
+        const body=await response.json();if(body?.analysis?.patternContext)return{context:body.analysis.patternContext,source:`${timeframe} chart cache`};
+      }catch{}
+    }
+    throw new Error('the current chart has no cached pattern context yet');
   }
 
   function applyOverlays(source='manual'){
     ensureUi();syncLabels();
     const bridge=window.SignalForgeChartBridge,p=patternContext,prefs=loadPrefs();
-    if(!p){setStatus('Waiting for saved structure data for this ticker.','warn');return 0;}
+    if(!p){setStatus('Structure values are visible above, but the drawing context has not synchronized yet. Retrying from chart cache…','warn');setTimeout(()=>refreshContext('missing-context-retry'),180);return 0;}
     if(!bridge?.ready||!bridge.candleSeries){
       setStatus('Chart is visible, but the structure overlay bridge is not attached yet. Retrying…','error');
       if(retryCount<5){retryCount++;setTimeout(()=>applyOverlays('retry'),100+retryCount*120);}return 0;
@@ -86,8 +116,9 @@
     const overlapNote=prefs.support&&prefs.breakout&&Number(p.support?.price)>0&&Math.abs(Number(p.support.price)-Number(p.breakout?.level))<0.005?' · Breakout test overlaps Support at the same price':'';
     const failed=requested>drawn?` · ${requested-drawn} requested overlay${requested-drawn===1?'':'s'} failed`:'';
     const off=requested===0?' · all overlay families are OFF':'';
-    setStatus(`<strong>${drawn} overlay${drawn===1?'':'s'} drawn</strong> · ${Number(state.priceLines)||0} level lines · ${Number(state.trendLines)||0} trend lines${channelNote}${overlapNote}${failed}${off}`,state.lastError||requested>drawn?'warn':'ok',true);
-    window.dispatchEvent(new CustomEvent('signalforge:pattern-overlays-reliable',{detail:{source,symbol:selectedSymbol(),requested,drawn,state}}));
+    const sourceNote=contextSource&&contextSource!=='none'?` · source: ${contextSource}`:'';
+    setStatus(`<strong>${drawn} overlay${drawn===1?'':'s'} drawn</strong> · ${Number(state.priceLines)||0} level lines · ${Number(state.trendLines)||0} trend lines${sourceNote}${channelNote}${overlapNote}${failed}${off}`,state.lastError||requested>drawn?'warn':'ok',true);
+    window.dispatchEvent(new CustomEvent('signalforge:pattern-overlays-reliable',{detail:{source,symbol:selectedSymbol(),requested,drawn,state,contextSource}}));
     return drawn;
   }
 
