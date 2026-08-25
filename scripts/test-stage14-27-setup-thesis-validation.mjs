@@ -63,7 +63,8 @@ const screener=fs.readFileSync(new URL('../src/screener.js',import.meta.url),'ut
 const build=fs.readFileSync(new URL('../public/build-info.js',import.meta.url),'utf8');
 const sw=fs.readFileSync(new URL('../public/service-worker.js',import.meta.url),'utf8');
 const pkg=JSON.parse(fs.readFileSync(new URL('../package.json',import.meta.url),'utf8'));
-assert.match(evidence,/rewardRiskMin:1\.8/);
+assert.match(evidence,/import \{ MIN_BUY_REWARD_RISK \} from '\.\/hard-guardrails\.js'/,'evidence must import the authoritative production reward/risk policy');
+assert.match(evidence,/rewardRiskMin:MIN_BUY_REWARD_RISK/,'setup-thesis evidence must persist the authoritative production reward/risk policy');
 assert.match(screener,/NEAR_READY_RECHECK_MS=15\*60\*1000/);
 assert.match(screener,/PRIORITY_PULSE_MS=5\*60\*1000/);
 assert.match(build,new RegExp(`version:'${pkg.version.replaceAll('.','\\.')}'`));

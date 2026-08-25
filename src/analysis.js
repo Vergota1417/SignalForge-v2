@@ -1,5 +1,5 @@
 import { assessPatternContext } from './pattern-context.js';
-import { evaluateHardBuyGuardrails } from './hard-guardrails.js';
+import { evaluateHardBuyGuardrails, MIN_BUY_REWARD_RISK } from './hard-guardrails.js';
 
 const average = arr => arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : 0;
 
@@ -155,7 +155,7 @@ export function analyze(candles,symbol,context={}){
   const rrMetrics=[
     {name:'Structure stop distance',value:`${(risk/latest.close*100).toFixed(1)}% · ${structure.stopSource}`,pass:risk/latest.close<=.08,warn:risk/latest.close<=.12},
     {name:'Structure target',value:target?`${((reward/latest.close)*100).toFixed(1)}% · ${structure.targetSource}`:'No defensible target resolved',pass:Boolean(target)&&reward/latest.close>=.06,warn:Boolean(target)&&reward/latest.close>=.035},
-    {name:'Reward / risk',value:target?`${rr.toFixed(2)} : 1`:'Unresolved',pass:Boolean(target)&&rr>=1.8,warn:Boolean(target)&&rr>=1.25},
+    {name:'Reward / risk',value:target?`${rr.toFixed(2)} : 1`:'Unresolved',pass:Boolean(target)&&rr>=MIN_BUY_REWARD_RISK,warn:Boolean(target)&&rr>=1.25},
     {name:'Price vs thesis break',value:latest.close>thesisBreak?'Thesis intact':'Broken',pass:latest.close>thesisBreak}
   ];
   const engines={trend:engineState('TREND',trendMetrics,3),entry:engineState('ENTRY',entryMetrics,3),probability:engineState('PROBABILITY',probabilityMetrics,3),riskReward:engineState('RISK / REWARD',rrMetrics,3)};
@@ -168,7 +168,7 @@ export function analyze(candles,symbol,context={}){
   else if(latest.close>overextension||r14>=76){status='WAIT FOR PULLBACK';reason='Trend is strong, but price is too extended to chase.';}
   else if(dailyGatesReady&&!hardBuyGuardrails.rules.targetResolved.pass){status='WAIT — SETUP NOT READY';reason='BUY blocked by hard guardrail: no defensible structure target is resolved, so reward/risk cannot be authorized.';}
   else if(dailyGatesReady&&!hardBuyGuardrails.rules.rewardRisk.pass){status='WAIT — SETUP NOT READY';reason=`BUY blocked by hard guardrail: reward/risk is ${Number.isFinite(rr)?rr.toFixed(2):'unresolved'}:1 and must be at least ${hardBuyGuardrails.minRewardRisk.toFixed(2)}:1.`;}
-  else if(dailyGatesReady&&hardBuyGuardrails.pass){status='BUY NOW';reason='All scored engines and every non-negotiable BUY guardrail passed, including 1.80:1 reward/risk and participation confirmation.';}
+  else if(dailyGatesReady&&hardBuyGuardrails.pass){status='BUY NOW';reason=`All scored engines and every non-negotiable BUY guardrail passed, including ${MIN_BUY_REWARD_RISK.toFixed(2)}:1 reward/risk and participation confirmation.`;}
   else if(dailyGatesReady){status='SETUP — READY SOON';reason=intradayConfirmation?.reason||hardBuyGuardrails.reason||'All higher-timeframe gates cleared. BUY NOW still requires participation/execution confirmation.';}
   else if(engines.trend.ready&&nearEntry&&(engines.probability.ready||engines.riskReward.ready)){status='SETUP — READY SOON';reason='Price is near the preferred entry zone, but one higher-timeframe gate is still missing.';}
   else{status='WAIT — SETUP NOT READY';reason='Several checks pass, but at least one higher-timeframe gate still blocks a buy setup.';}

@@ -39,9 +39,12 @@ assert.equal(coverage.endEt,'15:30');
 assert.equal(coverage.extendedHours,false);
 
 const evidence=fs.readFileSync(new URL('../src/evidence.js',import.meta.url),'utf8');
+const latency=fs.readFileSync(new URL('../src/detection-latency.js',import.meta.url),'utf8');
 const index=fs.readFileSync(new URL('../src/index.js',import.meta.url),'utf8');
 const html=fs.readFileSync(new URL('../public/index.html',import.meta.url),'utf8');
-assert.match(evidence,/rewardRiskMin:1\.8/,'Stage 14.28 must not loosen the 1.80:1 BUY threshold');
+assert.match(evidence,/import \{ MIN_BUY_REWARD_RISK \} from '\.\/hard-guardrails\.js'/,'evidence must consume the authoritative 1.80:1 BUY policy');
+assert.match(evidence,/rewardRiskMin:MIN_BUY_REWARD_RISK/,'evidence must persist the authoritative BUY threshold');
+assert.match(latency,/rewardRiskMin:MIN_BUY_REWARD_RISK/,'Stage 14.28 must consume the same authoritative BUY threshold');
 assert.match(index,/\/api\/detection-latency/);
 assert.match(index,/isBroadDiscoverySlot\(weekday,minutes\)/);
 assert.match(html,/detection-latency-ui\.js/);

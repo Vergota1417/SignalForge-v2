@@ -1,5 +1,6 @@
 import { benchmarkContextFor } from './benchmark-context.js';
 import { recordPatternContextShadow } from './pattern-evidence.js';
+import { MIN_BUY_REWARD_RISK } from './hard-guardrails.js';
 
 const FIFTEEN_MINUTES=15*60*1000;
 export const ANALYSIS_MODEL_VERSION='sf-analysis-v2-participation';
@@ -117,7 +118,7 @@ export function analysisEvidenceRow(analysis,{source='deep-analysis',timeframe='
       features:{sma20:numOrNull(analysis?.sma20),sma50:numOrNull(analysis?.sma50),atr:numOrNull(analysis?.atr),rsi:numOrNull(analysis?.rsi),momentum20:numOrNull(analysis?.momentum20),relativeStrength20:numOrNull(analysis?.relativeStrength20),extensionPct:numOrNull(analysis?.extensionPct),pullbackDepth:numOrNull(analysis?.pullbackDepth),trendStrength:numOrNull(analysis?.trendStrength)},
       patternContext:compactPatternContext(analysis?.patternContext),
       participation:participation?{pass:Boolean(participation.pass),state:String(participation.state||''),passes:Number(participation.passes)||0,total:Number(participation.total)||5,participationPass:Boolean(participation.participationPass),relativeVolume:numOrNull(participation.relativeVolume),rvolSample:Number(participation.rvolSample)||0,avwap:numOrNull(participation.avwap),momentum4:numOrNull(participation.momentum4),rsi15:numOrNull(participation.rsi),sma20_15m:numOrNull(participation.sma20),latestPrice:numOrNull(participation.latestPrice),latestTime:numOrNull(participation.latestTime),volatility:participation.volatility||null,metrics:Array.isArray(participation.metrics)?participation.metrics.map(m=>({name:String(m.name||''),value:String(m.value||''),pass:Boolean(m.pass),warn:Boolean(m.warn),role:String(m.role||'')})):[]}:null,
-      thresholds:{rewardRiskMin:1.8,walkForwardWinRateMin:.57,dailyRsiMin:42,dailyRsiMax:69,participationRvolMin:1.0,participationMomentumMin:0,participationTotalPassesMin:4}
+      thresholds:{rewardRiskMin:MIN_BUY_REWARD_RISK,walkForwardWinRateMin:.57,dailyRsiMin:42,dailyRsiMax:69,participationRvolMin:1.0,participationMomentumMin:0,participationTotalPassesMin:4}
     }
   };
 }

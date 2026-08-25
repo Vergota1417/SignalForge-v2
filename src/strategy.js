@@ -1,3 +1,5 @@
+import { MIN_BUY_REWARD_RISK } from './hard-guardrails.js';
+
 export function safeNum(v,fallback=null){const n=Number(v);return Number.isFinite(n)?n:fallback;}
 const clamp=(v,min,max)=>Math.min(max,Math.max(min,v));
 const positive=v=>{const n=safeNum(v);return n!==null&&n>0?n:null;};
@@ -42,8 +44,8 @@ export function calculatePositionSizing({accountEquity,availableCash,maxRiskPct=
 
 function buyGateSummary(a,price){
   const entryLow=positive(a.preferredEntryLow),entryHigh=positive(a.preferredEntryHigh),stop=validStop(a),target=validTarget(a,price),rsi=safeNum(a.rsi),overextension=positive(a.overextension),rr=safeNum(a.rr),participation=a?.intradayConfirmation||null;
-  const entryZoneValid=Boolean(entryLow&&entryHigh&&entryLow<entryHigh),nearEntry=entryZoneValid&&price>=entryLow*.99&&price<=entryHigh*1.03,thesisIntact=Boolean(stop&&price>stop),notOverextended=Boolean(overextension&&rsi!==null&&price<=overextension&&rsi<76),participationPass=Boolean(participation?.pass);
-  const checks=[{name:'Trend engine',pass:Boolean(a.engines?.trend?.ready)},{name:'Entry engine',pass:Boolean(a.engines?.entry?.ready)},{name:'Probability engine',pass:Boolean(a.engines?.probability?.ready)},{name:'Risk/reward engine',pass:Boolean(a.engines?.riskReward?.ready)},{name:'SPY benchmark available',pass:validBenchmark(a)},{name:'Structure stop resolved',pass:Boolean(stop)},{name:'Structure target resolved above price',pass:Boolean(target)},{name:'Entry zone resolved',pass:entryZoneValid},{name:'Price near preferred entry',pass:nearEntry},{name:'Actual structure R/R >= 1.80',pass:rr!==null&&rr>=1.8},{name:'Thesis intact',pass:thesisIntact},{name:'Not overextended',pass:notOverextended},{name:'Participation / execution confirmation',pass:participationPass}];
+  const entryZoneValid=Boolean(entryLow&&entryHigh&&entryLow<entryHigh),nearEntry=entryZoneValid&&price>=entryLow*.99&&price<=entryHigh*1.03,thesisIntact=Boolean(stop&&price>stop),notOverextended=Boolean(overextension&&rsi!==null&&price<=overextension&&rsi<76),participationPass=Boolean(participation?.pass&&participation?.participationPass);
+  const checks=[{name:'Trend engine',pass:Boolean(a.engines?.trend?.ready)},{name:'Entry engine',pass:Boolean(a.engines?.entry?.ready)},{name:'Probability engine',pass:Boolean(a.engines?.probability?.ready)},{name:'Risk/reward engine',pass:Boolean(a.engines?.riskReward?.ready)},{name:'SPY benchmark available',pass:validBenchmark(a)},{name:'Structure stop resolved',pass:Boolean(stop)},{name:'Structure target resolved above price',pass:Boolean(target)},{name:'Entry zone resolved',pass:entryZoneValid},{name:'Price near preferred entry',pass:nearEntry},{name:`Actual structure R/R >= ${MIN_BUY_REWARD_RISK.toFixed(2)}`,pass:rr!==null&&rr>=MIN_BUY_REWARD_RISK},{name:'Thesis intact',pass:thesisIntact},{name:'Not overextended',pass:notOverextended},{name:'Participation / execution confirmation',pass:participationPass}];
   return{checks,failed:checks.filter(x=>!x.pass).map(x=>x.name),allPassed:checks.every(x=>x.pass),nearEntry,thesisIntact,notOverextended,entryZoneValid,stop,target,rr:rr===null?0:rr,participationPass};
 }
 
@@ -86,7 +88,7 @@ export function evaluateStrategy(analysis,holding=null,accountContext=null,previ
   if(hardInvalid){state='AVOID';reason='The higher-timeframe trend or structure is unfavorable for new capital.';}
   else if(!dataReady){state='WATCH';reason='The setup cannot become a buy yet because critical benchmark, structure, or entry data is unresolved.';}
   else if(!gates.notOverextended){state='WATCH';reason='The setup may be attractive, but price is extended. Do not chase the move.';}
-  else if(gates.allPassed){state='BUY WINDOW';reason='All higher-timeframe engines passed, structure R/R is at least 1.80:1, price is near the preferred entry area, and live participation confirms execution.';}
+  else if(gates.allPassed){state='BUY WINDOW';reason=`All higher-timeframe engines passed, structure R/R is at least ${MIN_BUY_REWARD_RISK.toFixed(2)}:1, price is near the preferred entry area, and live participation confirms execution.`;}
   else if(trendReady&&probabilityReady&&riskRewardReady&&gates.rr>=1.35&&gates.thesisIntact){state='BUY CANDIDATE';reason=gates.participationPass?'Higher-timeframe evidence and structure are favorable, but one or more BUY WINDOW conditions still need improvement.':'Higher-timeframe evidence is favorable, but BUY WINDOW remains closed until participation/execution confirmation passes.';}
   else if(trendReady&&(probabilityReady||riskRewardReady)){state='WATCH';reason='Trend quality is constructive, but probability, structure reward/risk, or entry quality still needs improvement.';}
   const sizing=(state==='BUY WINDOW'||state==='BUY CANDIDATE')&&accountContext&&gates.stop?calculatePositionSizing({...accountContext,entryPrice:price,stopPrice:gates.stop}):null;
