@@ -1,4 +1,5 @@
 export const PATTERN_EVIDENCE_VERSION='sf-pattern-context-shadow-v1';
+const patternEvidenceSchemaReadyByDb=new WeakMap();
 
 export async function recordPatternContextShadow(env,analysis,{source='analysis-evidence',now=Date.now()}={}){
   const pattern=analysis?.patternContext,symbol=sanitizeSymbol(analysis?.symbol);
@@ -30,6 +31,15 @@ export async function getPatternContextShadowStatus(env){
 }
 
 async function ensurePatternEvidenceSchema(env){
+  let ready=patternEvidenceSchemaReadyByDb.get(env.DB);
+  if(!ready){
+    ready=initializePatternEvidenceSchema(env).catch(error=>{patternEvidenceSchemaReadyByDb.delete(env.DB);throw error;});
+    patternEvidenceSchemaReadyByDb.set(env.DB,ready);
+  }
+  return ready;
+}
+
+async function initializePatternEvidenceSchema(env){
   await env.DB.prepare(`CREATE TABLE IF NOT EXISTS pattern_context_shadow_observations(
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     symbol TEXT NOT NULL,
