@@ -41,7 +41,7 @@ export async function runShadowValidation(env,{now=Date.now()}={}){
     const rows=await loadForwardRows(env,{startedAt,horizon});
     const evaluation=evaluateForwardShadow(rows,config,{minSample});
     const status=shadowStatus(evaluation),evaluatedAt=Number(now)||Date.now();
-    const report={id:String(def.id),name:String(def.name),startedAt,horizon,minSample,config,status,evaluatedAt,forwardRows:rows.length,evaluation,policy:{productionChanged:false,message:'Forward shadow validation is evidence-only. A pass may nominate a challenger for deliberate review but never changes production gates automatically.'}};
+    const report={id:String(def.id),name:String(def.name),startedAt,horizon,minSample,config,status,evaluatedAt,forwardRows:rows.length,forwardDecisionEpisodes:Number(evaluation?.decisionEpisodeSampleSize)||0,evaluation,policy:{productionChanged:false,message:'Forward shadow validation is evidence-only and sampled by distinct decision episodes. A pass may nominate a challenger for deliberate review but never changes production gates automatically.'}};
     await env.DB.prepare(`UPDATE shadow_challengers SET status=?,evaluation_json=?,evaluated_at=?,updated_at=? WHERE id=?`).bind(status,JSON.stringify(report),evaluatedAt,evaluatedAt,String(def.id)).run();
     reports.push(report);
   }
@@ -65,7 +65,7 @@ export function shadowStatus(evaluation){
 }
 
 async function loadForwardRows(env,{startedAt,horizon}){
-  const result=await env.DB.prepare(`SELECT e.id,e.symbol,e.status,e.readiness,e.relative_volume AS relativeVolume,e.gates_ready AS gatesReady,e.benchmark_risk_off AS benchmarkRiskOff,e.model_version AS modelVersion,e.observed_at AS observedAt,e.payload_json AS payloadJson,o.forward_return AS forwardReturn,o.mfe,o.mae,o.market_excess_return AS marketExcessReturn,o.sector_excess_return AS sectorExcessReturn FROM evidence_observations e JOIN evidence_outcomes o ON o.observation_id=e.id WHERE e.observation_type='ANALYSIS' AND e.observed_at>=? AND o.horizon_sessions=? ORDER BY e.observed_at ASC,e.id ASC`)
+  const result=await env.DB.prepare(`SELECT e.id,e.symbol,e.source,e.status,e.readiness,e.relative_volume AS relativeVolume,e.gates_ready AS gatesReady,e.benchmark_risk_off AS benchmarkRiskOff,e.model_version AS modelVersion,e.observed_at AS observedAt,e.payload_json AS payloadJson,o.forward_return AS forwardReturn,o.mfe,o.mae,o.market_excess_return AS marketExcessReturn,o.sector_excess_return AS sectorExcessReturn FROM evidence_observations e JOIN evidence_outcomes o ON o.observation_id=e.id WHERE e.observation_type='ANALYSIS' AND e.observed_at>=? AND o.horizon_sessions=? ORDER BY e.observed_at ASC,e.id ASC`)
     .bind(Number(startedAt)||SHADOW_ROLLOUT_AT,normalizeHorizon(horizon)).all();
   return result.results||[];
 }
