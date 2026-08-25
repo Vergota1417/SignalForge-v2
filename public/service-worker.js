@@ -1,4 +1,4 @@
-const CACHE_NAME='signalforge-shell-v30-36';
+const CACHE_NAME='signalforge-shell-v30-37';
 const API_CACHE_NAME='signalforge-api-snapshots-v2';
 const FIVE_MINUTES=5*60_000;
 const THIRTY_MINUTES=30*60_000;
