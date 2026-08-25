@@ -2,6 +2,7 @@ export const ACTIVITY_RHYTHM_VERSION='sf-activity-rhythm-shadow-v1';
 const FIFTEEN_MINUTES=15*60*1000;
 const SESSION_START_MINUTE=9*60+30;
 const SESSION_END_MINUTE=16*60;
+const activityRhythmSchemaReadyByDb=new WeakMap();
 
 export function assessActivityRhythm(candles){
   if(!Array.isArray(candles)||candles.length<30)return insufficient('Not enough 15-minute history to learn an intraday activity rhythm.');
@@ -82,6 +83,40 @@ export async function getActivityRhythmShadowStatus(env){
     env.DB.prepare(`SELECT symbol,production_status AS productionStatus,activity_state AS activityState,activity_score AS activityScore,current_time AS currentTime,observed_at AS observedAt FROM activity_rhythm_shadow_observations ORDER BY observed_at DESC,id DESC LIMIT 1`).first()
   ]);
   return{modelVersion:ACTIVITY_RHYTHM_VERSION,totalObservations:Number(total?.count)||0,byState:Object.fromEntries((states.results||[]).map(r=>[r.state,Number(r.count)||0])),last:last?{...last,activityScore:Number(last.activityScore)||0,observedAt:Number(last.observedAt)||0}:null};
+}
+
+async function ensureSchema(env){
+  if(!env?.DB)throw new Error('D1 binding DB is not configured.');
+  let ready=activityRhythmSchemaReadyByDb.get(env.DB);
+  if(!ready){
+    ready=env.DB.batch([
+      env.DB.prepare(`CREATE TABLE IF NOT EXISTS activity_rhythm_shadow_observations(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        symbol TEXT NOT NULL,
+        model_version TEXT NOT NULL,
+        source TEXT NOT NULL,
+        observed_at INTEGER NOT NULL,
+        observed_bucket INTEGER NOT NULL,
+        production_status TEXT NOT NULL DEFAULT '',
+        price REAL,
+        activity_state TEXT NOT NULL,
+        activity_score REAL,
+        activity_multiple REAL,
+        relative_volume REAL,
+        relative_range REAL,
+        relative_move REAL,
+        historical_window TEXT NOT NULL DEFAULT '',
+        current_time TEXT NOT NULL DEFAULT '',
+        historical_sample INTEGER NOT NULL DEFAULT 0,
+        payload_json TEXT NOT NULL DEFAULT '{}',
+        created_at INTEGER NOT NULL,
+        UNIQUE(symbol,model_version,observed_bucket)
+      )`),
+      env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_activity_rhythm_shadow_time ON activity_rhythm_shadow_observations(observed_at DESC)`)
+    ]).catch(error=>{activityRhythmSchemaReadyByDb.delete(env.DB);throw error;});
+    activityRhythmSchemaReadyByDb.set(env.DB,ready);
+  }
+  return ready;
 }
 
 function buildHistoricalBuckets(sessions){
