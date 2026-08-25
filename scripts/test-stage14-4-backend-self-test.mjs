@@ -24,9 +24,9 @@ assert.match(ui,/'x-sf-endpoint':auth\.endpoint/,'Phone UI must send the authori
 assert.match(ui,/'x-sf-token':auth\.token/,'Phone UI must send the authorized device token.');
 assert.match(ui,/Run Backend Test/,'Phone UI must expose a clear test action.');
 assert.match(html,/self-test-ui\.js/,'The production shell must load the self-test UI.');
-assert.match(sw,/signalforge-shell-v30-4/,'Stage 14.4 must advance the PWA shell cache.');
+assert.match(sw,/signalforge-shell-v30-\d+/,'Production must retain a versioned PWA shell cache.');
 assert.match(sw,/self-test-ui\.js/,'The self-test UI must be included in the offline app shell.');
-assert.match(build,/version:'2\.30\.4'/,'Stage 14.4 must expose version 2.30.4.');
-assert.match(build,/shell:'v30-4'/,'Stage 14.4 must expose shell v30-4.');
+assert.match(build,/version:'2\.30\.\d+'/,'Production must expose a SignalForge 2.30.x build version.');
+assert.match(build,/shell:'v30-\d+'/,'Production must expose a matching versioned shell.');
 
 console.log('Stage 14.4 backend self-test checks passed.');
