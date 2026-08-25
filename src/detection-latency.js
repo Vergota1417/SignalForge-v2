@@ -1,4 +1,5 @@
 import { broadDiscoveryCoverage } from './scanner-schedule.js';
+import { MIN_BUY_REWARD_RISK } from './hard-guardrails.js';
 
 export const DETECTION_LATENCY_THRESHOLDS=Object.freeze({
   firstScanAlreadyMovedPct:1.0,
@@ -8,7 +9,7 @@ export const DETECTION_LATENCY_THRESHOLDS=Object.freeze({
   readyMinutes:45,
   readyPriceAdvancePct:1.0,
   readyObservedMoveConsumedRate:.60,
-  rewardRiskMin:1.8,
+  rewardRiskMin:MIN_BUY_REWARD_RISK,
   peakWindowMs:2*24*60*60*1000
 });
 
@@ -39,7 +40,7 @@ export function evaluateDetectionLatencyRows(rows=[],{symbol='',lookbackDays=3,n
   if(firstMovement&&!firstAnalysis)findings.push(finding('NOT_PROMOTED','CRITICAL','Early movement was stored, but no scheduled deep-analysis evidence followed in the audit window.'));
   if(firstMovement&&firstAnalysis&&(finite(latency.movementToAnalysisMinutes)>DETECTION_LATENCY_THRESHOLDS.promotionMinutes||finite(latency.priceAdvanceMovementToAnalysisPct)>DETECTION_LATENCY_THRESHOLDS.promotionPriceAdvancePct))findings.push(finding('PROMOTION_LATE','WARN',`Deep analysis began ${fmtMinutes(latency.movementToAnalysisMinutes)} after the first movement signal, after a ${pct(latency.priceAdvanceMovementToAnalysisPct)} price advance.`));
   if(firstMovement&&firstReady&&(finite(latency.movementToReadyMinutes)>DETECTION_LATENCY_THRESHOLDS.readyMinutes||finite(latency.priceAdvanceMovementToReadyPct)>DETECTION_LATENCY_THRESHOLDS.readyPriceAdvancePct||(latency.observedMoveConsumedBeforeReadyRate!=null&&latency.observedMoveConsumedBeforeReadyRate>=DETECTION_LATENCY_THRESHOLDS.readyObservedMoveConsumedRate)))findings.push(finding('READY_LATE','WARN',`READY arrived ${fmtMinutes(latency.movementToReadyMinutes)} after first movement; price had advanced ${pct(latency.priceAdvanceMovementToReadyPct)} from that stored movement observation.`));
-  if(buyEligibleWithoutBuy)findings.push(finding('POSSIBLE_DECISION_INCONSISTENCY','CRITICAL','A stored analysis snapshot appears to have all four critical gates, participation, and 1.80:1+ R/R while its status was not BUY NOW. Review this snapshot as a possible engine inconsistency.'));
+  if(buyEligibleWithoutBuy)findings.push(finding('POSSIBLE_DECISION_INCONSISTENCY','CRITICAL',`A stored analysis snapshot appears to have all four critical gates, participation, and ${MIN_BUY_REWARD_RISK.toFixed(2)}:1+ R/R while its status was not BUY NOW. Review this snapshot as a possible engine inconsistency.`));
   if(!firstBuy&&latestAnalysis&&latestAnalysis.rr!=null&&latestAnalysis.rr<DETECTION_LATENCY_THRESHOLDS.rewardRiskMin)findings.push(finding('CURRENT_RR_BLOCK','INFO',`Current stored R/R is ${round(latestAnalysis.rr,2)}:1, below the unchanged ${DETECTION_LATENCY_THRESHOLDS.rewardRiskMin.toFixed(2)}:1 BUY requirement.`));
   if(!firstBuy&&closest)findings.push(finding('BUY_NEVER_CONFIRMED','INFO',describeClosestBlock(closest)));
   const detection=assessDetection({normalized,radar,firstRadar,firstMovement,firstAnalysis,firstReady,latency,maxRadarMove}),execution=assessExecution({firstBuy,buyEligibleWithoutBuy,latestAnalysis,closest});
