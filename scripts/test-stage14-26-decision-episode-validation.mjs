@@ -57,7 +57,8 @@ const evidence=fs.readFileSync(new URL('../src/evidence.js',import.meta.url),'ut
 const screener=fs.readFileSync(new URL('../src/screener.js',import.meta.url),'utf8');
 const build=fs.readFileSync(new URL('../public/build-info.js',import.meta.url),'utf8');
 const pkg=JSON.parse(fs.readFileSync(new URL('../package.json',import.meta.url),'utf8'));
-assert.match(evidence,/rewardRiskMin:1\.8/,'1.80:1 production reward/risk threshold must remain unchanged');
+assert.match(evidence,/import \{ MIN_BUY_REWARD_RISK \} from '\.\/hard-guardrails\.js'/,'evidence must import the authoritative production reward/risk policy');
+assert.match(evidence,/rewardRiskMin:MIN_BUY_REWARD_RISK/,'evidence snapshots must persist the authoritative production reward/risk policy');
 assert.match(screener,/NEAR_READY_RECHECK_MS=15\*60\*1000/,'15-minute execution cadence must remain unchanged');
 assert.match(build,new RegExp(`version:'${pkg.version.replaceAll('.','\\.')}'`),'build-info version must match package version');
 assert.match(pkg.scripts.check,/test-stage14-26-decision-episode-validation\.mjs/);
