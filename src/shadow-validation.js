@@ -41,7 +41,7 @@ export async function runShadowValidation(env,{now=Date.now()}={}){
     const rows=await loadForwardRows(env,{startedAt,horizon});
     const evaluation=evaluateForwardShadow(rows,config,{minSample});
     const status=shadowStatus(evaluation),evaluatedAt=Number(now)||Date.now();
-    const report={id:String(def.id),name:String(def.name),startedAt,horizon,minSample,config,status,evaluatedAt,forwardRows:rows.length,forwardDecisionEpisodes:Number(evaluation?.decisionEpisodeSampleSize)||0,evaluation,policy:{productionChanged:false,message:'Forward shadow validation is evidence-only and sampled by distinct decision episodes. A pass may nominate a challenger for deliberate review but never changes production gates automatically.'}};
+    const report={id:String(def.id),name:String(def.name),startedAt,horizon,minSample,config,status,evaluatedAt,forwardRows:rows.length,forwardSetupEpisodes:Number(evaluation?.setupSampleSize)||0,forwardDecisionStateSamples:Number(evaluation?.decisionStateSampleSize)||0,forwardDecisionEpisodes:Number(evaluation?.decisionEpisodeSampleSize)||0,evaluation,policy:{productionChanged:false,message:'Forward shadow validation is evidence-only. Each decision state contributes at most one sample per independent setup thesis; a pass may nominate a challenger for deliberate review but never changes production gates automatically.'}};
     await env.DB.prepare(`UPDATE shadow_challengers SET status=?,evaluation_json=?,evaluated_at=?,updated_at=? WHERE id=?`).bind(status,JSON.stringify(report),evaluatedAt,evaluatedAt,String(def.id)).run();
     reports.push(report);
   }

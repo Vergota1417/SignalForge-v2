@@ -1,1 +1,1 @@
-window.SIGNALFORGE_BUILD=Object.freeze({version:'2.30.28',release:'decision-episode-validation',shell:'v30-28'});
+window.SIGNALFORGE_BUILD=Object.freeze({version:'2.30.29',release:'setup-thesis-validation',shell:'v30-29'});
