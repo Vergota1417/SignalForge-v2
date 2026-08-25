@@ -4,6 +4,7 @@ import { buildDecisionEpisodes } from '../src/decision-episodes.js';
 import { evaluateEvidenceRows } from '../src/evaluation.js';
 import { buildSetupLeaderboard } from '../src/strategy-optimizer.js';
 import { buildChallengerRule, compareChampionChallenger } from '../src/challenger.js';
+import { BASELINE_TESTS } from './suite-manifest.mjs';
 
 const start=Date.parse('2026-08-24T14:00:00Z');
 const rows=[
@@ -61,7 +62,7 @@ assert.match(evidence,/import \{ MIN_BUY_REWARD_RISK \} from '\.\/hard-guardrail
 assert.match(evidence,/rewardRiskMin:MIN_BUY_REWARD_RISK/,'evidence snapshots must persist the authoritative production reward/risk policy');
 assert.match(screener,/NEAR_READY_RECHECK_MS=15\*60\*1000/,'15-minute execution cadence must remain unchanged');
 assert.match(build,new RegExp(`version:'${pkg.version.replaceAll('.','\\.')}'`),'build-info version must match package version');
-assert.match(pkg.scripts.check,/test-stage14-26-decision-episode-validation\.mjs/);
+assert.ok(BASELINE_TESTS.includes('scripts/test-stage14-26-decision-episode-validation.mjs'),'Stage 14.26 must remain in the baseline regression manifest');
 console.log('Stage 14.26 decision episode validation regression passed');
 
 function row(symbol,status,observedAt,forwardReturn,{modelVersion='sf-analysis-v4-adaptive-execution'}={}){
