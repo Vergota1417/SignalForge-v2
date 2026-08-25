@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { evaluatePatternEvidenceRows } from '../src/pattern-evaluation.js';
+import { BASELINE_TESTS } from './suite-manifest.mjs';
 
 const rows=[];
 for(let i=0;i<20;i++){
@@ -35,7 +36,7 @@ assert.doesNotMatch(ui,/api\/market-data\?[^`]*pattern/i,'Pattern Health must no
 assert.match(build,/SIGNALFORGE_BUILD/);
 assert.match(sw,/signalforge-shell-v30-/);
 assert.ok(Number(pkg.version.split('.').at(-1))>=26,'Pattern Health must remain in this or a later release');
-assert.match(pkg.scripts.check,/test-stage14-24-pattern-validation-health\.mjs/);
+assert.ok(BASELINE_TESTS.includes('scripts/test-stage14-24-pattern-validation-health.mjs'),'Stage 14.24 must remain in the baseline regression manifest');
 console.log('Stage 14.24 pattern validation health regression passed.');
 
 function makeRow({symbol,observedAt,pattern,state,confidence,forwardReturn,marketExcessReturn,sectorExcessReturn}){

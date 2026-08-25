@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { buildPatternEpisodes, buildPatternStateEpisodes, evaluatePatternEvidenceRows } from '../src/pattern-evaluation.js';
+import { BASELINE_TESTS } from './suite-manifest.mjs';
 
 const continuity=[
   episodeRow('AAA','2026-01-05','DOUBLE BOTTOM','DETECTED',70),
@@ -46,7 +47,7 @@ assert.match(build,/version:'2\.30\.\d+'/,'production must expose a current Sign
 const shell=build.match(/shell:'(v30-\d+)'/)?.[1];assert.ok(shell,'build metadata must expose a versioned v30 shell');
 assert.ok(sw.includes(`signalforge-shell-${shell}`),'service worker shell must match visible build metadata');
 assert.match(pkg.version,/^2\.30\.\d+$/,'package version must remain in the SignalForge 2.30.x line');
-assert.match(pkg.scripts.check,/test-stage14-25-pattern-episode-validation\.mjs/);
+assert.ok(BASELINE_TESTS.includes('scripts/test-stage14-25-pattern-episode-validation.mjs'),'Stage 14.25 must remain in the baseline regression manifest');
 console.log('Stage 14.25 pattern episode validation regression passed.');
 
 function episodeRow(symbol,date,pattern,state,confidence){return{symbol,sessionDate:date,observedAt:Date.parse(`${date}T17:00:00Z`),primaryPattern:pattern,primaryFamily:pattern?'double':null,primaryState:state,primaryBias:pattern==='DOUBLE BOTTOM'?'BULLISH':null,primaryConfidence:confidence,forwardReturn:.01,mfe:.03,mae:-.01,marketExcessReturn:.004,sectorExcessReturn:.003,structureState:'STRUCTURE',breakoutState:'INSIDE',channelType:'UP CHANNEL'};}

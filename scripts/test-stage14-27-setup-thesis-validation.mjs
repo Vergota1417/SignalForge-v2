@@ -4,6 +4,7 @@ import { buildDecisionEpisodes, buildSetupStateSamples, setupThesisDiagnostics }
 import { evaluateEvidenceRows } from '../src/evaluation.js';
 import { buildSetupLeaderboard } from '../src/strategy-optimizer.js';
 import { buildChallengerRule, compareChampionChallenger } from '../src/challenger.js';
+import { BASELINE_TESTS } from './suite-manifest.mjs';
 
 const start=Date.parse('2026-08-25T14:00:00Z'),m15=15*60_000,d8=8*24*60*60_000;
 const rows=[
@@ -69,7 +70,7 @@ assert.match(screener,/NEAR_READY_RECHECK_MS=15\*60\*1000/);
 assert.match(screener,/PRIORITY_PULSE_MS=5\*60\*1000/);
 assert.match(build,new RegExp(`version:'${pkg.version.replaceAll('.','\\.')}'`));
 const shell=build.match(/shell:'([^']+)'/)?.[1];assert.ok(shell);assert.ok(sw.includes(`signalforge-shell-${shell}`));
-assert.match(pkg.scripts.check,/test-stage14-27-setup-thesis-validation\.mjs/);
+assert.ok(BASELINE_TESTS.includes('scripts/test-stage14-27-setup-thesis-validation.mjs'),'Stage 14.27 must remain in the baseline regression manifest');
 console.log('Stage 14.27 setup thesis validation regression passed');
 
 function row(symbol,status,observedAt,forwardReturn,{modelVersion='sf-analysis-v4-adaptive-execution'}={}){
