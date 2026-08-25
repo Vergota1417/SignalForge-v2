@@ -1,4 +1,4 @@
-const CACHE_NAME='signalforge-shell-v30-31';
+const CACHE_NAME='signalforge-shell-v30-32';
 const APP_SHELL=['/','/index.html','/styles.css','/pwa.css','/radar.css','/push.css','/portfolio.css','/config.js','/build-info.js','/last-symbol-ui.js','/crawler-ui.js','/app.js','/decision-summary-ui.js','/detection-latency-ui.js','/trade-plan-ui.js','/cockpit-ui.js','/activity-rhythm-ui.js','/session-range-ui.js','/opening-range-ui.js','/watchlist-ui.js','/gate-ui.js','/screener-ui.js','/weekend-ui.js','/simulation-capital-ui.js','/telemetry-ui.js','/operations-ui.js','/self-test-ui.js','/unified-action-ui.js','/ui-router.js','/pwa.js','/radar-ui.js','/push-ui.js','/alert-history.js','/stock-meta.js','/portfolio-ui.js','/chart-inspector.js','/pattern-chart-hook.js','/chart-adapter.js','/chart-control-reliability.js','/pattern-context-ui.js','/pattern-overlay-reliability.js','/manifest.webmanifest','/icons/signalforge-icon.svg','/icons/signalforge-maskable.svg'];
 
 self.addEventListener('install',event=>{event.waitUntil(caches.open(CACHE_NAME).then(cache=>cache.addAll(APP_SHELL)).then(()=>self.skipWaiting()));});
