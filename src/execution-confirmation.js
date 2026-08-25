@@ -45,6 +45,23 @@ export function refreshExecutionAnalysis(baseAnalysis,intradayConfirmation){
   };
 }
 
+export function refreshPricePulseAnalysis(baseAnalysis,currentPrice,checkedAt=Date.now()){
+  if(!baseAnalysis||typeof baseAnalysis!=='object')return baseAnalysis;
+  const price=positive(currentPrice);if(!price)return baseAnalysis;
+  const priorConfirmation=baseAnalysis.intradayConfirmation||null;
+  const syntheticConfirmation={...(priorConfirmation||{}),latestPrice:price};
+  const refreshed=refreshExecutionAnalysis(baseAnalysis,syntheticConfirmation);
+  return{
+    ...refreshed,
+    intradayConfirmation:priorConfirmation,
+    sessionRangeShadow:baseAnalysis.sessionRangeShadow||null,
+    dailyAnalyzedAt:Number(baseAnalysis.dailyAnalyzedAt)||0,
+    executionCheckedAt:Number(baseAnalysis.executionCheckedAt)||0,
+    pricePulse:{timeframe:'1D/5min',price,checkedAt:Number(checkedAt)||Date.now()},
+    execution:{...(refreshed.execution||{}),pricePulseOnly:true,pricePulseCheckedAt:Number(checkedAt)||Date.now(),confirmationCheckedAt:Number(baseAnalysis.executionCheckedAt)||0}
+  };
+}
+
 function executionReason(blockers,confirmation,currentRr,nearEntry){
   if(blockers.includes('PARTICIPATION'))return confirmation?.reason||'Higher-timeframe setup is valid; BUY execution is waiting for live participation confirmation.';
   if(blockers.includes('CURRENT R/R'))return`Higher-timeframe setup is valid, but current execution reward/risk is ${Number(currentRr||0).toFixed(2)}:1. BUY NOW requires at least 1.80:1.`;
