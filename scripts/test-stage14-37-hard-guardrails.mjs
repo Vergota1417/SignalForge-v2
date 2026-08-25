@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { evaluateHardBuyGuardrails, MIN_BUY_REWARD_RISK } from '../src/hard-guardrails.js';
-import { HISTORICAL_DISABLED_TESTS, PRODUCTION_GUARDRAIL_TESTS } from './test-manifest.mjs';
+import { HISTORICAL_DISABLED_TESTS, PRODUCTION_GUARDRAIL_TESTS } from './suite-manifest.mjs';
 await import('../public/api-request-policy.js');
 const requestPolicy=globalThis.SignalForgeApiRequestPolicy;
 
