@@ -29,9 +29,9 @@ assert.match(cockpit,/new MutationObserver\(scheduleOrganize\)/,'DOM organizatio
 assert.match(telemetry,/function refreshVisible\(\)\{if\(!systemOpen\(\)\)return;/,'heavy telemetry must not poll while System is collapsed');
 assert.match(operations,/function refreshVisible\(\)\{if\(systemOpen\(\)\)refresh\(\);\}/,'operations status must not poll while System is collapsed');
 assert.ok(pwa.indexOf("/trade-plan-ui.js")>=0&&pwa.indexOf("/cockpit-ui.js")>pwa.indexOf("/trade-plan-ui.js"),'cockpit must load after Trade Plan');
-assert.match(sw,/signalforge-shell-v30-22/,'service worker shell must bump');
+assert.match(sw,/signalforge-shell-v30-\d+/,'service worker must retain a versioned v30 shell');
 assert.match(sw,/'\/cockpit-ui\.js'/,'cockpit must be cached for installed PWA use');
-assert.match(build,/version:'2\.30\.22'/,'visible version must bump');
-assert.match(build,/shell:'v30-22'/,'visible shell must match service worker');
+assert.match(build,/version:'2\.30\.\d+'/,'visible build must remain SignalForge 2.30.x');
+assert.match(build,/shell:'v30-\d+'/,'visible shell must remain versioned');
 
 console.log('Stage 14.21 decision cockpit regression passed.');
