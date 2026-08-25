@@ -96,14 +96,19 @@
   function renderBuild(){const badge=document.getElementById('sfBuildBadge'),shell=document.getElementById('sfBuildShell');if(badge)badge.textContent=`v${build.version||'unknown'}`;if(shell)shell.textContent=build.shell?` · shell ${build.shell}`:'';}
   function injectBuildStyles(){if(document.getElementById('sfBuildStyles'))return;const style=document.createElement('style');style.id='sfBuildStyles';style.textContent='.brand-line{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.sf-build-badge{display:inline-flex;align-items:center;border:1px solid rgba(126,188,255,.35);background:rgba(126,188,255,.08);color:#7ebcff;border-radius:999px;padding:2px 6px;font-size:9px;font-weight:900;letter-spacing:.04em}.sf-build-shell{font-size:9px;color:#60758d;text-transform:none;letter-spacing:0}@media(max-width:700px){.sf-build-badge{font-size:8px}}';document.head.appendChild(style);}
   function loadFinancialCharting(){
-    if(window.LightweightCharts?.createChart){loadModuleScript('/chart-adapter.js','sf-financial-chart');return;}
+    const boot=()=>loadScriptThen('/pattern-chart-hook.js','sf-pattern-chart-hook',()=>loadScriptThen('/chart-adapter.js','sf-financial-chart',()=>loadModuleScript('/pattern-context-ui.js','sf-pattern-context')));
+    if(window.LightweightCharts?.createChart){boot();return;}
     if(document.querySelector('script[data-sf-lightweight]'))return;
     const script=document.createElement('script');
     script.src='https://cdn.jsdelivr.net/npm/lightweight-charts@5.2.1/dist/lightweight-charts.standalone.production.js';
     script.async=true;script.crossOrigin='anonymous';script.setAttribute('data-sf-lightweight','1');
-    script.addEventListener('load',()=>loadModuleScript('/chart-adapter.js','sf-financial-chart'),{once:true});
+    script.addEventListener('load',boot,{once:true});
     script.addEventListener('error',()=>console.warn('[SignalForge chart] Financial chart library unavailable; Canvas fallback remains active.'),{once:true});
     document.head.appendChild(script);
+  }
+  function loadScriptThen(src,key,callback){
+    const existing=document.querySelector(`script[data-${key}]`);if(existing){if(existing.dataset.loaded==='1')callback?.();else existing.addEventListener('load',()=>callback?.(),{once:true});return;}
+    const script=document.createElement('script');script.src=src;script.async=false;script.setAttribute(`data-${key}`,'1');script.addEventListener('load',()=>{script.dataset.loaded='1';callback?.();},{once:true});document.head.appendChild(script);
   }
   function loadModuleCss(href,key){
     if(document.querySelector(`link[data-${key}]`))return;
