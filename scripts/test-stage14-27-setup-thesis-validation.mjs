@@ -5,7 +5,7 @@ import { evaluateEvidenceRows } from '../src/evaluation.js';
 import { buildSetupLeaderboard } from '../src/strategy-optimizer.js';
 import { buildChallengerRule, compareChampionChallenger } from '../src/challenger.js';
 
-const start=Date.parse('2026-08-25T14:00:00Z'),m15=15*60_000,h37=37*60*60_000;
+const start=Date.parse('2026-08-25T14:00:00Z'),m15=15*60_000,d8=8*24*60*60_000;
 const rows=[
   row('AAA','WAIT — SETUP NOT READY',start,.01),
   row('AAA','BUY NOW',start+m15,.04),
@@ -16,18 +16,20 @@ const rows=[
   row('AAA','WAIT — SETUP NOT READY',start+6*m15,.02),
   row('AAA','BUY NOW',start+7*m15,.05),
   row('AAA','BUY NOW',start+8*m15,.045,{modelVersion:'sf-analysis-v5-test'}),
-  row('AAA','BUY NOW',start+8*m15+h37,.055,{modelVersion:'sf-analysis-v5-test'})
+  row('AAA','BUY NOW',start+8*m15+d8,.055,{modelVersion:'sf-analysis-v5-test'})
 ];
 
 const contiguous=buildDecisionEpisodes(rows);
 assert.ok(contiguous.filter(x=>x.status==='BUY NOW').length>4,'contiguous state episodes should still expose BUY state flicker diagnostically');
 const samples=buildSetupStateSamples(rows),diagnostics=setupThesisDiagnostics(rows);
-assert.equal(diagnostics.setupEpisodeCount,4,'terminal reset, model change, and >36-hour gap should create new setup theses');
+assert.equal(diagnostics.setupEpisodeCount,4,'terminal reset, model change, and >7-day observation gap should create new setup theses');
 assert.equal(samples.length,8,'each setup thesis may contribute each decision state only once');
 assert.equal(samples.filter(x=>x.status==='BUY NOW').length,4,'BUY re-entry inside the first thesis must not create a second BUY validation sample');
 assert.equal(samples.find(x=>x.status==='BUY NOW').forwardReturn,.04,'first causal BUY occurrence must represent that setup thesis');
 assert.equal(samples.filter(x=>x.status==='AVOID').length,1,'repeated terminal AVOID observations must remain one state sample until the setup resets');
 assert.match(diagnostics.policy,/BUY → READY → BUY/);
+assert.match(diagnostics.policy,/7 days/);
+assert.match(diagnostics.policy,/weekends/);
 
 const evaluation=evaluateEvidenceRows(rows,{horizon:10,minSample:5});
 assert.equal(evaluation.rawObservationSampleSize,10);
