@@ -1,17 +1,19 @@
-const CACHE_NAME='signalforge-shell-v30-34';
-const API_CACHE_NAME='signalforge-api-snapshots-v1';
+const CACHE_NAME='signalforge-shell-v30-35';
+const API_CACHE_NAME='signalforge-api-snapshots-v2';
+const FIVE_MINUTES=5*60_000;
+const THIRTY_MINUTES=30*60_000;
 const APP_SHELL=['/','/index.html','/styles.css','/pwa.css','/radar.css','/push.css','/portfolio.css','/config.js','/build-info.js','/api-request-coordinator.js','/last-symbol-ui.js','/crawler-ui.js','/app.js','/decision-summary-ui.js','/detection-latency-ui.js','/trade-plan-ui.js','/cockpit-ui.js','/activity-rhythm-ui.js','/session-range-ui.js','/opening-range-ui.js','/watchlist-ui.js','/gate-ui.js','/screener-ui.js','/weekend-ui.js','/simulation-capital-ui.js','/telemetry-ui.js','/operations-ui.js','/self-test-ui.js','/unified-action-ui.js','/ui-router.js','/pwa.js','/radar-ui.js','/push-ui.js','/alert-history.js','/stock-meta.js','/portfolio-ui.js','/chart-inspector.js','/pattern-chart-hook.js','/chart-adapter.js','/chart-control-reliability.js','/pattern-context-ui.js','/pattern-overlay-stable.js','/manifest.webmanifest','/icons/signalforge-icon.svg','/icons/signalforge-maskable.svg'];
 const API_TTL_MS=new Map([
-  ['/api/signals',20_000],
-  ['/api/opportunity-radar',20_000],
-  ['/api/screener',20_000],
-  ['/api/alerts',20_000],
-  ['/api/operations-status',120_000],
-  ['/api/research-status',180_000],
-  ['/api/detection-latency',180_000],
-  ['/api/evidence-evaluation',300_000],
-  ['/api/evidence-optimization',300_000],
-  ['/api/health',300_000]
+  ['/api/signals',FIVE_MINUTES],
+  ['/api/opportunity-radar',FIVE_MINUTES],
+  ['/api/screener',FIVE_MINUTES],
+  ['/api/alerts',FIVE_MINUTES],
+  ['/api/operations-status',FIVE_MINUTES],
+  ['/api/research-status',FIVE_MINUTES],
+  ['/api/detection-latency',FIVE_MINUTES],
+  ['/api/evidence-evaluation',FIVE_MINUTES],
+  ['/api/evidence-optimization',FIVE_MINUTES],
+  ['/api/health',FIVE_MINUTES]
 ]);
 
 self.addEventListener('install',event=>{event.waitUntil(caches.open(CACHE_NAME).then(cache=>cache.addAll(APP_SHELL)).then(()=>self.skipWaiting()));});
@@ -20,13 +22,18 @@ self.addEventListener('fetch',event=>{
   const request=event.request;if(request.method!=='GET')return;
   const url=new URL(request.url);
   if(url.origin===self.location.origin&&url.pathname.startsWith('/api/')){
-    const ttl=API_TTL_MS.get(url.pathname)||0;
+    const ttl=apiTtl(url);
     if(ttl){event.respondWith(apiSnapshot(event,request,ttl));return;}
     event.respondWith(fetch(request));return;
   }
   if(url.origin!==self.location.origin)return;
   event.respondWith(fetch(request).then(response=>{if(response.ok){const copy=response.clone();caches.open(CACHE_NAME).then(cache=>cache.put(request.mode==='navigate'?'/index.html':request,copy));}return response;}).catch(()=>request.mode==='navigate'?caches.match('/index.html'):caches.match(request)));
 });
+
+function apiTtl(url){
+  if(url.pathname==='/api/market-data'&&url.searchParams.get('cacheOnly')==='1')return THIRTY_MINUTES;
+  return API_TTL_MS.get(url.pathname)||0;
+}
 
 async function apiSnapshot(event,request,ttl){
   const cache=await caches.open(API_CACHE_NAME),cached=await cache.match(request),now=Date.now();
@@ -35,7 +42,7 @@ async function apiSnapshot(event,request,ttl){
     const response=await fetch(request);
     if(response.ok){
       const bytes=await response.clone().arrayBuffer(),headers=new Headers(response.headers);
-      headers.set('x-sf-cache-time',String(now));headers.set('x-sf-cache-source','service-worker');headers.set('cache-control','private, max-age=0');
+      headers.set('x-sf-cache-time',String(now));headers.set('x-sf-cache-source','service-worker-emergency-guard');headers.set('cache-control','private, max-age=0');
       const stored=new Response(bytes,{status:response.status,statusText:response.statusText,headers});
       event.waitUntil(cache.put(request,stored));
     }
