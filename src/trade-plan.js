@@ -11,7 +11,7 @@ export function buildTradePlan(analysis){
   const target1Open=Boolean(target1&&target1>price),riskNow=stop&&price>stop?price-stop:null,rewardNow=target1Open?target1-price:null,currentRr=riskNow&&rewardNow!=null?rewardNow/riskNow:0;
   const entryReference=choosePlanningEntry({price,entryLow,entryHigh,doNotEnterAbove});
   const riskPerShare=stop&&entryReference&&entryReference>stop?entryReference-stop:null;
-  const target2=riskPerShare?entryReference+STRETCH_R*riskPerShare:null;
+  const stretchTarget=riskPerShare?entryReference+STRETCH_R*riskPerShare:null,target2=stretchTarget&&(!target1||stretchTarget>target1)?stretchTarget:null;
   const horizon=Math.max(3,Math.round(Number(analysis.wf?.horizon)||5)),minSessions=Math.max(2,horizon-1),maxSessions=Math.min(20,Math.max(horizon+2,horizon*2));
   const status=String(analysis.status||'WAIT — SETUP NOT READY');
   const invalid=status==='AVOID'||status==='SELL / EXIT'||Boolean(stop&&price<=stop);
@@ -35,7 +35,7 @@ export function buildTradePlan(analysis){
     symbol:String(analysis.symbol||'').toUpperCase(),state,reason,status,currentPrice:price,
     entry:{low:entryLow,high:entryHigh,reference:entryReference,doNotEnterAbove,maxRrEntry,maxLocationEntry},
     risk:{stop,riskPerShare,currentRr,requiredRr:BUY_RR_MIN},
-    targets:{target1,target1Source:String(analysis.structure?.targetSource||'structure target'),target2,target2Type:`stretch ${STRETCH_R.toFixed(1)}R target`,stretchR:STRETCH_R},
+    targets:{target1,target1Source:String(analysis.structure?.targetSource||'structure target'),target2,target2Type:target2?`stretch ${STRETCH_R.toFixed(1)}R target`:'structure target already exceeds stretch objective',stretchR:STRETCH_R},
     holdWindow:{minSessions,maxSessions,walkForwardHorizon:horizon,label:`Review over roughly ${minSessions}–${maxSessions} market sessions`},
     blockers:[...new Set(blockers)],permissionRequired:'BUY NOW',generatedAt:Date.now()
   };
