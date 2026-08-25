@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { BASELINE_TESTS, HISTORICAL_DISABLED_TESTS, PRODUCTION_GUARDRAIL_TESTS, SYNTAX_ROOTS } from './test-manifest.mjs';
+import { BASELINE_TESTS, HISTORICAL_DISABLED_TESTS, PRODUCTION_GUARDRAIL_TESTS, SYNTAX_ROOTS } from './suite-manifest.mjs';
 
 const read=path=>fs.readFileSync(new URL(`../${path}`,import.meta.url),'utf8');
 const pkg=JSON.parse(read('package.json'));
