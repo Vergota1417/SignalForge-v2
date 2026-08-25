@@ -1,1 +1,1 @@
-window.SIGNALFORGE_BUILD=Object.freeze({version:'2.30.20',release:'adaptive-api-scheduler',shell:'v30-20'});
+window.SIGNALFORGE_BUILD=Object.freeze({version:'2.30.21',release:'trade-plan-position-manager',shell:'v30-21'});
