@@ -25,15 +25,16 @@ assert.match(controls,/Chart controls ready/,'each command must expose visible i
 assert.match(controls,/aria-controls/,'buttons must expose their chart target');
 assert.match(controls,/aria-pressed/,'marker toggle must expose state');
 
-const hook=pwa.indexOf("/pattern-chart-hook.js"),adapterPos=pwa.indexOf("/chart-adapter.js"),controlsPos=pwa.indexOf("/chart-control-reliability.js"),pattern=pwa.indexOf("/pattern-context-ui.js");
-assert.ok(hook>=0&&adapterPos>hook,'pattern bridge must still load before chart adapter');
+const hook=pwa.indexOf("/pattern-chart-hook.js"),adapterPos=pwa.indexOf("/chart-adapter.js"),controlsPos=pwa.indexOf("/chart-control-reliability.js");
+assert.ok(hook>=0&&adapterPos>hook,'zero-network pattern bridge must still load before chart adapter');
 assert.ok(controlsPos>adapterPos,'control reliability must load after the chart exists');
-assert.ok(pattern>controlsPos,'pattern controls must load after chart control hardening');
-assert.match(sw,/signalforge-shell-v30-30/,'PWA shell must advance so installed apps receive the fix');
+assert.doesNotMatch(pwa,/loadScriptThen\('\/pattern-context-ui\.js'/,'disabled Pattern network controls must not restart after chart hardening');
 assert.match(sw,/'\/chart-control-reliability\.js'/,'reliability asset must be cached for the installed app');
-assert.match(build,/version:'2\.30\.30'/);
-assert.match(build,/release:'chart-control-reliability'/);
-assert.match(build,/shell:'v30-30'/);
+const swShell=sw.match(/CACHE_NAME='signalforge-shell-(v30-\d+)'/)?.[1];
+const visibleShell=build.match(/shell:'(v30-\d+)'/)?.[1];
+assert.ok(swShell&&visibleShell,'current release must expose versioned v30 shell metadata');
+assert.equal(swShell,visibleShell,'service-worker shell and visible build shell must agree');
+assert.match(build,/version:'2\.30\.\d+'/,'current release must expose a SignalForge 2.30.x version');
 
 assert.match(evidence,/rewardRiskMin:1\.8/,'1.80:1 production R/R must remain unchanged');
 assert.match(screener,/NEAR_READY_RECHECK_MS=15\*60\*1000/,'15-minute execution cadence must remain unchanged');

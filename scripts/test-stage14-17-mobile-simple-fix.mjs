@@ -13,9 +13,9 @@ must(css, 'body.sf-simple-mode #sfUnifiedSelected', 'Simple mode hides duplicate
 must(css, 'body.sf-simple-mode #sfTelemetryPanel', 'Simple mode hides backend/system proof panel');
 must(css, '.main-content{min-width:0;order:1', 'Mobile decision content remains before watchlist');
 must(css, '.sidebar{position:static;order:2', 'Mobile watchlist remains after decision content');
-must(sw, "signalforge-shell-v30-18", 'Service-worker shell version');
+if(!/signalforge-shell-v30-\d+/.test(sw))throw new Error('Service-worker must retain a versioned v30 shell');
 must(sw, '.then(()=>self.skipWaiting())', 'Newest shell auto-activates after install');
-must(build, "version:'2.30.18'", 'Visible build version');
-must(build, "shell:'v30-18'", 'Visible shell version');
+if(!/version:'2\.30\.\d+'/.test(build))throw new Error('Visible build must remain SignalForge 2.30.x');
+if(!/shell:'v30-\d+'/.test(build))throw new Error('Visible shell must remain versioned');
 
 console.log('Stage 14.17 mobile simple-mode shell regression: PASS');

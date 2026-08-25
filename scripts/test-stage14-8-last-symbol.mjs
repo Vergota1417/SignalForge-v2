@@ -12,8 +12,8 @@ const checks=[
   ['remembered symbol is restored before app load',/history\.replaceState/.test(last)&&index.indexOf('last-symbol-ui.js')<index.indexOf('app.js')],
   ['displayed ticker changes persist successful symbol',/MutationObserver\(rememberDisplayedSymbol\)/.test(last)&&/localStorage\.setItem\(KEY,symbol\)/.test(last)],
   ['successful displayed ticker synchronizes URL',/sanitize\(params\.get\('symbol'\)\)!==symbol/.test(last)&&/params\.set\('symbol',symbol\)/.test(last)&&/history\.replaceState/.test(last)],
-  ['release version v2.30.11',/version:'2\.30\.11'/.test(build)],
-  ['PWA shell v30-11 caches module',/signalforge-shell-v30-11/.test(sw)&&/last-symbol-ui\.js/.test(sw)]
+  ['production exposes a 2.30.x release',/version:'2\.30\.\d+'/.test(build)],
+  ['versioned PWA shell caches module',/signalforge-shell-v30-\d+/.test(sw)&&/last-symbol-ui\.js/.test(sw)]
 ];
 
 let failed=0;

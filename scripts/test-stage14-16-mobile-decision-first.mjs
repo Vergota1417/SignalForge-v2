@@ -14,7 +14,7 @@ const checks=[
   ['mobile page puts main decision content before sidebar',pwa.includes('display:flex!important')&&pwa.includes('.main-content{min-width:0;order:1')&&pwa.includes('.sidebar{position:static;order:2')],
   ['alerts are compact on mobile',push.includes('flex:0 0 auto!important')&&!push.includes('flex:1 1 100%;justify-content:center')],
   ['alert labels are concise',pushUi.includes("sub?'Alerts On':'Alerts Off'")&&pushUi.includes("test.textContent='Test Alert'")],
-  ['release version is v2.30.17',build.includes("version:'2.30.17'")&&build.includes("shell:'v30-17'")&&sw.includes("signalforge-shell-v30-17")],
+  ['production uses current SignalForge versioned build and shell',/version:'2\.30\.\d+'/.test(build)&&/shell:'v30-\d+'/.test(build)&&/signalforge-shell-v30-\d+/.test(sw)],
   ['summary remains explanatory only',summary.includes('/api/signals')&&!summary.includes('/api/market-data')]
 ];
 

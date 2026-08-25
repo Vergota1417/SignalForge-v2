@@ -48,9 +48,11 @@ assert.match(ui,/does not change BUY NOW/,'UI must disclose shadow-only policy')
 assert.doesNotMatch(ui,/\/api\/market-data/,'Activity Rhythm UI must not spend provider market-data requests');
 assert.match(ui,/\/api\/signals/,'Activity Rhythm UI should read saved analysis only');
 assert.ok(pwa.indexOf("/activity-rhythm-ui.js")>pwa.indexOf("/cockpit-ui.js"),'Activity Rhythm UI should load after cockpit organization');
-assert.match(sw,/signalforge-shell-v30-24/,'service-worker shell must bump for follow-up polish');
 assert.match(sw,/'\/activity-rhythm-ui\.js'/,'installed PWA must cache Activity Rhythm UI');
-assert.match(build,/version:'2\.30\.24'/,'visible version must bump for follow-up polish');
-assert.match(build,/shell:'v30-24'/,'visible shell must match service worker');
+const swShell=sw.match(/CACHE_NAME='signalforge-shell-(v30-\d+)'/)?.[1];
+const visibleShell=build.match(/shell:'(v30-\d+)'/)?.[1];
+assert.ok(swShell,'service worker must expose a versioned v30 shell');
+assert.match(build,/version:'2\.30\.\d+'/,'production must expose a SignalForge 2.30.x version');
+assert.equal(visibleShell,swShell,'visible build shell must match the service-worker shell');
 
 console.log('Stage 14.22 Activity Rhythm regression passed.');

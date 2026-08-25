@@ -19,8 +19,8 @@ const checks=[
   ['mobile hides duplicate sidebar Radar',/@media\(max-width:760px\)[\s\S]*?\.radar-block\{display:none!important\}/.test(radar)],
   ['index loads watchlist UI after app',index.indexOf('app.js')>=0&&index.indexOf('watchlist-ui.js')>index.indexOf('app.js')],
   ['service worker caches watchlist UI',/watchlist-ui\.js/.test(sw)],
-  ['release version v2.30.8',/version:'2\.30\.8'/.test(build)],
-  ['PWA shell v30-8',/signalforge-shell-v30-8/.test(sw)]
+  ['production exposes a 2.30.x release',/version:'2\.30\.\d+'/.test(build)],
+  ['production uses a versioned v30 shell',/signalforge-shell-v30-\d+/.test(sw)]
 ];
 
 let failed=0;

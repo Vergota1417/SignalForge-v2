@@ -30,7 +30,7 @@ assert.ok(doubleBottom.confidence>=48,'double bottom confidence threshold should
 const engine=fs.readFileSync(new URL('../src/pattern-context.js',import.meta.url),'utf8');
 const evidence=fs.readFileSync(new URL('../src/pattern-evidence.js',import.meta.url),'utf8');
 const analysis=fs.readFileSync(new URL('../src/analysis.js',import.meta.url),'utf8');
-const ui=fs.readFileSync(new URL('../public/pattern-context-ui.js',import.meta.url),'utf8');
+const dormantUi=fs.readFileSync(new URL('../public/pattern-context-ui.js',import.meta.url),'utf8');
 const hook=fs.readFileSync(new URL('../public/pattern-chart-hook.js',import.meta.url),'utf8');
 const pwa=fs.readFileSync(new URL('../public/pwa.js',import.meta.url),'utf8');
 const sw=fs.readFileSync(new URL('../public/service-worker.js',import.meta.url),'utf8');
@@ -41,15 +41,22 @@ assert.match(engine,/UP CHANNEL/);assert.match(engine,/DOWN CHANNEL/);assert.mat
 assert.match(analysis,/patternContext=assessPatternContext/,'daily analysis must calculate saved Pattern Context');
 assert.match(analysis,/structure,patternContext,engines/,'saved analysis must retain Pattern Context without changing gate list');
 assert.match(evidence,/UNIQUE\(symbol,model_version,analysis_at\)/,'shadow evidence must dedupe repeated execution rechecks');
-assert.match(ui,/data-toggle="support"/);assert.match(ui,/data-toggle="resistance"/);assert.match(ui,/data-toggle="channel"/);assert.match(ui,/data-toggle="breakout"/);
-assert.match(ui,/data-toggle="double"/);assert.match(ui,/data-toggle="triangles"/);assert.match(ui,/data-toggle="headShoulders"/);assert.match(ui,/data-toggle="wedges"/);
-assert.match(ui,/Priority only/);assert.match(ui,/DETECTED, TESTING, CONFIRMED, or FAILED/);assert.match(ui,/cannot authorize or block BUY NOW/);
-assert.doesNotMatch(ui,/fetch\(`\$\{API\}\/api\/market-data/,'pattern buttons must not issue market-data requests');
-assert.match(ui,/\/api\/signals/,'pattern UI should read saved analysis');
-assert.match(hook,/SignalForgeChartBridge/,'chart hook must expose exact Lightweight Charts overlay bridge');
-assert.ok(pwa.indexOf("/pattern-chart-hook.js")<pwa.indexOf("/chart-adapter.js"),'chart hook must load before chart adapter');
-assert.ok(pwa.indexOf("/pattern-context-ui.js")>pwa.indexOf("/chart-adapter.js"),'pattern controls must load after chart adapter');
-assert.match(sw,/signalforge-shell-v30-/);assert.match(sw,/'\/pattern-chart-hook\.js'/);assert.match(sw,/'\/pattern-context-ui\.js'/);
+
+// Keep the dormant UI implementation testable so it can be rebuilt later without losing its control contract,
+// but production must not currently load or precache its network layer.
+assert.match(dormantUi,/data-toggle="support"/);assert.match(dormantUi,/data-toggle="resistance"/);assert.match(dormantUi,/data-toggle="channel"/);assert.match(dormantUi,/data-toggle="breakout"/);
+assert.match(dormantUi,/data-toggle="double"/);assert.match(dormantUi,/data-toggle="triangles"/);assert.match(dormantUi,/data-toggle="headShoulders"/);assert.match(dormantUi,/data-toggle="wedges"/);
+assert.match(dormantUi,/Priority only/);assert.match(dormantUi,/DETECTED, TESTING, CONFIRMED, or FAILED/);assert.match(dormantUi,/cannot authorize or block BUY NOW/);
+assert.doesNotMatch(dormantUi,/fetch\(`\$\{API\}\/api\/market-data/,'dormant pattern buttons must not issue market-data requests');
+assert.match(hook,/SignalForgeChartBridge/,'chart hook must expose the zero-network Lightweight Charts overlay bridge');
+assert.ok(pwa.indexOf("/pattern-chart-hook.js")<pwa.indexOf("/chart-adapter.js"),'zero-network chart hook must load before chart adapter');
+assert.match(pwa,/Structure \+ Patterns network UI is intentionally disabled/,'production PWA must document the request-amplification quarantine');
+assert.doesNotMatch(pwa,/loadScriptThen\('\/pattern-context-ui\.js'/,'production must not start the Pattern Context network UI');
+assert.doesNotMatch(pwa,/loadScriptThen\('\/pattern-overlay-(?:stable|reliability)\.js'/,'production must not start a Pattern overlay network controller');
+assert.match(sw,/signalforge-shell-v30-/);
+assert.match(sw,/'\/pattern-chart-hook\.js'/,'PWA may cache the zero-network chart bridge');
+assert.doesNotMatch(sw,/'\/pattern-context-ui\.js'/,'PWA must not precache the disabled Pattern Context network UI');
+assert.doesNotMatch(sw,/'\/pattern-overlay-(?:stable|reliability)\.js'/,'PWA must not precache disabled Pattern overlay network controllers');
 assert.match(build,/SIGNALFORGE_BUILD/,'current release must keep visible build metadata');
 
-console.log('Stage 14.23 trendline + pattern context regression passed.');
+console.log('Stage 14.23 pattern engine + disabled network UI regression passed.');

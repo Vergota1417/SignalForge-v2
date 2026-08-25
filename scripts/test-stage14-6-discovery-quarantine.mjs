@@ -14,12 +14,12 @@ const checks=[
   ['classifier also respects cooldown',/filter\(x=>Number\(x\.cooldownUntil\|\|0\)<=now\)/.test(budget)],
   ['404s are classified as permanent symbol errors',/status===404/.test(quarantine)],
   ['quarantine persists cooldown_until',/cooldown_until=MAX/.test(quarantine)],
-  ['Radar quarantines permanent provider failures',/quarantineDiscoverySymbol/.test(radar)&&/twelve-data-symbol-rejected/.test(radar)],
+  ['Radar retires permanent provider failures through quarantine',/quarantineDiscoverySymbol/.test(radar)&&/twelve-data-symbol-permanently-rejected/.test(radar)],
   ['Radar preserves provider HTTP status',/error\.status=response\.status/.test(radar)],
-  ['Radar operation error contains symbol and quarantine state',/quarantined:Boolean\(quarantine\)/.test(radar)&&/errors\.push\(row\)/.test(radar)],
-  ['operations UI names failed symbol',/radarErr\.symbol/.test(opsUi)&&/quarantined/.test(opsUi)],
-  ['release version v2.30.6',/version:'2\.30\.6'/.test(build)],
-  ['PWA shell v30-6',/signalforge-shell-v30-6/.test(sw)]
+  ['Radar operation proof records retired symbol state',/retired:Boolean\(quarantine\)/.test(radar)&&/retired\.push\(row\)/.test(radar)&&/detail:\{requested:batch\.symbols,scanned:scanned\.map/.test(radar)],
+  ['operations UI names retired provider-rejected symbols',/retired\.map\(x=>x\.symbol\)/.test(opsUi)&&/provider-rejected symbol retired/.test(opsUi)],
+  ['production exposes a 2.30.x release',/version:'2\.30\.\d+'/.test(build)],
+  ['production uses a versioned v30 shell',/signalforge-shell-v30-\d+/.test(sw)]
 ];
 
 let failed=0;

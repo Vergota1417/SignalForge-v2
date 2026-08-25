@@ -8,16 +8,16 @@ const build=read('public/build-info.js');
 const sw=read('public/service-worker.js');
 
 const checks=[
-  ['one-minute scheduler',/"crons"\s*:\s*\["\* \* \* \* \*"\]/.test(wrangler)],
+  ['five-minute guarded scheduler',/"crons"\s*:\s*\["\*\/5 \* \* \* \*"\]/.test(wrangler)],
   ['opening sweeps at 9:30, 9:35, 9:40 ET',/new Set\(\[570,575,580\]\)/.test(entry)],
   ['weekday opening eligibility includes Friday',/day==='Fri'/.test(entry)&&/OPENING_SCAN_MINUTES\.has\(minutes\)/.test(entry)],
   ['Friday regular discovery restored',/weekday==='Fri'&&minutes>=585&&minutes<840&&minutes%15===0/.test(entry)],
   ['opening pipeline records operation proof',/recordOperation\(env,operationKey/.test(entry)&&/'opening-pipeline'/.test(entry)],
   ['opening cycle scans real radar',/runRadarDiscovery\(env,\{batchSize:5,now\}\)/.test(entry)],
   ['opening cycle can promote one candidate',/runScreenerPromotion\(env,\{maxPromotions:1,now\}\)/.test(entry)],
-  ['operations UI exposes opening pipeline',/Opening Pipeline/.test(opsUi)&&/opening-pipeline/.test(opsUi)],
-  ['release version v2.30.5',/version:'2\.30\.5'/.test(build)],
-  ['PWA shell v30-5',/signalforge-shell-v30-5/.test(sw)]
+  ['operations UI exposes opening pipeline',/Opening pipeline/i.test(opsUi)&&/opening-pipeline/.test(opsUi)],
+  ['production exposes a 2.30.x release',/version:'2\.30\.\d+'/.test(build)],
+  ['production uses a versioned v30 shell',/signalforge-shell-v30-\d+/.test(sw)]
 ];
 
 let failed=0;
