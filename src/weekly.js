@@ -2,7 +2,9 @@ import { analyze } from './analysis.js';
 import { getMarketData } from './market.js';
 import { getWeeklyResearchUniverse } from './discovery.js';
 import { evaluateStrategy } from './strategy.js';
-import { getPortfolioStrategy, getWeeklyResearchState, latestWeeklyResearchState, listPortfolioPositions, listWeeklyResearch, putWeeklyResearch, putWeeklyResearchState, recordPortfolioStrategy, recordSignal } from './db.js';
+import { evaluateManagedPosition } from './position-manager.js';
+import { refreshPricePulseAnalysis } from './execution-confirmation.js';
+import { getPortfolioStrategy, getSignalAnalysis, getWeeklyResearchState, latestWeeklyResearchState, listPortfolioPositions, listWeeklyResearch, putWeeklyResearch, putWeeklyResearchState, recordPortfolioStrategy, recordSignal } from './db.js';
 import { recordAnalysisEvidence } from './evidence.js';
 import { loadBenchmarkEvidence } from './benchmark-loader.js';
 
@@ -29,6 +31,23 @@ export async function getWeeklyStrategySnapshot(env){
   return{weekKey:latest.weekKey,complete:Boolean(latest.completedAt),completedAt:latest.completedAt||null,updatedAt:latest.updatedAt||null,scanned:rows.length,universeSize:latest.universeSize,progress:latest.universeSize?Math.min(100,Math.round(rows.length/latest.universeSize*100)):0,ranked};
 }
 
+export async function runPortfolioPricePulse(env,{maxPositions=1,now=Date.now()}={}){
+  const positions=await listPortfolioPositions(env);if(!positions.length)return{reviewed:[],candidates:[],skipped:'no-owned-positions'};
+  const stateRows=await env.DB.prepare(`SELECT symbol,state,updated_at AS updatedAt FROM portfolio_strategy_state`).all(),stateMap=new Map((stateRows.results||[]).map(row=>[String(row.symbol||'').toUpperCase(),{state:String(row.state||''),updatedAt:Number(row.updatedAt)||0}]));
+  const priority={'SELL / EXIT':5,'TAKE PARTIAL PROFIT':4,'PROTECT PROFIT':3,'REDUCE':3,'HOLD':1};
+  const candidates=[...positions].sort((a,b)=>{const sa=stateMap.get(String(a.symbol||'').toUpperCase())||{},sb=stateMap.get(String(b.symbol||'').toUpperCase())||{},ageA=Number(now)-Number(sa.updatedAt||0),ageB=Number(now)-Number(sb.updatedAt||0);return ageB-ageA||(priority[sb.state]||0)-(priority[sa.state]||0);}).slice(0,Math.max(1,Math.min(2,Number(maxPositions)||1)));
+  const reviewed=[];
+  for(const holding of candidates){
+    try{
+      const [saved,previous]=await Promise.all([getSignalAnalysis(env,holding.symbol),getPortfolioStrategy(env,holding.symbol)]);if(!saved?.analysis){reviewed.push({symbol:holding.symbol,skipped:'no-saved-analysis'});continue;}
+      const market=await getMarketData(env,holding.symbol,'1D',false,{purpose:'portfolio-price-pulse-5m'}),latest=market.candles?.at(-1);if(!latest?.close){reviewed.push({symbol:holding.symbol,skipped:'no-current-price'});continue;}
+      const analysis=refreshPricePulseAnalysis(saved.analysis,latest.close,now),strategy=evaluateManagedPosition(analysis,holding,previous?.strategy||null),event=await recordPortfolioStrategy(env,holding.symbol,strategy);
+      reviewed.push({symbol:holding.symbol,strategy,event,price:Number(latest.close),source:market.source,cached:Boolean(market.cached)});
+    }catch(error){console.error(JSON.stringify({event:'portfolio_price_pulse_error',symbol:holding.symbol,message:error?.message||String(error)}));reviewed.push({symbol:holding.symbol,error:error?.message||String(error)});}
+  }
+  return{reviewed,candidates:candidates.map(x=>x.symbol)};
+}
+
 export async function runPortfolioCloseReview(env,{maxPositions=6}={}){
   const positions=await listPortfolioPositions(env);if(!positions.length)return{reviewed:[],skipped:0};
   let benchmarkCandles=null;try{benchmarkCandles=(await getMarketData(env,'SPY','6M',false)).candles;}catch(error){console.error(JSON.stringify({event:'portfolio_benchmark_error',message:error?.message||String(error)}));}
@@ -36,7 +55,7 @@ export async function runPortfolioCloseReview(env,{maxPositions=6}={}){
   const reviewed=[];
   for(const holding of positions.slice(0,Math.max(1,Math.min(6,maxPositions)))){
     try{
-      const [market,previous]=await Promise.all([getMarketData(env,holding.symbol,'6M',false),getPortfolioStrategy(env,holding.symbol)]),analysis=analyze(market.candles,holding.symbol,{benchmarkCandles}),strategy=evaluateStrategy(analysis,holding,null,previous?.strategy||null),event=await recordPortfolioStrategy(env,holding.symbol,strategy);
+      const [market,previous]=await Promise.all([getMarketData(env,holding.symbol,'6M',false),getPortfolioStrategy(env,holding.symbol)]),analysis=analyze(market.candles,holding.symbol,{benchmarkCandles}),strategy=evaluateManagedPosition(analysis,holding,previous?.strategy||null),event=await recordPortfolioStrategy(env,holding.symbol,strategy);
       const benchmarkEvidence=await loadBenchmarkEvidence(env,holding.symbol,{stockCandles:market.candles,timeframe:'6M',purposePrefix:'portfolio-benchmark-context',preloaded:{SPY:benchmarkCandles}});
       await recordAnalysisEvidence(env,analysis,{source:'portfolio-close-review',timeframe:'6M',benchmarkContext:benchmarkEvidence.context});
       reviewed.push({symbol:holding.symbol,strategy,event,analysis,benchmarkContext:benchmarkEvidence.context,benchmarkErrors:benchmarkEvidence.errors});
