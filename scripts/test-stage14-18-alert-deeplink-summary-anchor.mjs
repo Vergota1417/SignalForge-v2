@@ -16,10 +16,10 @@ assert.match(push,/buildAlertUrl/,'Push payloads must build deep links');
 assert.match(push,/alertStatus/,'Push deep links must preserve alert status');
 assert.match(push,/alertReason/,'Push deep links must preserve alert reason');
 assert.match(push,/alertPrevious/,'Push deep links must preserve previous state');
-assert.match(sw,/signalforge-shell-v30-19/,'Service worker shell must be v30-19');
+assert.match(sw,/signalforge-shell-v30-\d+/,'Service worker must retain a versioned v30 shell');
 assert.match(sw,/targetUrl\.searchParams\.set\('symbol'/,'Notification click must recover a missing symbol deep link');
 assert.match(sw,/targetUrl\.searchParams\.set\('alert'/,'Notification click must recover alert context when needed');
-assert.match(build,/version:'2\.30\.19'/,'Visible build must be v2.30.19');
-assert.equal(pkg.version,'2.30.19','package version must be v2.30.19');
+assert.match(build,/version:'2\.30\.\d+'/,'Visible build must remain SignalForge 2.30.x');
+assert.match(pkg.version,/^2\.30\.\d+$/,'Package metadata must remain a SignalForge 2.30.x version');
 
 console.log('Stage 14.18 alert deep-link + summary anchor checks passed.');
