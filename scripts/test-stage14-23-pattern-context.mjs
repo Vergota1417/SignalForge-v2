@@ -1,0 +1,55 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import { assessPatternContext } from '../src/pattern-context.js';
+
+function makeDoubleBottom(){
+  const rows=[];let close=100;
+  for(let i=0;i<60;i++){
+    let target=100+Math.sin(i/3)*1.2;
+    if(i===14)target=91;if(i===15)target=90.8;if(i===16)target=91.3;
+    if(i===23)target=101.5;
+    if(i===31)target=91.1;if(i===32)target=90.9;if(i===33)target=91.4;
+    if(i>40)target=101+(i-40)*.15;
+    const open=close,body=target-open,hi=Math.max(open,target)+(i===23?1.2:.7),lo=Math.min(open,target)-((i===15||i===32)?.8:.7);
+    rows.push({time:Date.UTC(2026,0,i+1),open,high:hi,low:lo,close:target,volume:1_000_000+i*1000});close=target;
+  }
+  return rows;
+}
+
+const context=assessPatternContext(makeDoubleBottom(),{atr:2,symbol:'TEST'});
+assert.equal(context.shadowOnly,true,'Pattern context must start shadow-only');
+assert.equal(context.affectsBuyNow,false,'Pattern context must not alter BUY NOW');
+assert.ok(context.support?.price>0,'support should resolve');
+assert.ok(context.structureConfidence>=0&&context.structureConfidence<=100,'structure confidence must be bounded');
+assert.ok(Array.isArray(context.patterns),'patterns must be an array');
+const doubleBottom=context.patterns.find(p=>p.type==='DOUBLE BOTTOM');
+assert.ok(doubleBottom,'synthetic W structure should detect a double bottom');
+assert.ok(['DETECTED','TESTING','CONFIRMED','FAILED'].includes(doubleBottom.state),'pattern state must be explicit');
+assert.ok(doubleBottom.confidence>=48,'double bottom confidence threshold should be enforced');
+
+const engine=fs.readFileSync(new URL('../src/pattern-context.js',import.meta.url),'utf8');
+const evidence=fs.readFileSync(new URL('../src/pattern-evidence.js',import.meta.url),'utf8');
+const analysis=fs.readFileSync(new URL('../src/analysis.js',import.meta.url),'utf8');
+const ui=fs.readFileSync(new URL('../public/pattern-context-ui.js',import.meta.url),'utf8');
+const hook=fs.readFileSync(new URL('../public/pattern-chart-hook.js',import.meta.url),'utf8');
+const pwa=fs.readFileSync(new URL('../public/pwa.js',import.meta.url),'utf8');
+const sw=fs.readFileSync(new URL('../public/service-worker.js',import.meta.url),'utf8');
+const build=fs.readFileSync(new URL('../public/build-info.js',import.meta.url),'utf8');
+
+for(const label of ['ASCENDING TRIANGLE','DESCENDING TRIANGLE','SYMMETRICAL TRIANGLE','RISING WEDGE','FALLING WEDGE','DOUBLE TOP','DOUBLE BOTTOM','HEAD & SHOULDERS','INVERSE HEAD & SHOULDERS'])assert.ok(engine.includes(label),`${label} detector should exist`);
+assert.match(engine,/UP CHANNEL/);assert.match(engine,/DOWN CHANNEL/);assert.match(engine,/SIDEWAYS RANGE/);assert.match(engine,/BREAKOUT CONFIRMED/);assert.match(engine,/BREAKDOWN CONFIRMED/);
+assert.match(analysis,/patternContext=assessPatternContext/,'daily analysis must calculate saved Pattern Context');
+assert.match(analysis,/structure,patternContext,engines/,'saved analysis must retain Pattern Context without changing gate list');
+assert.match(evidence,/UNIQUE\(symbol,model_version,analysis_at\)/,'shadow evidence must dedupe repeated execution rechecks');
+assert.match(ui,/data-toggle="support"/);assert.match(ui,/data-toggle="resistance"/);assert.match(ui,/data-toggle="channel"/);assert.match(ui,/data-toggle="breakout"/);
+assert.match(ui,/data-toggle="double"/);assert.match(ui,/data-toggle="triangles"/);assert.match(ui,/data-toggle="headShoulders"/);assert.match(ui,/data-toggle="wedges"/);
+assert.match(ui,/Priority only/);assert.match(ui,/DETECTED, TESTING, CONFIRMED, or FAILED/);assert.match(ui,/cannot authorize or block BUY NOW/);
+assert.doesNotMatch(ui,/fetch\(`\$\{API\}\/api\/market-data/,'pattern buttons must not issue market-data requests');
+assert.match(ui,/\/api\/signals/,'pattern UI should read saved analysis');
+assert.match(hook,/SignalForgeChartBridge/,'chart hook must expose exact Lightweight Charts overlay bridge');
+assert.ok(pwa.indexOf("/pattern-chart-hook.js")<pwa.indexOf("/chart-adapter.js"),'chart hook must load before chart adapter');
+assert.ok(pwa.indexOf("/pattern-context-ui.js")>pwa.indexOf("/chart-adapter.js"),'pattern controls must load after chart adapter');
+assert.match(sw,/signalforge-shell-v30-25/);assert.match(sw,/'\/pattern-chart-hook\.js'/);assert.match(sw,/'\/pattern-context-ui\.js'/);
+assert.match(build,/version:'2\.30\.25'/);assert.match(build,/shell:'v30-25'/);
+
+console.log('Stage 14.23 trendline + pattern context regression passed.');

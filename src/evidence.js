@@ -1,4 +1,5 @@
 import { benchmarkContextFor } from './benchmark-context.js';
+import { recordPatternContextShadow } from './pattern-evidence.js';
 
 const FIFTEEN_MINUTES=15*60*1000;
 export const ANALYSIS_MODEL_VERSION='sf-analysis-v2-participation';
@@ -78,6 +79,7 @@ export async function recordAnalysisEvidence(env,analysis,{source='deep-analysis
     row.preferredEntryLow,row.preferredEntryHigh,row.overextension,row.thesisBreak,row.target,row.rr,
     row.benchmarkSymbol,boolInt(row.benchmarkBull),boolInt(row.benchmarkRiskOff),JSON.stringify(row.payload),Date.now()
   ).run();
+  await recordPatternContextShadow(env,analysis,{source,now});
   return row;
 }
 
@@ -113,12 +115,14 @@ export function analysisEvidenceRow(analysis,{source='deep-analysis',timeframe='
       reason:String(analysis?.reason||''),
       wf:{sample:Number(analysis?.wf?.sample)||0,winRate:numOrNull(analysis?.wf?.winRate),avgReturn:numOrNull(analysis?.wf?.avgReturn)},
       features:{sma20:numOrNull(analysis?.sma20),sma50:numOrNull(analysis?.sma50),atr:numOrNull(analysis?.atr),rsi:numOrNull(analysis?.rsi),momentum20:numOrNull(analysis?.momentum20),relativeStrength20:numOrNull(analysis?.relativeStrength20),extensionPct:numOrNull(analysis?.extensionPct),pullbackDepth:numOrNull(analysis?.pullbackDepth),trendStrength:numOrNull(analysis?.trendStrength)},
+      patternContext:compactPatternContext(analysis?.patternContext),
       participation:participation?{pass:Boolean(participation.pass),state:String(participation.state||''),passes:Number(participation.passes)||0,total:Number(participation.total)||5,participationPass:Boolean(participation.participationPass),relativeVolume:numOrNull(participation.relativeVolume),rvolSample:Number(participation.rvolSample)||0,avwap:numOrNull(participation.avwap),momentum4:numOrNull(participation.momentum4),rsi15:numOrNull(participation.rsi),sma20_15m:numOrNull(participation.sma20),latestPrice:numOrNull(participation.latestPrice),latestTime:numOrNull(participation.latestTime),volatility:participation.volatility||null,metrics:Array.isArray(participation.metrics)?participation.metrics.map(m=>({name:String(m.name||''),value:String(m.value||''),pass:Boolean(m.pass),warn:Boolean(m.warn),role:String(m.role||'')})):[]}:null,
       thresholds:{rewardRiskMin:1.8,walkForwardWinRateMin:.57,dailyRsiMin:42,dailyRsiMax:69,participationRvolMin:1.0,participationMomentumMin:0,participationTotalPassesMin:4}
     }
   };
 }
 
+function compactPatternContext(value){if(!value||typeof value!=='object')return null;return{version:String(value.version||''),shadowOnly:Boolean(value.shadowOnly),affectsBuyNow:Boolean(value.affectsBuyNow),structureState:String(value.structureState||''),structureConfidence:Number(value.structureConfidence)||0,support:value.support||null,resistance:value.resistance||null,channel:value.channel||null,breakout:value.breakout||null,primaryPattern:value.primaryPattern||null,patterns:Array.isArray(value.patterns)?value.patterns:[],summary:value.summary||null};}
 function normalizeBenchmarkContext(value){if(!value||typeof value!=='object')return null;return{...value,industryRelativeStrength:numOrNull(value.industryRelativeStrength),sectorRelativeStrength:numOrNull(value.sectorRelativeStrength),marketRelativeStrength:numOrNull(value.marketRelativeStrength)};}
 function bucket(now){const n=Number(now)||Date.now();return Math.floor(n/FIFTEEN_MINUTES)*FIFTEEN_MINUTES;}
 function sanitizeSymbol(v){const s=String(v||'').trim().toUpperCase().replace(/[^A-Z.]/g,'').slice(0,6);return/^[A-Z]{1,5}(?:\.[A-Z])?$/.test(s)?s:'';}
