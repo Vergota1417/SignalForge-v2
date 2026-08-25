@@ -41,7 +41,8 @@ const sw=fs.readFileSync(new URL('../public/service-worker.js',import.meta.url),
 const build=fs.readFileSync(new URL('../public/build-info.js',import.meta.url),'utf8');
 assert.match(ui,/INTRADAY ACTIVITY RHYTHM · SHADOW/,'chart must expose Activity Rhythm');
 assert.match(ui,/Historical/,'chart must show historical rhythm row');
-assert.match(ui,/Today/,'chart must show today rhythm row');
+assert.match(ui,/Session/,'chart must label the saved execution session without implying stale data is today');
+assert.match(ui,/matched-session count/,'UI must disclose that the current history is a recent sample');
 assert.match(ui,/55% volume-vs-normal/,'calculation weights must be explained');
 assert.match(ui,/does not change BUY NOW/,'UI must disclose shadow-only policy');
 assert.doesNotMatch(ui,/\/api\/market-data/,'Activity Rhythm UI must not spend provider market-data requests');
