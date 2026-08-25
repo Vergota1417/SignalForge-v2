@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { evaluateHardBuyGuardrails, MIN_BUY_REWARD_RISK } from '../src/hard-guardrails.js';
+import { HISTORICAL_DISABLED_TESTS, PRODUCTION_GUARDRAIL_TESTS } from './test-manifest.mjs';
 await import('../public/api-request-policy.js');
 const requestPolicy=globalThis.SignalForgeApiRequestPolicy;
 
@@ -48,9 +49,14 @@ assert.ok(index.indexOf('api-request-coordinator.js')<index.indexOf('app.js'),'A
 assert.match(build,/version:'2\.30\.\d+'/,'visible release must remain in the SignalForge 2.30.x line');
 const shell=build.match(/shell:'(v30-\d+)'/)?.[1];assert.ok(shell,'visible release must expose a versioned v30 shell');
 assert.ok(sw.includes(`signalforge-shell-${shell}`),'service-worker shell must match the visible release');
-assert.match(workflow,/npm run check/,'CI must execute the regression suite');
-assert.match(workflow,/run-reliability-guardrails\.mjs/,'CI must execute the active production reliability guardrails');
-for(const stage of ['14-28','14-29','14-33','14-35','14-36','14-37'])assert.match(runner,new RegExp(`test-stage${stage}`),`active reliability runner must include Stage ${stage.replace('-', '.')}`);
-for(const disabled of ['14-30','14-31'])assert.doesNotMatch(runner,new RegExp(`test-stage${disabled}`),`disabled Pattern-network Stage ${disabled.replace('-', '.')} must not be required production behavior`);
+
+for(const command of ['test:manifest','check:syntax','test:baseline','test:reliability'])assert.match(workflow,new RegExp(command.replace(':','\\:')),`CI must execute ${command}`);
+assert.match(runner,/run-test-suite\.mjs/,'legacy reliability entry point must delegate to the central test runner');
+assert.match(runner,/reliability/,'legacy reliability entry point must select the production reliability group');
+for(const stage of ['14-28','14-29','14-33','14-35','14-36','14-37'])assert.ok(PRODUCTION_GUARDRAIL_TESTS.some(file=>file.includes(`test-stage${stage}`)),`production manifest must include Stage ${stage.replace('-', '.')}`);
+for(const disabled of ['14-30','14-31']){
+  assert.ok(HISTORICAL_DISABLED_TESTS.some(file=>file.includes(`test-stage${disabled}`)),`disabled Pattern-network Stage ${disabled.replace('-', '.')} must be explicitly classified as historical`);
+  assert.ok(!PRODUCTION_GUARDRAIL_TESTS.some(file=>file.includes(`test-stage${disabled}`)),`disabled Pattern-network Stage ${disabled.replace('-', '.')} must not be required production behavior`);
+}
 
 console.log('Stage 14.37/current hard trading, resource, health, and CI guardrail checks passed.');
