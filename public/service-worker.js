@@ -1,8 +1,8 @@
-const CACHE_NAME='signalforge-shell-v30-35';
+const CACHE_NAME='signalforge-shell-v30-36';
 const API_CACHE_NAME='signalforge-api-snapshots-v2';
 const FIVE_MINUTES=5*60_000;
 const THIRTY_MINUTES=30*60_000;
-const APP_SHELL=['/','/index.html','/styles.css','/pwa.css','/radar.css','/push.css','/portfolio.css','/config.js','/build-info.js','/api-request-coordinator.js','/last-symbol-ui.js','/crawler-ui.js','/app.js','/decision-summary-ui.js','/detection-latency-ui.js','/trade-plan-ui.js','/cockpit-ui.js','/activity-rhythm-ui.js','/session-range-ui.js','/opening-range-ui.js','/watchlist-ui.js','/gate-ui.js','/screener-ui.js','/weekend-ui.js','/simulation-capital-ui.js','/telemetry-ui.js','/operations-ui.js','/self-test-ui.js','/unified-action-ui.js','/ui-router.js','/pwa.js','/radar-ui.js','/push-ui.js','/alert-history.js','/stock-meta.js','/portfolio-ui.js','/chart-inspector.js','/pattern-chart-hook.js','/chart-adapter.js','/chart-control-reliability.js','/pattern-context-ui.js','/pattern-overlay-stable.js','/manifest.webmanifest','/icons/signalforge-icon.svg','/icons/signalforge-maskable.svg'];
+const APP_SHELL=['/','/index.html','/styles.css','/pwa.css','/radar.css','/push.css','/portfolio.css','/config.js','/build-info.js','/api-request-coordinator.js','/last-symbol-ui.js','/crawler-ui.js','/app.js','/decision-summary-ui.js','/detection-latency-ui.js','/trade-plan-ui.js','/cockpit-ui.js','/activity-rhythm-ui.js','/session-range-ui.js','/opening-range-ui.js','/watchlist-ui.js','/gate-ui.js','/screener-ui.js','/weekend-ui.js','/simulation-capital-ui.js','/telemetry-ui.js','/operations-ui.js','/self-test-ui.js','/unified-action-ui.js','/ui-router.js','/pwa.js','/radar-ui.js','/push-ui.js','/alert-history.js','/stock-meta.js','/portfolio-ui.js','/chart-inspector.js','/pattern-chart-hook.js','/chart-adapter.js','/chart-control-reliability.js','/manifest.webmanifest','/icons/signalforge-icon.svg','/icons/signalforge-maskable.svg'];
 const API_TTL_MS=new Map([
   ['/api/signals',FIVE_MINUTES],
   ['/api/opportunity-radar',FIVE_MINUTES],

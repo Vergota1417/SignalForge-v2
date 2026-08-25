@@ -35,8 +35,8 @@
 
   window.addEventListener('beforeinstallprompt', event => {
     event.preventDefault();
-    deferredInstallPrompt = event;
     if (installBtn && !isStandalone) installBtn.hidden = false;
+    deferredInstallPrompt = event;
   });
 
   installBtn?.addEventListener('click', async () => {
@@ -96,7 +96,9 @@
   function renderBuild(){const badge=document.getElementById('sfBuildBadge'),shell=document.getElementById('sfBuildShell');if(badge)badge.textContent=`v${build.version||'unknown'}`;if(shell)shell.textContent=build.shell?` · shell ${build.shell}`:'';}
   function injectBuildStyles(){if(document.getElementById('sfBuildStyles'))return;const style=document.createElement('style');style.id='sfBuildStyles';style.textContent='.brand-line{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.sf-build-badge{display:inline-flex;align-items:center;border:1px solid rgba(126,188,255,.35);background:rgba(126,188,255,.08);color:#7ebcff;border-radius:999px;padding:2px 6px;font-size:9px;font-weight:900;letter-spacing:.04em}.sf-build-shell{font-size:9px;color:#60758d;text-transform:none;letter-spacing:0}@media(max-width:700px){.sf-build-badge{font-size:8px}}';document.head.appendChild(style);}
   function loadFinancialCharting(){
-    const boot=()=>loadScriptThen('/pattern-chart-hook.js','sf-pattern-chart-hook',()=>loadScriptThen('/chart-adapter.js','sf-financial-chart',()=>loadScriptThen('/chart-control-reliability.js','sf-chart-controls',()=>loadScriptThen('/pattern-context-ui.js','sf-pattern-context',()=>loadScriptThen('/pattern-overlay-stable.js','sf-pattern-overlay-stable')))));
+    // Structure + Patterns network UI is intentionally disabled after the request-amplification incident.
+    // Keep only the zero-network chart bridge and navigation controls until the pattern layer is rebuilt passively.
+    const boot=()=>loadScriptThen('/pattern-chart-hook.js','sf-pattern-chart-hook',()=>loadScriptThen('/chart-adapter.js','sf-financial-chart',()=>loadScriptThen('/chart-control-reliability.js','sf-chart-controls')));
     if(window.LightweightCharts?.createChart){boot();return;}
     if(document.querySelector('script[data-sf-lightweight]'))return;
     const script=document.createElement('script');
