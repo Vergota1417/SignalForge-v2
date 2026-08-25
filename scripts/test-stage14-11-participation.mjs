@@ -20,7 +20,7 @@ assert.ok(strategy.includes("{name:'Participation / execution confirmation',pass
 assert.ok(evidence.includes("ANALYSIS_MODEL_VERSION='sf-analysis-v2-participation'"),'Participation logic must retain its evidence model identity.');
 assert.ok(evidence.includes('participationRvolMin:1.0')&&evidence.includes('participationTotalPassesMin:4'),'Evidence must preserve the participation thresholds used by this model version.');
 assert.ok(evidence.includes('features:{sma20:')&&evidence.includes('participation:participation?'),'Evidence must retain raw model features and participation details for later calibration.');
-assert.ok(unified.includes('participation:{checked:Boolean(confirmation)'),'Unified action must expose participation details.');
+assert.ok(unified.includes('const participation={checked:Boolean(confirmation)')&&unified.includes('details={acceleration,readiness,gatesReady,gateTotal,failed,participation}'),'Unified action must expose participation details.');
 assert.ok(ui.includes('sfSelectedParticipation')&&ui.includes('time-of-day RVOL ≥ 1.00x'),'The phone UI must show the participation gate and its rule.');
 assert.match(build,/version:'2\.30\.\d+'/,'Production must expose a SignalForge 2.30.x release.');
 assert.match(sw,/signalforge-shell-v30-\d+/,'PWA must use a versioned shell so phones receive updates.');
