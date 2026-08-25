@@ -13,7 +13,8 @@ const tests=[
   'scripts/test-stage14-37-hard-guardrails.mjs',
   'scripts/test-stage14-38-repository-hygiene.mjs',
   'scripts/test-stage14-39-central-production-policy.mjs',
-  'scripts/test-stage14-40-request-data-ownership.mjs'
+  'scripts/test-stage14-40-request-data-ownership.mjs',
+  'scripts/test-stage14-41-d1-schema-ownership.mjs'
 ];
 
 for(const file of tests){
