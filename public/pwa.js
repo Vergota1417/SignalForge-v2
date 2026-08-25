@@ -25,6 +25,7 @@
   loadModuleScript('/stock-meta.js','sf-stock-meta');
   loadModuleCss('/portfolio.css','sf-portfolio');
   loadModuleScript('/portfolio-ui.js','sf-portfolio');
+  loadModuleScript('/trade-plan-ui.js','sf-trade-plan');
   loadFinancialCharting();
 
   const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
