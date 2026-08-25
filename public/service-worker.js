@@ -2,10 +2,10 @@ const CACHE_NAME='signalforge-shell-v30-33';
 const API_CACHE_NAME='signalforge-api-snapshots-v1';
 const APP_SHELL=['/','/index.html','/styles.css','/pwa.css','/radar.css','/push.css','/portfolio.css','/config.js','/build-info.js','/api-request-coordinator.js','/last-symbol-ui.js','/crawler-ui.js','/app.js','/decision-summary-ui.js','/detection-latency-ui.js','/trade-plan-ui.js','/cockpit-ui.js','/activity-rhythm-ui.js','/session-range-ui.js','/opening-range-ui.js','/watchlist-ui.js','/gate-ui.js','/screener-ui.js','/weekend-ui.js','/simulation-capital-ui.js','/telemetry-ui.js','/operations-ui.js','/self-test-ui.js','/unified-action-ui.js','/ui-router.js','/pwa.js','/radar-ui.js','/push-ui.js','/alert-history.js','/stock-meta.js','/portfolio-ui.js','/chart-inspector.js','/pattern-chart-hook.js','/chart-adapter.js','/chart-control-reliability.js','/pattern-context-ui.js','/pattern-overlay-reliability.js','/manifest.webmanifest','/icons/signalforge-icon.svg','/icons/signalforge-maskable.svg'];
 const API_TTL_MS=new Map([
-  ['/api/signals',55_000],
-  ['/api/opportunity-radar',55_000],
-  ['/api/screener',55_000],
-  ['/api/alerts',55_000],
+  ['/api/signals',20_000],
+  ['/api/opportunity-radar',20_000],
+  ['/api/screener',20_000],
+  ['/api/alerts',20_000],
   ['/api/operations-status',120_000],
   ['/api/research-status',180_000],
   ['/api/detection-latency',180_000],
