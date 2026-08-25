@@ -15,7 +15,7 @@ export function evaluateHardBuyGuardrails({
     thesisIntact:{pass:Boolean(thesisIntact),label:'Thesis support intact'},
     notOverextended:{pass:!overextended,label:'Price is not overextended'},
     higherTimeframeReady:{pass:Boolean(higherTimeframeReady),label:'Higher-timeframe gates cleared'},
-    participationConfirmed:{pass:Boolean(intradayConfirmation?.pass),label:'15-minute participation/execution confirmed'}
+    participationConfirmed:{pass:Boolean(intradayConfirmation?.pass&&intradayConfirmation?.participationPass),label:'15-minute participation/execution confirmed'}
   };
   const failed=Object.entries(rules).filter(([,rule])=>!rule.pass).map(([key,rule])=>({key,label:rule.label,value:rule.value??null}));
   return{
