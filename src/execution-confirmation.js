@@ -1,6 +1,7 @@
 const BUY_RR_MIN=1.8;
 const ENTRY_LOW_TOLERANCE=.99;
 const ENTRY_HIGH_TOLERANCE=1.02;
+const PARTICIPATION_FRESH_MS=20*60*1000;
 
 export function refreshExecutionAnalysis(baseAnalysis,intradayConfirmation){
   if(!baseAnalysis||typeof baseAnalysis!=='object')return baseAnalysis;
@@ -42,6 +43,25 @@ export function refreshExecutionAnalysis(baseAnalysis,intradayConfirmation){
     reason,
     readiness,
     execution:{currentPrice,currentRr,requiredRr:BUY_RR_MIN,nearEntry,thesisIntact,notOverextended,participationPass,blockers:executionBlockers,entryLowTolerance:ENTRY_LOW_TOLERANCE,entryHighTolerance:ENTRY_HIGH_TOLERANCE,checkedAt:Number(confirmation?.latestTime)||Date.now()}
+  };
+}
+
+export function refreshPricePulseAnalysis(baseAnalysis,currentPrice,checkedAt=Date.now()){
+  if(!baseAnalysis||typeof baseAnalysis!=='object')return baseAnalysis;
+  const price=positive(currentPrice);if(!price)return baseAnalysis;
+  const now=Number(checkedAt)||Date.now(),priorConfirmation=baseAnalysis.intradayConfirmation||null,executionCheckedAt=Number(baseAnalysis.executionCheckedAt)||0;
+  const confirmationFresh=Boolean(priorConfirmation&&executionCheckedAt&&now-executionCheckedAt<=PARTICIPATION_FRESH_MS);
+  const activeConfirmation=priorConfirmation?(confirmationFresh?priorConfirmation:{...priorConfirmation,pass:false,participationPass:false,stale:true,reason:'The last completed 15-minute participation confirmation is stale. Waiting for a fresh execution scan.'}):null;
+  const syntheticConfirmation={...(activeConfirmation||{}),latestPrice:price};
+  const refreshed=refreshExecutionAnalysis(baseAnalysis,syntheticConfirmation);
+  return{
+    ...refreshed,
+    intradayConfirmation:activeConfirmation,
+    sessionRangeShadow:baseAnalysis.sessionRangeShadow||null,
+    dailyAnalyzedAt:Number(baseAnalysis.dailyAnalyzedAt)||0,
+    executionCheckedAt,
+    pricePulse:{timeframe:'1D/5min',price,checkedAt:now},
+    execution:{...(refreshed.execution||{}),pricePulseOnly:true,pricePulseCheckedAt:now,confirmationCheckedAt:executionCheckedAt,confirmationFresh}
   };
 }
 
