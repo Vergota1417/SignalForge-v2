@@ -7,9 +7,9 @@ assert.equal(building.state,'EARLY MOVEMENT — BUILDING');
 assert.ok(building.acceleration>=72);assert.ok(building.confirmations>=3);
 assert.match(building.action,/WATCH CLOSELY/);
 
-const watch=earlyMovementSignal({scoreVelocity:5,relativeVolume:1.25,changePct:.2,rollingDiscoveryScore:24});
+const watch=earlyMovementSignal({scoreVelocity:8,relativeVolume:1.5,changePct:2,rollingDiscoveryScore:50});
 assert.equal(watch.state,'MOVEMENT WATCH');
-assert.ok(watch.acceleration>=50);
+assert.ok(watch.acceleration>=50&&watch.acceleration<72);
 
 const quiet=earlyMovementSignal({scoreVelocity:-2,relativeVolume:.8,changePct:-1.2,rollingDiscoveryScore:10});
 assert.equal(quiet.state,'QUIET');assert.equal(quiet.action,'NO EARLY ACTION');
