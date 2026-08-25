@@ -52,5 +52,5 @@ assert.doesNotMatch(screener,/recordAnalysisEvidence\(env,analysis,\{source:'pri
 const execution=fs.readFileSync(new URL('../src/execution-confirmation.js',import.meta.url),'utf8');
 assert.match(execution,/PARTICIPATION_FRESH_MS=20\*60\*1000/,'15m participation must expire before stale data can authorize BUY');
 const wrangler=fs.readFileSync(new URL('../wrangler.jsonc',import.meta.url),'utf8');
-assert.match(wrangler,/"crons": \["\* \* \* \* \*"\]/,'one-minute Worker wakeup must remain available for adaptive scheduling');
+assert.match(wrangler,/"crons"\s*:\s*\["\*\/5 \* \* \* \*"\]/,'Worker wakeup must remain on the guarded five-minute schedule');
 console.log('Stage 14.19 adaptive API scheduler regression passed.');
