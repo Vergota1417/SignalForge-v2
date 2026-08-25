@@ -17,7 +17,7 @@ const rows=[
   row('AAA','BUY NOW',start+75*60_000+37*60*60_000+15*60_000,.05,{modelVersion:'sf-analysis-v5-test'})
 ];
 const episodes=buildDecisionEpisodes(rows);
-assert.equal(episodes.length,5,'repeated same-state checks should collapse until a status/model change or >36-hour gap');
+assert.equal(episodes.length,5,'repeated same-state checks should collapse until a status/model change or >36-hour diagnostic gap');
 assert.equal(episodes[0].episodeObservations,4,'four 15-minute BUY checks should be one contiguous BUY episode');
 assert.equal(episodes[0].forwardReturn,.03,'episode outcome must use the first causal observation instead of cherry-picking a later snapshot');
 assert.equal(episodes.filter(x=>x.status==='BUY NOW').length,4,'contiguous diagnostics should still expose BUY->READY->BUY, long-gap BUY, and new-model BUY state episodes');
@@ -25,19 +25,19 @@ assert.equal(episodes.filter(x=>x.status==='BUY NOW').length,4,'contiguous diagn
 const evaluation=evaluateEvidenceRows(rows,{horizon:10,minSample:5});
 assert.equal(evaluation.rawObservationSampleSize,8);
 assert.equal(evaluation.contiguousDecisionEpisodeSampleSize,5);
-assert.equal(evaluation.sampleSize,4,'later thesis-level validation may collapse repeated state re-entry more strictly than contiguous episode diagnostics');
-assert.equal(evaluation.setupSampleSize,3);
-assert.equal(evaluation.collapsedObservationCount,4);
-assert.equal(evaluation.calibration.buySampleSize,3,'repeated checks and BUY state re-entry inside one setup thesis must not inflate calibration');
+assert.equal(evaluation.sampleSize,3,'thesis validation must be stricter than contiguous state diagnostics and must not split a normal multi-day/weekend continuation');
+assert.equal(evaluation.setupSampleSize,2,'the 37-hour gap stays one setup thesis; the model-version change starts the second');
+assert.equal(evaluation.collapsedObservationCount,5);
+assert.equal(evaluation.calibration.buySampleSize,2,'repeated checks, state re-entry, and a normal multi-day continuation must not inflate BUY calibration');
 assert.equal(evaluation.calibration.eligible,false,'repeated checks must not reach a five-sample calibration threshold');
 assert.match(evaluation.calibration.reason,/independent BUY setup samples/);
-assert.match(evaluation.episodePolicy,/36 hours/);
+assert.match(evaluation.episodePolicy,/7 days/);
 
 const board=buildSetupLeaderboard(rows,{minSample:5});
 const buySetup=board.find(x=>x.profile?.status==='BUY NOW');
 assert.ok(buySetup,'BUY setup should remain visible in optimizer evidence');
-assert.equal(buySetup.sampleSize,3,'optimizer must use independent BUY setup-state samples');
-assert.equal(buySetup.qualified,false,'three independent BUY setup samples must not qualify at a five-sample threshold');
+assert.equal(buySetup.sampleSize,2,'optimizer must use independent BUY setup-thesis samples');
+assert.equal(buySetup.qualified,false,'two independent BUY setup samples must not qualify at a five-sample threshold');
 
 const repeated=Array.from({length:30},(_,i)=>row('ONE','BUY NOW',start+i*15*60_000,.04));
 const challengerRule=buildChallengerRule({statuses:['BUY NOW'],minReadiness:80,minRvol:1.5,minGates:4,requireStrongSector:true});
