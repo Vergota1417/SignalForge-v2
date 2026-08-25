@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { evaluateHardBuyGuardrails, MIN_BUY_REWARD_RISK } from '../src/hard-guardrails.js';
+await import('../public/api-request-policy.js');
+const requestPolicy=globalThis.SignalForgeApiRequestPolicy;
 
 const allGood={
   rewardRisk:MIN_BUY_REWARD_RISK,
@@ -36,10 +38,10 @@ assert.match(analysis,/!hardBuyGuardrails\.rules\.rewardRisk\.pass/,'analysis mu
 assert.match(analysis,/hardBuyGuardrails/,'hard guardrail state must be returned with analysis');
 assert.match(entry,/minBuyRewardRisk:MIN_BUY_REWARD_RISK/,'health must expose the production minimum R/R');
 assert.match(entry,/patternNetworkUiEnabled:false/,'health must prove the risky pattern network UI is disabled');
-assert.match(coordinator,/FIVE_MINUTES=5\*60_000/,'browser background API reads must remain guarded at five minutes');
-assert.match(coordinator,/THIRTY_MINUTES=30\*60_000/,'cache-only chart reads must remain guarded at thirty minutes');
-assert.match(sw,/FIVE_MINUTES=5\*60_000/,'service worker must independently enforce the five-minute request guard');
-assert.match(sw,/THIRTY_MINUTES=30\*60_000/,'service worker must independently enforce the cache-only chart guard');
+assert.equal(requestPolicy.backgroundReadMs,5*60_000,'browser background API reads must remain guarded at five minutes');
+assert.equal(requestPolicy.cacheOnlyMarketDataMs,30*60_000,'cache-only chart reads must remain guarded at thirty minutes');
+assert.match(coordinator,/SignalForgeApiRequestPolicy/,'browser coordinator must consume the shared request guard');
+assert.match(sw,/SignalForgeApiRequestPolicy/,'service worker must independently consume the shared request guard');
 assert.doesNotMatch(pwa,/loadScriptThen\('\/pattern-context-ui\.js'/,'pattern polling UI must remain disabled until rebuilt as passive-only');
 assert.doesNotMatch(pwa,/loadScriptThen\('\/pattern-overlay-(?:stable|reliability)\.js'/,'pattern network overlay must remain disabled until rebuilt as passive-only');
 assert.ok(index.indexOf('api-request-coordinator.js')<index.indexOf('app.js'),'API coordinator must load before application modules');
