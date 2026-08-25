@@ -41,15 +41,16 @@ const sw=fs.readFileSync(new URL('../public/service-worker.js',import.meta.url),
 const build=fs.readFileSync(new URL('../public/build-info.js',import.meta.url),'utf8');
 assert.match(ui,/INTRADAY ACTIVITY RHYTHM · SHADOW/,'chart must expose Activity Rhythm');
 assert.match(ui,/Historical/,'chart must show historical rhythm row');
-assert.match(ui,/Today/,'chart must show today rhythm row');
+assert.match(ui,/Session/,'chart must label the saved execution session without implying stale data is today');
+assert.match(ui,/matched-session count/,'UI must disclose that the current history is a recent sample');
 assert.match(ui,/55% volume-vs-normal/,'calculation weights must be explained');
 assert.match(ui,/does not change BUY NOW/,'UI must disclose shadow-only policy');
 assert.doesNotMatch(ui,/\/api\/market-data/,'Activity Rhythm UI must not spend provider market-data requests');
 assert.match(ui,/\/api\/signals/,'Activity Rhythm UI should read saved analysis only');
 assert.ok(pwa.indexOf("/activity-rhythm-ui.js")>pwa.indexOf("/cockpit-ui.js"),'Activity Rhythm UI should load after cockpit organization');
-assert.match(sw,/signalforge-shell-v30-23/,'service-worker shell must bump');
+assert.match(sw,/signalforge-shell-v30-24/,'service-worker shell must bump for follow-up polish');
 assert.match(sw,/'\/activity-rhythm-ui\.js'/,'installed PWA must cache Activity Rhythm UI');
-assert.match(build,/version:'2\.30\.23'/,'visible version must bump');
-assert.match(build,/shell:'v30-23'/,'visible shell must match service worker');
+assert.match(build,/version:'2\.30\.24'/,'visible version must bump for follow-up polish');
+assert.match(build,/shell:'v30-24'/,'visible shell must match service worker');
 
 console.log('Stage 14.22 Activity Rhythm regression passed.');
