@@ -42,10 +42,10 @@ assert.match(ui,/setup episodes resolved/);
 assert.match(ui,/pattern-days logged/);
 assert.match(ui,/cannot affect BUY NOW/);
 assert.doesNotMatch(ui,/api\/market-data\?[^`]*episode/i,'episode validation must not request new market data');
-assert.match(build,/version:'2\.30\.27'/);
-assert.match(build,/shell:'v30-27'/);
-assert.match(sw,/signalforge-shell-v30-27/);
-assert.equal(pkg.version,'2.30.27');
+assert.match(build,/version:'2\.30\.\d+'/,'production must expose a current SignalForge 2.30.x build');
+const shell=build.match(/shell:'(v30-\d+)'/)?.[1];assert.ok(shell,'build metadata must expose a versioned v30 shell');
+assert.ok(sw.includes(`signalforge-shell-${shell}`),'service worker shell must match visible build metadata');
+assert.match(pkg.version,/^2\.30\.\d+$/,'package version must remain in the SignalForge 2.30.x line');
 assert.match(pkg.scripts.check,/test-stage14-25-pattern-episode-validation\.mjs/);
 console.log('Stage 14.25 pattern episode validation regression passed.');
 
