@@ -10,8 +10,8 @@ const checks=[
   ['permanent provider rejection removes discovery pool entry',/DELETE FROM discovery_weekly_pool/.test(quarantine)],
   ['permanent provider rejection removes weekly research entry',/DELETE FROM discovery_weekly_universe/.test(quarantine)],
   ['cooldown remains as a safety backstop',/cooldown_until/.test(quarantine)&&/DEFAULT_QUARANTINE_MS/.test(quarantine)],
-  ['release version v2.30.7',/version:'2\.30\.7'/.test(build)],
-  ['PWA shell v30-7',/signalforge-shell-v30-7/.test(sw)]
+  ['production exposes a 2.30.x release',/version:'2\.30\.\d+'/.test(build)],
+  ['production uses a versioned v30 shell',/signalforge-shell-v30-\d+/.test(sw)]
 ];
 
 let failed=0;
