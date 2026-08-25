@@ -10,7 +10,8 @@ const tests=[
   'scripts/test-stage14-33-resource-usage-reduction.mjs',
   'scripts/test-stage14-35-emergency-request-guard.mjs',
   'scripts/test-stage14-36-disable-pattern-network-layer.mjs',
-  'scripts/test-stage14-37-hard-guardrails.mjs'
+  'scripts/test-stage14-37-hard-guardrails.mjs',
+  'scripts/test-stage14-38-repository-hygiene.mjs'
 ];
 
 for(const file of tests){
