@@ -64,9 +64,10 @@ assert.match(ui,/dataFreshness/,'MarketPulse cards must render freshness state')
 assert.match(ui,/dataFallback\?\.used/,'MarketPulse cards must mark fallback provider rows');
 assert.match(ui,/Alpaca/,'MarketPulse cards must render provider identity');
 assert.match(sw,/signalforge-shell-v30-40/,'freshness UI release must advance the PWA shell');
+assert.match(sw,/signalforge-api-snapshots-v4/,'freshness response release must invalidate old API snapshots');
 assert.match(build,/version:'2\.30\.40'/);
 assert.match(build,/shell:'v30-40'/);
 assert.equal(pkg.version,'2.30.40','package version must match the freshness UI release');
-assert.match(analysis,/dailyGatesReady&&!hardBuyGuardrails\.pass\)\{status='BUY NOW'/,'provider freshness work must not replace existing BUY authorization');
+assert.match(analysis,/dailyGatesReady&&hardBuyGuardrails\.pass\)\{status='BUY NOW'/,'provider freshness work must not replace existing BUY authorization');
 
 console.log('Stage 15.9 provider freshness and intelligent cache checks passed.');
