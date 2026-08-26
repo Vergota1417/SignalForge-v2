@@ -4,6 +4,8 @@
   const esc=v=>String(v??'').replace(/[&<>'\"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','\"':'&quot;'}[ch]));
   const fmtPct=v=>`${Number(v)>=0?'+':''}${Number(v||0).toFixed(2)}%`;
   const fmtCompact=v=>new Intl.NumberFormat('en-US',{notation:'compact',maximumFractionDigits:1}).format(Number(v)||0);
+  const providerLabel=v=>String(v||'').toLowerCase()==='alpaca'?'Alpaca':String(v||'').toLowerCase()==='twelve-data'?'Twelve Data':String(v||'Unknown');
+  const fmtAge=ms=>{const n=Number(ms);if(!Number.isFinite(n)||n<0)return'';if(n<60_000)return`${Math.max(0,Math.round(n/1000))}s`;if(n<3_600_000)return`${Math.round(n/60_000)}m`;return`${(n/3_600_000).toFixed(n<36_000_000?1:0)}h`;};
   let loading=false;
 
   function ensurePanel(){
@@ -38,7 +40,7 @@
       .mp-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}.mp-card{display:grid;gap:9px;padding:12px;border:1px solid var(--border);border-radius:12px;background:rgba(8,17,31,.82);color:var(--text);text-align:left;cursor:pointer}.mp-card:hover{border-color:#3c79ad}.mp-card-top{display:flex;justify-content:space-between;gap:10px}.mp-symbol strong{font-size:17px}.mp-symbol small{display:block;color:var(--muted);font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:190px}
       .mp-state{align-self:flex-start;border:1px solid currentColor;border-radius:999px;padding:4px 7px;font-size:9px;font-weight:900;white-space:nowrap}.mp-state.actionable{color:var(--green)}.mp-state.ready-soon{color:var(--blue)}.mp-state.pullback{color:var(--orange)}.mp-state.avoid{color:var(--red)}.mp-state.discovery,.mp-state.watch{color:var(--yellow)}
       .mp-scores{display:grid;grid-template-columns:1fr 1fr;gap:7px}.mp-score{padding:9px;border:1px solid var(--border);border-radius:9px;background:var(--panel)}.mp-score strong{display:block;font-size:20px}.mp-score span{display:block;color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.05em;margin-top:1px}.mp-score.pending strong{font-size:14px;padding-top:3px}
-      .mp-meta{display:flex;gap:10px;flex-wrap:wrap;color:var(--muted);font-size:10px}.mp-meta strong{color:var(--text)}.mp-reason{color:var(--muted);font-size:10px;line-height:1.35;min-height:28px}.mp-rule{padding:9px 10px;border-left:3px solid var(--blue);background:rgba(255,255,255,.025);color:var(--muted);font-size:10px}.mp-rule strong{color:var(--text)}.mp-empty{grid-column:1/-1;padding:18px;border:1px dashed var(--border);border-radius:10px;color:var(--muted);text-align:center}
+      .mp-meta{display:flex;gap:10px;flex-wrap:wrap;color:var(--muted);font-size:10px}.mp-meta strong{color:var(--text)}.mp-data{display:flex;gap:6px;align-items:center;flex-wrap:wrap;color:var(--muted);font-size:9px}.mp-data strong{color:var(--text)}.mp-data .fresh{color:var(--green)}.mp-data .lagging,.mp-data .delayed{color:var(--orange)}.mp-data .stale{color:var(--red)}.mp-data .closed,.mp-data .unknown,.mp-data .cached{color:var(--muted)}.mp-reason{color:var(--muted);font-size:10px;line-height:1.35;min-height:28px}.mp-rule{padding:9px 10px;border-left:3px solid var(--blue);background:rgba(255,255,255,.025);color:var(--muted);font-size:10px}.mp-rule strong{color:var(--text)}.mp-empty{grid-column:1/-1;padding:18px;border:1px dashed var(--border);border-radius:10px;color:var(--muted);text-align:center}
       @media(max-width:1000px){.mp-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
       @media(max-width:680px){.mp-head{flex-direction:column}.mp-coverage{white-space:normal}.mp-grid{grid-template-columns:1fr}.mp-card{padding:11px}.mp-symbol small{max-width:220px}.mp-rule{font-size:9px}}
     `;document.head.appendChild(style);
@@ -47,6 +49,7 @@
   function stateClass(bucket){return String(bucket||'DISCOVERY').toLowerCase().replace(/\s+/g,'-');}
   function displayState(row){if(row.tradeConfidence===null||row.tradeConfidence===undefined)return'DISCOVERY';return String(row.status||row.bucket||'WATCH');}
   function topRows(rows){return (rows||[]).filter(r=>r&&r.bucket!=='AVOID'&&Number(r.opportunityScore)>=0).sort((a,b)=>Number(b.opportunityScore||0)-Number(a.opportunityScore||0)||Number(b.tradeConfidence??-1)-Number(a.tradeConfidence??-1)||Number(b.screenScore||0)-Number(a.screenScore||0)).slice(0,6);}
+  function dataLine(row){const provider=providerLabel(row.dataProvider),feed=String(row.dataFeed||'unknown').toUpperCase(),state=String(row.dataFreshness||'UNKNOWN').toUpperCase(),age=fmtAge(row.dataAgeMs),fallback=row.dataFallback?.used?' · fallback':'';return `<div class="mp-data"><strong>${esc(provider)}</strong><span>· ${esc(feed)}</span><span class="${esc(state.toLowerCase())}">· ${esc(state)}${age?` ${esc(age)}`:''}${fallback}</span></div>`;}
 
   function render(screener){
     ensurePanel();
@@ -60,6 +63,7 @@
         <div class="mp-card-top"><div class="mp-symbol"><strong>#${i+1} ${esc(r.symbol)}</strong><small>${esc(r.name||r.symbol)}</small></div><span class="mp-state ${bucketClass}">${esc(status)}</span></div>
         <div class="mp-scores"><div class="mp-score"><strong>${Number(r.opportunityScore||0).toFixed(0)}</strong><span>Opportunity Score</span></div><div class="mp-score ${confidence===null?'pending':''}"><strong>${confidence===null?'Pending':confidence.toFixed(0)}</strong><span>Trade Confidence</span></div></div>
         <div class="mp-meta"><span><strong>${fmtPct(r.changePct)}</strong> move</span><span><strong>${Number(r.relativeVolume||0).toFixed(2)}x</strong> RVOL</span><span><strong>${r.deepAnalysis?`${Number(r.gatesReady||0)}/${Number(r.gateTotal||4)}`:'—'}</strong> gates</span></div>
+        ${dataLine(r)}
         <div class="mp-reason">${esc(r.reason||'Discovery candidate awaiting deeper validation.')}</div>
       </button>`;
     }).join('');

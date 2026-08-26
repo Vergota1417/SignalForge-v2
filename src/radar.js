@@ -5,6 +5,7 @@ import { buildAnalysisExpectations } from './analysis-expectation.js';
 import { recordRadarEvidence } from './evidence.js';
 import { getTieredScannerBatch } from './scanner-budget.js';
 import { getMarketQuotes } from './market-quote-gateway.js';
+import { quoteUsableForDiscovery, summarizeFeedHealth } from './data-freshness.js';
 import { earlyMovementSignal } from './early-movement.js';
 import { unifiedActionState } from './unified-action.js';
 import { recordOperation } from './operations.js';
@@ -18,10 +19,11 @@ export async function runRadarDiscovery(env,{batchSize=6,now=Date.now()}={}){
     await hardenPreviousProviderRejects(env,now);
     const previous=await getRadarState(env),batch=await getTieredScannerBatch(env,{limit:batchSize,exploreCursor:Number(previous?.cursor)||0,now});
     if(!batch.symbols.length){const result={mode:'discovery',scanned:[],leaders:[],cursor:batch.nextExploreCursor,universeSize:batch.universeSize,tiers:batch.tiers,selected:batch.selected,cooldownCount:batch.cooldownCount||0};await recordOperation(env,'radar-scan',{status:'IDLE',at:now,detail:{reason:'no-due-symbols',universeSize:batch.universeSize,cooldownCount:batch.cooldownCount||0}});return result;}
-    const scanned=[],errors=[],retired=[],quoteRows=await getMarketQuotes(env,batch.symbols),quoteMap=new Map(quoteRows.map(row=>[row.symbol,row]));
+    const scanned=[],errors=[],retired=[],quoteRows=await getMarketQuotes(env,batch.symbols,{now}),quoteMap=new Map(quoteRows.map(row=>[row.symbol,row]));
     for(const symbol of batch.symbols){
       try{
         const rawQuote=quoteMap.get(symbol);if(!rawQuote)throw new Error('Market quote provider returned no usable quote.');
+        if(!quoteUsableForDiscovery(rawQuote.freshness)){const error=new Error(`Market quote is stale (${rawQuote.provider||rawQuote.source||'provider'} ${rawQuote.feed||'unknown feed'}).`);error.status=409;throw error;}
         const discoveryScore=scoreQuote(rawQuote),quote={...rawQuote,score:discoveryScore,discoveryScore},observation=await recordDiscoveryObservation(env,quote,{now}),enriched={...quote,scannerTier:tierFor(symbol,batch.selected),rollingDiscoveryScore:observation?.rollingScore??quote.discoveryScore,scoreVelocity:observation?.scoreVelocity??0,dollarVolume:observation?.dollarVolume??quote.price*quote.volume};
         enriched.earlyMovement=earlyMovementSignal(enriched);await putRadarQuote(env,enriched);await recordRadarEvidence(env,enriched,{source:'scheduled-radar',now});scanned.push(enriched);
       }catch(error){
@@ -32,8 +34,8 @@ export async function runRadarDiscovery(env,{batchSize=6,now=Date.now()}={}){
         const row={symbol,status:Number(error?.status)||null,message:error?.message||String(error)};errors.push(row);console.error(JSON.stringify({event:'radar_quote_error',...row}));
       }
     }
-    const leaders=rankQuotes(await listRadarQuotes(env,14_400_000,40)).slice(0,6),updatedAt=await putRadarState(env,batch.nextExploreCursor,leaders.map(q=>q.symbol)),result={mode:'discovery',scanned,leaders,cursor:batch.nextExploreCursor,updatedAt,universeSize:batch.universeSize,tiers:batch.tiers,selected:batch.selected,cooldownCount:batch.cooldownCount||0,retired};
-    await recordOperation(env,'radar-scan',{status:scanned.length||retired.length?'OK':errors.length?'ERROR':'IDLE',at:now,detail:{requested:batch.symbols,scanned:scanned.map(x=>x.symbol),leaders:leaders.map(x=>x.symbol),retired,errors,cooldownCount:batch.cooldownCount||0}});return result;
+    const leaders=rankQuotes(await listRadarQuotes(env,14_400_000,40)).slice(0,6),updatedAt=await putRadarState(env,batch.nextExploreCursor,leaders.map(q=>q.symbol)),feedHealth=summarizeFeedHealth(scanned,now),result={mode:'discovery',scanned,leaders,cursor:batch.nextExploreCursor,updatedAt,universeSize:batch.universeSize,tiers:batch.tiers,selected:batch.selected,cooldownCount:batch.cooldownCount||0,retired,feedHealth};
+    await recordOperation(env,'radar-scan',{status:scanned.length||retired.length?'OK':errors.length?'ERROR':'IDLE',at:now,detail:{requested:batch.symbols,scanned:scanned.map(x=>x.symbol),leaders:leaders.map(x=>x.symbol),retired,errors,cooldownCount:batch.cooldownCount||0,feedHealth}});return result;
   }catch(error){await recordOperation(env,'radar-scan',{status:'ERROR',at:now,detail:{message:error?.message||String(error)}}).catch(()=>{});throw error;}
 }
 
@@ -41,7 +43,7 @@ export async function getRadarSnapshot(env){
   const pool=await getDiscoveryPool(env);
   const[state,quotes,status,signals]=await Promise.all([getRadarState(env),listRadarQuotes(env,14_400_000,40),getDiscoveryStatus(env),listSignals(env)]),ranked=rankQuotes(quotes),bySymbol=new Map(ranked.map(q=>[q.symbol,q])),signalMap=new Map((signals||[]).map(s=>[s.symbol,s])),leaders=(state?.symbols||[]).map(s=>bySymbol.get(s)).filter(Boolean),fallback=ranked.filter(q=>!leaders.some(x=>x.symbol===q.symbol)),symbols=[...leaders,...fallback].slice(0,6);
   const expectations=await buildAnalysisExpectations(env,{symbols:symbols.map(x=>x.symbol),pool,cursor:state?.cursor||0,now:Date.now()});
-  return{symbols:symbols.map(row=>{const earlyMovement=earlyMovementSignal(row),signal=signalMap.get(row.symbol)||null;return{...row,earlyMovement,unifiedAction:unifiedActionState({signal,earlyMovement}),expectation:expectations[row.symbol]||null};}),updatedAt:state?.updatedAt||0,cursor:state?.cursor||0,universeSize:pool.length,catalogSize:status.catalogSize,scannedSymbols:status.scannedSymbols,catalogUpdatedAt:status.catalogUpdatedAt,marketTimezone:'America/New_York'};
+  return{symbols:symbols.map(row=>{const earlyMovement=earlyMovementSignal(row),signal=signalMap.get(row.symbol)||null;return{...row,earlyMovement,unifiedAction:unifiedActionState({signal,earlyMovement}),expectation:expectations[row.symbol]||null};}),updatedAt:state?.updatedAt||0,cursor:state?.cursor||0,universeSize:pool.length,catalogSize:status.catalogSize,scannedSymbols:status.scannedSymbols,catalogUpdatedAt:status.catalogUpdatedAt,feedHealth:summarizeFeedHealth(quotes),marketTimezone:'America/New_York'};
 }
 export async function getRadarSymbols(env){const snapshot=await getRadarSnapshot(env);return snapshot.symbols.map(x=>x.symbol).filter(Boolean);}
 
