@@ -19,10 +19,10 @@ for(const timeframe of ['1D','5D','1M','3M','6M','1Y','2Y']){
 const good={time:1000,open:10,high:12,low:9,close:11,volume:100};
 assert.equal(validCandle(good),true);
 assert.equal(validCandle({...good,high:8}),false,'invalid OHLC geometry must be rejected');
-const rows=dedupeAndSortCandles([{...good,time:2000,close:12},{...good,time:1000},{...good,time:2000,close:13}]);
+const rows=dedupeAndSortCandles([{...good,time:2000,close:11.5},{...good,time:1000},{...good,time:2000,close:11.75}]);
 assert.equal(rows.length,2,'duplicate timestamps must collapse to one candle');
 assert.deepEqual(rows.map(x=>x.time),[1000,2000],'candles must be sorted ascending');
-assert.equal(rows[1].close,13,'latest duplicate value must win deterministically');
+assert.equal(rows[1].close,11.75,'latest valid duplicate value must win deterministically');
 
 const compatibility=fs.readFileSync(new URL('../src/market.js',import.meta.url),'utf8');
 const gateway=fs.readFileSync(new URL('../src/market-data-gateway.js',import.meta.url),'utf8');
