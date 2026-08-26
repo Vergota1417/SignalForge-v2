@@ -19,9 +19,9 @@ export async function getOpportunityValidation(env,{horizon=5,now=Date.now(),min
 }
 
 export async function runOpportunityValidationCycle(env,{now=Date.now(),maxSymbols=3}={}){
-  const tracker=await runOutcomeTracker(env,{now,maxSymbols:Math.max(1,Math.min(6,Number(maxSymbols)||3)),observationType:'RADAR'});
+  const tracker=await runOutcomeTracker(env,{now,maxSymbols:Math.max(1,Math.min(6,Number(maxSymbols)||3)),observationType:'RADAR',requiredHorizon:5});
   const validation=await getOpportunityValidation(env,{now,horizon:5});
-  await recordOperation(env,'opportunity-score-validation',{status:validation.status==='REVIEW CANDIDATE'?'OK':validation.completedEpisodes?'OK':'IDLE',at:now,detail:{status:validation.status,completedEpisodes:validation.completedEpisodes,pendingEpisodes:validation.pendingEpisodes,highScoreSample:validation.highScore?.sampleSize||0,highScoreMarketSample:validation.highScore?.marketSampleSize||0,highScoreWinRate:validation.highScore?.winRate??null,highScoreAvgReturn:validation.highScore?.avgReturn??null,highScoreMarketExcess:validation.highScore?.avgMarketExcess??null,scoreGradientConfirmed:validation.scoreGradientConfirmed,affectsBuyNow:false,tracker:{observationType:tracker.observationType,symbolsProcessed:tracker.symbolsProcessed,outcomesCompleted:tracker.outcomesCompleted,deferred:tracker.deferred,errors:(tracker.errors||[]).slice(0,4)}}});
+  await recordOperation(env,'opportunity-score-validation',{status:validation.status==='REVIEW CANDIDATE'?'OK':validation.completedEpisodes?'OK':'IDLE',at:now,detail:{status:validation.status,completedEpisodes:validation.completedEpisodes,pendingEpisodes:validation.pendingEpisodes,highScoreSample:validation.highScore?.sampleSize||0,highScoreMarketSample:validation.highScore?.marketSampleSize||0,highScoreWinRate:validation.highScore?.winRate??null,highScoreAvgReturn:validation.highScore?.avgReturn??null,highScoreMarketExcess:validation.highScore?.avgMarketExcess??null,scoreGradientConfirmed:validation.scoreGradientConfirmed,affectsBuyNow:false,tracker:{observationType:tracker.observationType,requiredHorizon:tracker.requiredHorizon,symbolsProcessed:tracker.symbolsProcessed,outcomesCompleted:tracker.outcomesCompleted,deferred:tracker.deferred,errors:(tracker.errors||[]).slice(0,4)}}});
   return{tracker,validation};
 }
 
