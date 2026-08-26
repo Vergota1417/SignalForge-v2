@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
+// Stage 15.6 protects the user-facing distinction between discovery and trade readiness.
 const ui=fs.readFileSync(new URL('../public/marketpulse-opportunities-ui.js',import.meta.url),'utf8');
 const index=fs.readFileSync(new URL('../public/index.html',import.meta.url),'utf8');
 const sw=fs.readFileSync(new URL('../public/service-worker.js',import.meta.url),'utf8');
