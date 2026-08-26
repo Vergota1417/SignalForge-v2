@@ -8,6 +8,7 @@ import { getWeeklyStrategySnapshot, runPortfolioCloseReview, runPortfolioPricePu
 import { rankOpportunities } from './strategy.js';
 import { broadcastBackgroundSummaryPush, broadcastPortfolioStrategyPush, broadcastWeeklyOpportunityPush } from './push.js';
 import { runOpportunityValidationCycle } from './opportunity-validation.js';
+import { runPaperActionCycle } from './paper-action.js';
 import {
   RADAR_BATCH_SIZE,
   WEEKLY_RESEARCH_SCHEDULE,
@@ -75,13 +76,14 @@ export async function runScheduledCycle(env,scheduledTime=Date.now()){
   }
 }
 
-export function scheduledCoverage(){return{...schedulerCoverage(),providerEnvelope:discoveryProviderEnvelope(),broadDiscovery:broadDiscoveryCoverage(),opportunityValidation:{afterHours:true,shadowOnly:true,affectsBuyNow:false},owner:'scheduler-v1'};}
+export function scheduledCoverage(){return{...schedulerCoverage(),providerEnvelope:discoveryProviderEnvelope(),broadDiscovery:broadDiscoveryCoverage(),opportunityValidation:{afterHours:true,shadowOnly:true,affectsBuyNow:false},paperAction:{enabled:true,paperOnly:true,maxOpen:3,realTradingAuthority:false},owner:'scheduler-v1'};}
 
 async function runMarketScanCycle(env,{now,weekday,minutes,phase}){
   const operationKey=isOpeningScanSlot(weekday,minutes)?'opening-pipeline':'radar-scan-cycle';
   try{
     const radar=await runRadarDiscovery(env,{batchSize:RADAR_BATCH_SIZE,now}),promotion=await runScreenerPromotion(env,{maxPromotions:1,now});
-    const detail={phase,weekday,minutes,requested:radar.selected||null,scanned:(radar.scanned||[]).map(x=>x.symbol),leaders:(radar.leaders||[]).map(x=>x.symbol),promoted:(promotion.promoted||[]).map(x=>({symbol:x.symbol,status:x.status,readiness:x.readiness})),candidates:promotion.candidates||[],universeSize:Number(radar.universeSize)||0};
+    const paperAction=await runPaperActionSafely(env,now);
+    const detail={phase,weekday,minutes,requested:radar.selected||null,scanned:(radar.scanned||[]).map(x=>x.symbol),leaders:(radar.leaders||[]).map(x=>x.symbol),promoted:(promotion.promoted||[]).map(x=>({symbol:x.symbol,status:x.status,readiness:x.readiness})),candidates:promotion.candidates||[],paperOpened:(paperAction?.opened||[]).map(x=>x.symbol),paperClosed:(paperAction?.closed||[]).map(x=>x.symbol),universeSize:Number(radar.universeSize)||0};
     await recordOperation(env,operationKey,{status:detail.scanned.length?'OK':'IDLE',at:now,detail});
     console.log(JSON.stringify({event:'scheduled_market_scan_cycle',...detail}));
   }catch(error){
@@ -91,9 +93,9 @@ async function runMarketScanCycle(env,{now,weekday,minutes,phase}){
 }
 
 async function runPriorityCycle(env,{now,weekday,minutes}){
-  const pulse=await runPriorityExecutionPulse(env,{maxCandidates:2,now});
-  await recordOperation(env,'priority-execution',{status:'OK',at:now,detail:{weekday,minutes,candidates:pulse.candidates||[],pulsed:(pulse.pulsed||[]).map(row=>({symbol:row.symbol,status:row.status,gatesReady:row.gatesReady,rr:row.rr})),skipped:pulse.skipped||null}});
-  console.log(JSON.stringify({event:'priority_execution_cycle',...pulse}));
+  const pulse=await runPriorityExecutionPulse(env,{maxCandidates:2,now}),paperAction=await runPaperActionSafely(env,now);
+  await recordOperation(env,'priority-execution',{status:'OK',at:now,detail:{weekday,minutes,candidates:pulse.candidates||[],pulsed:(pulse.pulsed||[]).map(row=>({symbol:row.symbol,status:row.status,gatesReady:row.gatesReady,rr:row.rr})),paperOpened:(paperAction?.opened||[]).map(x=>x.symbol),paperClosed:(paperAction?.closed||[]).map(x=>x.symbol),skipped:pulse.skipped||null}});
+  console.log(JSON.stringify({event:'priority_execution_cycle',...pulse,paperOpened:(paperAction?.opened||[]).map(x=>x.symbol),paperClosed:(paperAction?.closed||[]).map(x=>x.symbol)}));
 }
 
 async function runPortfolioPulseCycle(env,{now,weekday,minutes}){
@@ -151,5 +153,6 @@ async function runBackgroundSummary(env,{weekday,now,weekend}){
   console.log(JSON.stringify({event:weekend?'weekend_background_summary':'daily_background_summary',weekday,symbol:top?.symbol||null,...push}));
 }
 
+async function runPaperActionSafely(env,now){try{return await runPaperActionCycle(env,{now});}catch(error){console.error(JSON.stringify({event:'paper_action_cycle_error',message:error?.message||String(error),realTradingAuthority:false}));return null;}}
 function bestSummaryCandidate(rows){return(rows||[]).find(row=>row?.bucket&&row.bucket!=='AVOID')||(rows||[])[0]||null;}
 function easternParts(date){const parts=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',weekday:'short',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(date);return Object.fromEntries(parts.map(x=>[x.type,x.value]));}

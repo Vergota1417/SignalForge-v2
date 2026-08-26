@@ -7,6 +7,7 @@ import { MIN_BUY_REWARD_RISK } from './hard-guardrails.js';
 import { runScheduledCycle, scheduledCoverage } from './scheduler.js';
 import { configuredProviders } from './market.js';
 import { getDiscoveryStatus } from './discovery.js';
+import { getPaperActionSnapshot, PAPER_ACTION_MAX_OPEN, PAPER_ACTION_MIN_READINESS, PAPER_ACTION_MIN_RR } from './paper-action.js';
 import { getOpportunityValidation, OPPORTUNITY_EPISODE_START_SCORE, OPPORTUNITY_REVIEW_MIN_SAMPLE } from './opportunity-validation.js';
 
 const SELF_TEST_COOLDOWN_MS=60_000;
@@ -22,6 +23,10 @@ export default {
         const plan=buildTradePlan(saved.analysis);return json({symbol,updatedAt:saved.updatedAt,status:saved.analysis.status,readiness:saved.analysis.readiness,plan});
       }catch(error){console.error(JSON.stringify({event:'trade_plan_request_error',message:error?.message||String(error)}));return json({error:'Trade plan is temporarily unavailable.'},500);}
     }
+    if(url.pathname==='/api/paper-actions'){
+      if(request.method!=='GET')return json({error:'Method not allowed.'},405);
+      try{return json({paperAction:await getPaperActionSnapshot(env)});}catch(error){console.error(JSON.stringify({event:'paper_action_request_error',message:error?.message||String(error)}));return json({error:'MarketPulse paper actions are temporarily unavailable.'},500);}
+    }
     if(url.pathname==='/api/opportunity-validation'){
       if(request.method!=='GET')return json({error:'Method not allowed.'},405);
       try{return json({validation:await getOpportunityValidation(env,{horizon:normalizeOpportunityHorizon(url.searchParams.get('horizon')),minSample:clampInt(url.searchParams.get('minSample'),OPPORTUNITY_REVIEW_MIN_SAMPLE,100,OPPORTUNITY_REVIEW_MIN_SAMPLE)})});}
@@ -33,7 +38,7 @@ export default {
     if(url.pathname==='/api/health'&&request.method==='GET'){
       const response=await app.fetch(request,env,ctx);if(!response.ok)return response;
       const body=await response.json(),marketDataProviders=configuredProviders(env),marketDataConfigured=Boolean(marketDataProviders.alpaca||marketDataProviders.twelveData),discovery=await getDiscoveryStatus(env),providerDailyCap=Number(env.MAX_PROVIDER_REQUESTS_PER_DAY)||700;
-      return json({...body,marketDataConfigured,marketDataProviders,discoveryPoolSize:discovery.configuredPoolSize,discoveryCoverage:{weekKey:discovery.weekKey,configuredPoolSize:discovery.configuredPoolSize,currentWeeklyPoolSize:discovery.currentWeeklyPoolSize,poolFillPct:discovery.poolFillPct,catalogSize:discovery.catalogSize,scannedSymbols:discovery.scannedSymbols,lastScanned:discovery.lastScanned,catalogUpdatedAt:discovery.catalogUpdatedAt},scheduler:scheduledCoverage(),tradePlan:true,postBuyManager:true,portfolioPricePulseMinutes:5,partialProfitManagement:true,opportunityScoreValidation:{enabled:true,shadowOnly:true,affectsBuyNow:false,episodeStartScore:OPPORTUNITY_EPISODE_START_SCORE,reviewMinSample:OPPORTUNITY_REVIEW_MIN_SAMPLE,endpoint:'/api/opportunity-validation'},guardrails:{hardBuyAuthorization:true,minBuyRewardRisk:MIN_BUY_REWARD_RISK,participationRequired:true,thesisMustRemainIntact:true,overextensionHardBlock:true,backgroundUiReadMinutes:5,cacheOnlyChartReadMinutes:30,patternNetworkUiEnabled:false,opportunityScoreAffectsBuyNow:false,providerDailyCap,reliabilityCiWorkflow:true}});
+      return json({...body,marketDataConfigured,marketDataProviders,discoveryPoolSize:discovery.configuredPoolSize,discoveryCoverage:{weekKey:discovery.weekKey,configuredPoolSize:discovery.configuredPoolSize,currentWeeklyPoolSize:discovery.currentWeeklyPoolSize,poolFillPct:discovery.poolFillPct,catalogSize:discovery.catalogSize,scannedSymbols:discovery.scannedSymbols,lastScanned:discovery.lastScanned,catalogUpdatedAt:discovery.catalogUpdatedAt},scheduler:scheduledCoverage(),tradePlan:true,postBuyManager:true,portfolioPricePulseMinutes:5,partialProfitManagement:true,paperAction:{enabled:true,endpoint:'/api/paper-actions',paperOnly:true,maxOpen:PAPER_ACTION_MAX_OPEN,minReadiness:PAPER_ACTION_MIN_READINESS,minRewardRisk:PAPER_ACTION_MIN_RR,realTradingAuthority:false},opportunityScoreValidation:{enabled:true,shadowOnly:true,affectsBuyNow:false,episodeStartScore:OPPORTUNITY_EPISODE_START_SCORE,reviewMinSample:OPPORTUNITY_REVIEW_MIN_SAMPLE,endpoint:'/api/opportunity-validation'},guardrails:{hardBuyAuthorization:true,minBuyRewardRisk:MIN_BUY_REWARD_RISK,participationRequired:true,thesisMustRemainIntact:true,overextensionHardBlock:true,backgroundUiReadMinutes:5,cacheOnlyChartReadMinutes:30,patternNetworkUiEnabled:false,opportunityScoreAffectsBuyNow:false,paperActionCannotAuthorizeRealTrade:true,providerDailyCap,reliabilityCiWorkflow:true}});
     }
     if(url.pathname!=='/api/backend-self-test')return app.fetch(request,env,ctx);
     if(request.method!=='POST')return json({error:'Method not allowed.'},405);
