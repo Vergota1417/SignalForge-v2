@@ -6,7 +6,7 @@ import { buildTradePlan } from './trade-plan.js';
 import { MIN_BUY_REWARD_RISK } from './hard-guardrails.js';
 import { runScheduledCycle, scheduledCoverage } from './scheduler.js';
 import { configuredProviders } from './market.js';
-import { getOpportunityValidation, isOpportunityValidationSlot, OPPORTUNITY_EPISODE_START_SCORE, OPPORTUNITY_REVIEW_MIN_SAMPLE, runOpportunityValidationCycle } from './opportunity-validation.js';
+import { getOpportunityValidation, OPPORTUNITY_EPISODE_START_SCORE, OPPORTUNITY_REVIEW_MIN_SAMPLE } from './opportunity-validation.js';
 
 const SELF_TEST_COOLDOWN_MS=60_000;
 
@@ -45,15 +45,9 @@ export default {
       return json({selfTest});
     }catch(error){console.error(JSON.stringify({event:'backend_self_test_request_error',message:error?.message||String(error)}));return json({error:String(error?.message||'Backend self-test failed.')},500);}
   },
-  scheduled(controller,env,ctx){const at=Number(controller.scheduledTime)||Date.now();ctx.waitUntil(runProductionSchedule(env,at));}
+  scheduled(controller,env,ctx){ctx.waitUntil(runScheduledCycle(env,Number(controller.scheduledTime)||Date.now()));}
 };
 
-async function runProductionSchedule(env,at){
-  await runScheduledCycle(env,at);
-  if(!isOpportunityValidationSlot(at))return;
-  try{const result=await runOpportunityValidationCycle(env,{now:at,maxSymbols:3});console.log(JSON.stringify({event:'opportunity_score_validation_cycle',status:result.validation.status,completedEpisodes:result.validation.completedEpisodes,pendingEpisodes:result.validation.pendingEpisodes,trackerOutcomes:result.tracker.outcomesCompleted,affectsBuyNow:false}));}
-  catch(error){console.error(JSON.stringify({event:'opportunity_score_validation_cycle_error',message:error?.message||String(error),affectsBuyNow:false}));}
-}
 function managedPositionSort(a,b){const order={'SELL / EXIT':5,'TAKE PARTIAL PROFIT':4,'REDUCE':3,'PROTECT PROFIT':2,'HOLD':1};const d=(order[b?.strategy?.state]||0)-(order[a?.strategy?.state]||0);if(d)return d;return(Number(b?.strategy?.continuationWeakness)||0)-(Number(a?.strategy?.continuationWeakness)||0);}
 async function readJson(request){const text=await request.text();if(text.length>10_000)throw new Error('Self-test request is too large.');try{return text?JSON.parse(text):{};}catch{throw new Error('Invalid JSON payload.');}}
 function sanitizeSymbol(v){const s=String(v||'').trim().toUpperCase().replace(/[^A-Z.]/g,'').slice(0,6);return/^[A-Z]{1,5}(?:\.[A-Z])?$/.test(s)?s:'';}
