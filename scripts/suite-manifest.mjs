@@ -62,7 +62,8 @@ export const PRODUCTION_GUARDRAIL_TESTS=Object.freeze([
   'scripts/test-stage14-39-central-production-policy.mjs',
   'scripts/test-stage14-40-request-data-ownership.mjs',
   'scripts/test-stage14-41-d1-schema-ownership.mjs',
-  'scripts/test-stage14-42-test-ci-architecture.mjs'
+  'scripts/test-stage14-42-test-ci-architecture.mjs',
+  'scripts/test-stage14-43-discovery-schedule-ownership.mjs'
 ]);
 
 // These files document superseded behavior. They remain available for archaeology,
