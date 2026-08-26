@@ -52,7 +52,8 @@ export const BASELINE_TESTS=Object.freeze([
   'scripts/test-stage15-1-market-data-gateway.mjs',
   'scripts/test-stage15-2-discovery-expansion.mjs',
   'scripts/test-stage15-3-quote-gateway.mjs',
-  'scripts/test-stage15-4-provider-runtime.mjs'
+  'scripts/test-stage15-4-provider-runtime.mjs',
+  'scripts/test-stage15-5-opportunity-trade-confidence.mjs'
 ]);
 
 export const PRODUCTION_GUARDRAIL_TESTS=Object.freeze([
@@ -70,8 +71,6 @@ export const PRODUCTION_GUARDRAIL_TESTS=Object.freeze([
   'scripts/test-stage14-43-discovery-schedule-ownership.mjs'
 ]);
 
-// These files document superseded behavior. They remain available for archaeology,
-// but CI must not require them because their network-enabled Pattern UI was deliberately quarantined.
 export const HISTORICAL_DISABLED_TESTS=Object.freeze([
   'scripts/test-stage14-30-pattern-overlay-controls.mjs',
   'scripts/test-stage14-31-live-pattern-context-bridge.mjs'
