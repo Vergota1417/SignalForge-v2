@@ -53,7 +53,8 @@ export const BASELINE_TESTS=Object.freeze([
   'scripts/test-stage15-2-discovery-expansion.mjs',
   'scripts/test-stage15-3-quote-gateway.mjs',
   'scripts/test-stage15-4-provider-runtime.mjs',
-  'scripts/test-stage15-5-opportunity-trade-confidence.mjs'
+  'scripts/test-stage15-5-opportunity-trade-confidence.mjs',
+  'scripts/test-stage15-6-marketpulse-opportunities-ui.mjs'
 ]);
 
 export const PRODUCTION_GUARDRAIL_TESTS=Object.freeze([
