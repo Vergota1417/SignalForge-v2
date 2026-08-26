@@ -1,6 +1,7 @@
 import { TIMEFRAMES } from './constants.js';
 import { getCachedMarket, putCachedMarket, getCachedSymbolSearch, putCachedSymbolSearch } from './db.js';
 import { getMarketData as getTwelveDataMarketData, searchSymbols as searchTwelveDataSymbols } from './twelve-data-provider.js';
+import { cachePolicyFor, cacheProviderMatches, cacheSourceTag, candleFreshness, fallbackDetail, parseCacheSource, providerLabel } from './data-freshness.js';
 
 const DEFAULT_PROVIDER='auto';
 const ASSET_CACHE_TTL_MS=6*60*60*1000;
@@ -8,24 +9,25 @@ let alpacaAssetCache={fetchedAt:0,rows:[]};
 
 export async function getCandles(env,symbol,timeframe,options={}){
   const cfg=TIMEFRAMES[timeframe];if(!cfg)throw new Error('Unsupported timeframe.');
-  const forceRefresh=Boolean(options.forceRefresh),completedOnly=Boolean(options.completedOnly);
+  const forceRefresh=Boolean(options.forceRefresh),completedOnly=Boolean(options.completedOnly),purpose=String(options.purpose||`time-series-${String(timeframe).toLowerCase()}`),provider=normalizeProvider(options.provider||env.MARKET_DATA_PROVIDER||DEFAULT_PROVIDER),policy=cachePolicyFor(timeframe,{purpose});
+  let staleCandidate=null;
   if(!forceRefresh){
-    const cached=await getCachedMarket(env,symbol,timeframe,cfg.cacheSeconds*1000);
-    if(cached){
-      const candles=completedOnly?removeIncompleteHigherTimeframeBar(cached.candles,timeframe,Date.now()):cached.candles;
-      validateMinimumHistory(candles,timeframe);
-      return{...cached,candles,quality:qualitySummary({rawBars:cached.candles.length,acceptedBars:candles.length,formingBarsRemoved:cached.candles.length-candles.length,historyRequired:minimumHistory(timeframe),cacheDerived:true})};
-    }
+    const cached=await getCachedMarket(env,symbol,timeframe,policy.ttlMs);
+    if(cached&&cacheProviderMatches(provider,cached.source))return cachedMarketResult(cached,timeframe,{completedOnly,ttlMs:policy.ttlMs});
+    if(policy.staleIfErrorMs>policy.ttlMs){const stale=await getCachedMarket(env,symbol,timeframe,policy.staleIfErrorMs);if(stale&&cacheProviderMatches(provider,stale.source))staleCandidate=stale;}
   }
 
-  const provider=normalizeProvider(options.provider||env.MARKET_DATA_PROVIDER||DEFAULT_PROVIDER),ordered=providerOrder(provider,env);let lastError=null;
+  const ordered=providerOrder(provider,env);let lastError=null;const failures=[];
   if(!ordered.length)throw new Error('No market-data provider is configured.');
   for(const candidate of ordered){
     try{
-      if(candidate==='alpaca')return await getAlpacaCandles(env,symbol,timeframe,{...options,completedOnly});
-      if(candidate==='twelve-data')return await getTwelveDataMarketData(env,symbol,timeframe,forceRefresh,{...options,completedOnly});
-    }catch(error){lastError=error;if(provider!=='auto')throw error;}
+      let result;
+      if(candidate==='alpaca')result=await getAlpacaCandles(env,symbol,timeframe,{...options,completedOnly,purpose});
+      if(candidate==='twelve-data')result=await getTwelveDataMarketData(env,symbol,timeframe,true,{...options,completedOnly,purpose});
+      if(result){const fallback=failures.length?fallbackDetail(failures[0].provider,failures[0].message):null;return decorateProviderResult(result,{provider:candidate,ttlMs:policy.ttlMs,fallback});}
+    }catch(error){lastError=error;failures.push({provider:candidate,message:error?.message||String(error)});if(provider!=='auto')throw error;}
   }
+  if(staleCandidate&&!policy.executionSensitive){const reason=failures.map(x=>`${x.provider}: ${x.message}`).join(' · ')||'providers unavailable';return cachedMarketResult(staleCandidate,timeframe,{completedOnly,ttlMs:policy.ttlMs,staleFallback:true,fallback:fallbackDetail(failures[0]?.provider||'unknown',reason)});}
   throw lastError||new Error('No configured market-data provider could return candle data.');
 }
 
@@ -54,13 +56,23 @@ export function normalizeProvider(value){const p=String(value||'').trim().toLowe
 export function minimumHistory(timeframe){return({'1D':1,'5D':60,'1M':60,'3M':60,'6M':100,'1Y':120,'2Y':80})[timeframe]??60;}
 
 async function getAlpacaCandles(env,symbol,timeframe,options={}){
-  assertAlpaca(env);const tf=alpacaTimeframe(timeframe),url=new URL(`https://data.alpaca.markets/v2/stocks/${encodeURIComponent(symbol)}/bars`);
-  url.searchParams.set('timeframe',tf.timeframe);url.searchParams.set('limit',String(tf.limit));url.searchParams.set('adjustment','raw');url.searchParams.set('feed',String(options.feed||env.ALPACA_DATA_FEED||'iex'));url.searchParams.set('sort','asc');
-  if(tf.startDaysAgo)url.searchParams.set('start',new Date(Date.now()-tf.startDaysAgo*86_400_000).toISOString());
+  assertAlpaca(env);const tf=alpacaTimeframe(timeframe),feed=String(options.feed||env.ALPACA_DATA_FEED||'iex').toLowerCase(),now=Date.now(),url=new URL(`https://data.alpaca.markets/v2/stocks/${encodeURIComponent(symbol)}/bars`);
+  url.searchParams.set('timeframe',tf.timeframe);url.searchParams.set('limit',String(tf.limit));url.searchParams.set('adjustment','raw');url.searchParams.set('feed',feed);url.searchParams.set('sort','asc');
+  if(tf.startDaysAgo)url.searchParams.set('start',new Date(now-tf.startDaysAgo*86_400_000).toISOString());
   const payload=await fetchAlpacaJson(env,url),bars=Array.isArray(payload?.bars)?payload.bars:[];if(!bars.length)throw new Error('Alpaca returned no bars.');
-  const parsed=bars.map(b=>({time:Date.parse(b.t),open:Number(b.o),high:Number(b.h),low:Number(b.l),close:Number(b.c),volume:Number(b.v||0)})).filter(validCandle),deduped=dedupeAndSortCandles(parsed);let candles=options.completedOnly?removeIncompleteHigherTimeframeBar(deduped,timeframe,Date.now()):deduped;validateMinimumHistory(candles,timeframe);
-  const fetchedAt=await putCachedMarket(env,symbol,timeframe,'Alpaca',deduped);
-  return{candles,source:'Alpaca',cached:false,fetchedAt,quality:qualitySummary({rawBars:bars.length,acceptedBars:candles.length,rejectedBars:bars.length-parsed.length,duplicatesRemoved:parsed.length-deduped.length,formingBarsRemoved:deduped.length-candles.length,historyRequired:minimumHistory(timeframe),cacheDerived:false})};
+  const parsed=bars.map(b=>({time:Date.parse(b.t),open:Number(b.o),high:Number(b.h),low:Number(b.l),close:Number(b.c),volume:Number(b.v||0)})).filter(validCandle),deduped=dedupeAndSortCandles(parsed);let candles=options.completedOnly?removeIncompleteHigherTimeframeBar(deduped,timeframe,now):deduped;validateMinimumHistory(candles,timeframe);
+  const dataTimestamp=Number(deduped.at(-1)?.time)||0,fetchedAt=await putCachedMarket(env,symbol,timeframe,cacheSourceTag({provider:'alpaca',feed,dataTimestamp}),deduped),ttlMs=cachePolicyFor(timeframe,{purpose:options.purpose}).ttlMs;
+  return{candles,source:'Alpaca',provider:'alpaca',feed,cached:false,fetchedAt,dataTimestamp,freshness:candleFreshness({fetchedAt,dataTimestamp,cached:false,ttlMs,now}),quality:qualitySummary({rawBars:bars.length,acceptedBars:candles.length,rejectedBars:bars.length-parsed.length,duplicatesRemoved:parsed.length-deduped.length,formingBarsRemoved:deduped.length-candles.length,historyRequired:minimumHistory(timeframe),cacheDerived:false})};
+}
+
+function cachedMarketResult(cached,timeframe,{completedOnly=false,ttlMs=0,staleFallback=false,fallback=null}={}){
+  const meta=parseCacheSource(cached.source),raw=Array.isArray(cached.candles)?cached.candles:[],candles=completedOnly?removeIncompleteHigherTimeframeBar(raw,timeframe,Date.now()):raw;validateMinimumHistory(candles,timeframe);const dataTimestamp=meta.dataTimestamp||Number(raw.at(-1)?.time)||0;
+  return{...cached,source:meta.providerLabel,provider:meta.provider,feed:meta.feed,candles,dataTimestamp,freshness:candleFreshness({fetchedAt:cached.fetchedAt,dataTimestamp,cached:true,ttlMs,staleFallback}),fallback,quality:qualitySummary({rawBars:raw.length,acceptedBars:candles.length,formingBarsRemoved:raw.length-candles.length,historyRequired:minimumHistory(timeframe),cacheDerived:true})};
+}
+
+function decorateProviderResult(result,{provider,ttlMs,fallback=null}={}){
+  const sourceMeta=parseCacheSource(result?.source),resolvedProvider=result?.provider||provider||sourceMeta.provider,resolvedFeed=String(result?.feed||sourceMeta.feed||'unknown'),dataTimestamp=Number(result?.dataTimestamp)||Number(result?.candles?.at(-1)?.time)||0,fetchedAt=Number(result?.fetchedAt)||Date.now();
+  return{...result,source:providerLabel(resolvedProvider),provider:resolvedProvider,feed:resolvedFeed,dataTimestamp,freshness:result?.freshness||candleFreshness({fetchedAt,dataTimestamp,cached:Boolean(result?.cached),ttlMs}),fallback};
 }
 
 async function searchAlpacaAssets(env,query){const q=String(query||'').trim().toUpperCase(),rows=await getAlpacaAssets(env),results=rows.filter(isEligibleAlpacaAsset).filter(a=>!q||String(a.symbol).toUpperCase().includes(q)||String(a.name||'').toUpperCase().includes(q)).slice(0,12).map(a=>({symbol:String(a.symbol).toUpperCase(),name:String(a.name||a.symbol),exchange:String(a.exchange||''),micCode:'',type:assetSecurityType(a),country:'United States',currency:'USD',plan:'alpaca'}));return{results,cached:false,fetchedAt:Date.now(),source:'Alpaca'};}
