@@ -47,9 +47,14 @@ assert.equal(isOpportunityValidationSlot(Date.UTC(2026,7,26,20,0,0)),false,'16:0
 assert.equal(isOpportunityValidationSlot(Date.UTC(2026,7,29,22,15,0)),false,'weekend validation must remain disabled');
 
 const entry=fs.readFileSync(new URL('../src/entry.js',import.meta.url),'utf8');
+const scheduler=fs.readFileSync(new URL('../src/scheduler.js',import.meta.url),'utf8');
 const validator=fs.readFileSync(new URL('../src/opportunity-validation.js',import.meta.url),'utf8');
 assert.match(entry,/\/api\/opportunity-validation/,'production must expose read-only Opportunity Score validation status');
-assert.match(entry,/runOpportunityValidationCycle/,'production scheduled owner must run Opportunity Score validation after hours');
+assert.match(entry,/ctx\.waitUntil\(runScheduledCycle\(/,'entry must keep delegating scheduled work to the sole scheduler owner');
+assert.doesNotMatch(entry,/runOpportunityValidationCycle/,'entry must not become a second Opportunity Score schedule owner');
+assert.match(scheduler,/runOpportunityValidationCycle/,'scheduler owner must run Opportunity Score validation after hours');
+assert.match(scheduler,/async function runAfterHoursCycle/,'Opportunity validation must remain in the existing after-hours lane');
+assert.match(scheduler,/opportunityValidation:\{afterHours:true,shadowOnly:true,affectsBuyNow:false\}/,'scheduler coverage must expose shadow-only Opportunity validation');
 assert.match(entry,/opportunityScoreAffectsBuyNow:false/,'health must explicitly preserve the BUY firewall');
 assert.match(validator,/runOutcomeTracker/,'Opportunity validation must reuse the existing forward-outcome tracker');
 assert.match(validator,/FIRST_THRESHOLD_CROSSING_PER_EPISODE/,'validation must count episodes rather than repeated 15-minute observations');
