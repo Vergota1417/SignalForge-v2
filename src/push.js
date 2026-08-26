@@ -41,6 +41,13 @@ export async function broadcastBackgroundSummaryPush(env,{dayLabel='Today',top=n
   return broadcast(env,payload,`summary-${dayKey}`,43_200,'normal');
 }
 
+export async function broadcastPaperActionPush(env,{action,position=null,trade=null,occurredAt=Date.now()}={}){
+  if(!pushConfigured(env))return{sent:0,failed:0,removed:0,skipped:true};
+  const opening=String(action||'').toUpperCase()==='OPEN',row=opening?position:trade,symbol=String(row?.symbol||'').toUpperCase();if(!symbol)return{sent:0,failed:0,removed:0,skipped:true};
+  if(opening){const entry=Number(row.entryPrice)||0,stop=Number(row.stop)||0,target=Number(row.target)||0,rr=Number(row.rr)||0,readiness=Number(row.readiness)||0,reason=String(row.reason||'Near-ready setup entered the paper test.');const status='PAPER BUY — TESTING',payload={kind:'paper-action-open',title:`🧪 ${symbol} · ${status}`,body:`Paper entry $${entry.toFixed(2)} · stop $${stop.toFixed(2)} · target $${target.toFixed(2)}\n${readiness.toFixed(0)}% readiness · ${rr.toFixed(2)}:1 R/R\n${reason}`,symbol,status,price:entry,stop,target,rr,readiness,reason,url:buildAlertUrl({symbol,status,reason,occurredAt,kind:'paper-action-open'}),occurredAt:new Date(occurredAt).toISOString()};return broadcast(env,payload,`paper-open-${symbol}`,1800);}
+  const pnlPct=Number(row?.pnlPct)||0,entry=Number(row?.entryPrice)||0,exit=Number(row?.exitPrice)||0,status=String(row?.exitStatus||'PAPER CLOSED'),reason=String(row?.exitReason||'Paper position closed.');const payload={kind:'paper-action-close',title:`${pnlPct>=0?'✅':'🛑'} ${symbol} · ${status}`,body:`Paper ${entry.toFixed(2)} → ${exit.toFixed(2)} · ${pnlPct>=0?'+':''}${(pnlPct*100).toFixed(2)}%\n${reason}`,symbol,status,previousStatus:'PAPER BUY — TESTING',price:exit,pnlPct,reason,url:buildAlertUrl({symbol,status,previousStatus:'PAPER BUY — TESTING',reason,occurredAt,kind:'paper-action-close'}),occurredAt:new Date(occurredAt).toISOString()};return broadcast(env,payload,`paper-close-${symbol}-${status}`,1800);
+}
+
 export async function sendTestPush(env, subscription) {
   if(!pushConfigured(env)) throw new Error('Push notifications are not configured yet.');
   const occurredAt=Date.now(),reason='Push notifications are working on this device.';
