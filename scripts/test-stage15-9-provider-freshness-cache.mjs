@@ -49,6 +49,8 @@ const pkg=JSON.parse(fs.readFileSync(new URL('../package.json',import.meta.url),
 const analysis=fs.readFileSync(new URL('../src/analysis.js',import.meta.url),'utf8');
 
 assert.match(gateway,/cacheProviderMatches\(provider,cached\.source\)/,'candle cache reuse must respect explicit provider selection');
+assert.match(gateway,/cacheAllowedForPolicy\(cached\.source,policy\)/,'execution-sensitive cache reads must reject delayed feeds');
+assert.match(gateway,/policy\.executionSensitive&&feed==='delayed_sip'/,'delayed Alpaca candles must be blocked from execution-sensitive network reads');
 assert.match(gateway,/staleCandidate&&!policy\.executionSensitive/,'stale-on-error candle fallback must be blocked for execution-sensitive purposes');
 assert.match(gateway,/fallbackDetail\(failures\[0\]\.provider/,'provider fallback reason must be retained');
 assert.match(gateway,/cacheSourceTag\(\{provider:'alpaca',feed,dataTimestamp\}\)/,'Alpaca candle cache must persist provider/feed identity while deriving timestamps from cached bars');
@@ -61,6 +63,7 @@ assert.match(quarantine,/status===404\|\|message\.includes\('symbol not found'\)
 assert.match(entry,/url\.pathname==='\/api\/screener'/,'production screener response must be enriched with provider/feed freshness');
 assert.match(entry,/marketDataFeedHealth:summarizeFeedHealth\(recentQuotes\)/,'health must expose recent provider/feed health from D1 quotes');
 assert.match(entry,/staleMarketDataCannotAuthorizeBuy:true/,'health must declare the stale-data BUY firewall');
+assert.match(entry,/delayedMarketDataCannotAuthorizeBuy:true/,'health must declare the delayed-feed BUY firewall');
 assert.match(ui,/dataFreshness/,'MarketPulse cards must render freshness state');
 assert.match(ui,/dataFallback\?\.used/,'MarketPulse cards must mark fallback provider rows');
 assert.match(ui,/Alpaca/,'MarketPulse cards must render provider identity');
