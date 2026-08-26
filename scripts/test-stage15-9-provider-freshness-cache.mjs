@@ -4,7 +4,8 @@ import { buildAlpacaQuote } from '../src/market-quote-gateway.js';
 import { cachePolicyFor, cacheProviderMatches, cacheSourceTag, candleFreshness, parseCacheSource, quoteFreshness, quoteUsableForDiscovery, summarizeFeedHealth } from '../src/data-freshness.js';
 
 const tag=cacheSourceTag({provider:'alpaca',feed:'iex',dataTimestamp:123456});
-assert.deepEqual(parseCacheSource(tag),{provider:'alpaca',providerLabel:'Alpaca',feed:'iex',dataTimestamp:123456,legacy:false},'cache identity must preserve provider/feed/data timestamp');
+assert.equal(tag,'Alpaca [iex]','stored cache source must stay human-readable for legacy cache-only chart responses');
+assert.deepEqual(parseCacheSource(tag),{provider:'alpaca',providerLabel:'Alpaca',feed:'iex',dataTimestamp:0,legacy:false},'cache identity must preserve provider/feed without leaking an internal tag');
 assert.equal(cacheProviderMatches('alpaca',tag),true);
 assert.equal(cacheProviderMatches('twelve-data',tag),false,'explicit provider requests must not reuse another provider cache');
 assert.equal(cacheProviderMatches('auto',tag),true,'auto mode may reuse a valid shared provider cache');
@@ -50,8 +51,8 @@ const analysis=fs.readFileSync(new URL('../src/analysis.js',import.meta.url),'ut
 assert.match(gateway,/cacheProviderMatches\(provider,cached\.source\)/,'candle cache reuse must respect explicit provider selection');
 assert.match(gateway,/staleCandidate&&!policy\.executionSensitive/,'stale-on-error candle fallback must be blocked for execution-sensitive purposes');
 assert.match(gateway,/fallbackDetail\(failures\[0\]\.provider/,'provider fallback reason must be retained');
-assert.match(gateway,/cacheSourceTag\(\{provider:'alpaca',feed,dataTimestamp\}\)/,'Alpaca candle cache must persist feed identity and data timestamp');
-assert.match(twelve,/cacheSourceTag\(\{provider:'twelve-data',feed,dataTimestamp\}\)/,'Twelve Data candle cache must persist compatible feed identity');
+assert.match(gateway,/cacheSourceTag\(\{provider:'alpaca',feed,dataTimestamp\}\)/,'Alpaca candle cache must persist provider/feed identity while deriving timestamps from cached bars');
+assert.match(twelve,/cacheSourceTag\(\{provider:'twelve-data',feed,dataTimestamp\}\)/,'Twelve Data candle cache must persist compatible provider/feed identity');
 assert.match(quoteGateway,/latestTrade\?\.t/,'Alpaca quote freshness must use provider timestamps rather than request time');
 assert.match(quoteGateway,/payload\.timestamp/,'Twelve Data quote freshness must use provider timestamp when available');
 assert.match(quoteGateway,/fallback:fallbackDetail\('alpaca'/,'Twelve fallback rows must explain that Alpaca was the failed primary');
