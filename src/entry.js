@@ -5,6 +5,7 @@ import { runBackendSelfTest } from './self-test.js';
 import { buildTradePlan } from './trade-plan.js';
 import { MIN_BUY_REWARD_RISK } from './hard-guardrails.js';
 import { runScheduledCycle, scheduledCoverage } from './scheduler.js';
+import { configuredProviders } from './market.js';
 
 const SELF_TEST_COOLDOWN_MS=60_000;
 
@@ -23,9 +24,9 @@ export default {
       const response=await app.fetch(request,env,ctx);if(!response.ok)return response;const body=await response.json();if(Array.isArray(body.positions))body.positions.sort(managedPositionSort);return json(body);
     }
     if(url.pathname==='/api/health'&&request.method==='GET'){
-      const response=await app.fetch(request,env,ctx);if(!response.ok)return response;const body=await response.json();
+      const response=await app.fetch(request,env,ctx);if(!response.ok)return response;const body=await response.json(),marketDataProviders=configuredProviders(env),marketDataConfigured=Boolean(marketDataProviders.alpaca||marketDataProviders.twelveData);
       const providerDailyCap=Number(env.MAX_PROVIDER_REQUESTS_PER_DAY)||700;
-      return json({...body,scheduler:scheduledCoverage(),tradePlan:true,postBuyManager:true,portfolioPricePulseMinutes:5,partialProfitManagement:true,guardrails:{hardBuyAuthorization:true,minBuyRewardRisk:MIN_BUY_REWARD_RISK,participationRequired:true,thesisMustRemainIntact:true,overextensionHardBlock:true,backgroundUiReadMinutes:5,cacheOnlyChartReadMinutes:30,patternNetworkUiEnabled:false,providerDailyCap,reliabilityCiWorkflow:true}});
+      return json({...body,marketDataConfigured,marketDataProviders,scheduler:scheduledCoverage(),tradePlan:true,postBuyManager:true,portfolioPricePulseMinutes:5,partialProfitManagement:true,guardrails:{hardBuyAuthorization:true,minBuyRewardRisk:MIN_BUY_REWARD_RISK,participationRequired:true,thesisMustRemainIntact:true,overextensionHardBlock:true,backgroundUiReadMinutes:5,cacheOnlyChartReadMinutes:30,patternNetworkUiEnabled:false,providerDailyCap,reliabilityCiWorkflow:true}});
     }
     if(url.pathname!=='/api/backend-self-test')return app.fetch(request,env,ctx);
     if(request.method!=='POST')return json({error:'Method not allowed.'},405);
