@@ -48,7 +48,8 @@ export const BASELINE_TESTS=Object.freeze([
   'scripts/test-stage14-24-pattern-validation-health.mjs',
   'scripts/test-stage14-25-pattern-episode-validation.mjs',
   'scripts/test-stage14-26-decision-episode-validation.mjs',
-  'scripts/test-stage14-27-setup-thesis-validation.mjs'
+  'scripts/test-stage14-27-setup-thesis-validation.mjs',
+  'scripts/test-stage15-1-market-data-gateway.mjs'
 ]);
 
 export const PRODUCTION_GUARDRAIL_TESTS=Object.freeze([
