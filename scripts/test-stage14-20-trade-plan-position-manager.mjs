@@ -23,7 +23,13 @@ const managed=evaluateManagedPosition(holdingAnalysis,{symbol:'TEST',entryPrice:
 assert.equal(managed.state,'TAKE PARTIAL PROFIT','reaching the saved structure target should trigger partial-profit management');assert.equal(managed.partial.fraction,.25);assert.equal(managed.partial.shares,2);assert.equal(managed.partial.remainingShares,6);
 const exit=evaluateManagedPosition({...holdingAnalysis,latest:{close:94},status:'SELL / EXIT'},{symbol:'TEST',entryPrice:100,shares:8});assert.equal(exit.state,'SELL / EXIT','thesis failure must outrank partial-profit management');
 
-const entry=fs.readFileSync(new URL('../src/entry.js',import.meta.url),'utf8');assert.match(entry,/url\.pathname==='\/api\/trade-plan'/,'Worker entry must expose the trade-plan endpoint');assert.match(entry,/runPortfolioPricePulse\(env,\{maxPositions:1/,'spare five-minute lane must rotate one owned position');assert.match(entry,/app\.scheduled\(controller,env,ctx\)/,'candidate scheduler must continue running alongside the owned-position pulse');
+const entry=fs.readFileSync(new URL('../src/entry.js',import.meta.url),'utf8');
+const scheduler=fs.readFileSync(new URL('../src/scheduler.js',import.meta.url),'utf8');
+assert.match(entry,/url\.pathname==='\/api\/trade-plan'/,'Worker entry must expose the trade-plan endpoint');
+assert.match(entry,/runScheduledCycle/,'Worker entry must delegate scheduled work to the central scheduler owner');
+assert.match(scheduler,/runPortfolioPricePulse\(env,\{maxPositions:1,now\}\)/,'spare five-minute lane must rotate one owned position');
+assert.match(scheduler,/runPriorityExecutionPulse\(env,\{maxCandidates:2,now\}\)/,'candidate execution scheduler must continue running alongside the owned-position pulse');
+assert.match(scheduler,/Promise\.all\(\[\s*runPriorityCycle[\s\S]*runPortfolioPulseCycle/,'candidate and owned-position pulses must share one centrally owned five-minute slot');
 const weekly=fs.readFileSync(new URL('../src/weekly.js',import.meta.url),'utf8');assert.match(weekly,/purpose:'portfolio-price-pulse-5m'/,'owned-position monitor must use the bounded 5-minute price feed');assert.doesNotMatch(weekly,/recordAnalysisEvidence\(env,analysis,\{source:'portfolio-price-pulse/,'five-minute position pulses must not inflate full-model evidence');
 const push=fs.readFileSync(new URL('../src/push.js',import.meta.url),'utf8');assert.match(push,/TAKE PARTIAL PROFIT/,'partial-profit state must be push-alert eligible');
 const pwa=fs.readFileSync(new URL('../public/pwa.js',import.meta.url),'utf8');assert.match(pwa,/trade-plan-ui\.js/,'PWA must load the trade plan card');

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { executionProbeEligible, selectPriorityExecutionCandidates, selectPromotionCandidates } from '../src/screener.js';
 import { refreshPricePulseAnalysis } from '../src/execution-confirmation.js';
+import { isPriorityExecutionSlot } from '../src/scanner-schedule.js';
 
 const now=Date.now();
 const readyEngine={ready:true},failedEngine={ready:false};
@@ -41,9 +42,13 @@ const rotationSignals=[
 const rotated=selectPromotionCandidates([quote('HOT',40),quote('DUE',30)],rotationSignals,{now,limit:1});
 assert.equal(rotated[0]?.symbol,'DUE','overdue 15m confirmation should rotate ahead of a slightly stronger recently checked candidate');
 
+assert.equal(isPriorityExecutionSlot('Mon',590),true,'09:50 must remain a priority execution slot');
+assert.equal(isPriorityExecutionSlot('Fri',955),true,'Friday 15:55 must retain the priority lane');
+assert.equal(isPriorityExecutionSlot('Tue',600),false,'completed 15-minute boundaries must remain reserved for discovery/execution confirmation');
+const scheduler=fs.readFileSync(new URL('../src/scheduler.js',import.meta.url),'utf8');
+assert.match(scheduler,/runPriorityExecutionPulse\(env,\{maxCandidates:2,now\}\)/,'priority lane should cap itself at two candidates');
+assert.match(scheduler,/Promise\.all\(\[/,'priority execution and owned-position pulse should share the same scheduled slot without duplicate schedulers');
 const index=fs.readFileSync(new URL('../src/index.js',import.meta.url),'utf8');
-assert.match(index,/priorityExecutionSlot=minutes>=590&&minutes<=955&&minutes%5===0&&minutes%15!==0/,'priority lane must use spare five-minute slots only');
-assert.match(index,/runPriorityExecutionPulse\(env,\{maxCandidates:2/,'priority lane should cap itself at two candidates');
 assert.match(index,/adaptivePriorityExecution:true/,'health endpoint should expose adaptive scheduler');
 const screener=fs.readFileSync(new URL('../src/screener.js',import.meta.url),'utf8');
 assert.match(screener,/if\(executionProbeEligible\(analysis\)\)/,'full promotion must collect 15m data for eligible 3\/4 setups');

@@ -15,7 +15,8 @@ assert.match(entry,/\/api\/backend-self-test/,'Wrapper must expose the backend s
 assert.match(entry,/authorizeDevice/,'Self-test route must require an authorized SignalForge device.');
 assert.match(entry,/SELF_TEST_COOLDOWN_MS\s*=\s*60_000/,'Self-test must retain a one-minute cooldown.');
 assert.match(entry,/return app\.fetch\(request,env,ctx\)/,'Wrapper must delegate unrelated requests unchanged.');
-assert.match(entry,/return app\.scheduled\(controller,env,ctx\)/,'Wrapper must preserve scheduled execution.');
+assert.match(entry,/runScheduledCycle/,'Wrapper must preserve scheduled execution through the central scheduler owner.');
+assert.doesNotMatch(entry,/app\.scheduled\(/,'Wrapper must not maintain a second delegated scheduler path.');
 assert.match(selfTest,/purpose:'backend-self-test'/,'Provider usage must be labeled as backend self-test traffic.');
 assert.match(selfTest,/contaminatesEvidence:false/,'Self-test must explicitly state that it does not contaminate investment evidence.');
 assert.doesNotMatch(selfTest,/recordAnalysisEvidence|recordRadarEvidence|recordSignal\(/,'Self-test must not write synthetic investment evidence or signals.');

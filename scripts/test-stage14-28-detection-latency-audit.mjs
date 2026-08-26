@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { evaluateDetectionLatencyRows } from '../src/detection-latency.js';
-import { broadDiscoveryCoverage, isBroadDiscoverySlot } from '../src/scanner-schedule.js';
+import { broadDiscoveryCoverage, isBroadDiscoverySlot, isWeeklyResearchSlot } from '../src/scanner-schedule.js';
 
 const t=Date.parse('2026-08-25T13:45:00Z'),m15=15*60_000;
 const participation={criticalFailed:['entry'],participation:{pass:true,participationPass:true}};
@@ -32,21 +32,28 @@ assert.equal(eligible.assessment.validBuyMissed,'POSSIBLE_ENGINE_INCONSISTENCY')
 
 assert.equal(isBroadDiscoverySlot('Tue',585),true);
 assert.equal(isBroadDiscoverySlot('Tue',590),false);
-assert.equal(isBroadDiscoverySlot('Fri',585),false,'Friday broad discovery is currently outside the production schedule and must be reported explicitly');
+assert.equal(isBroadDiscoverySlot('Fri',585),true,'Friday broad discovery must start at 09:45 with the rest of the week');
+assert.equal(isBroadDiscoverySlot('Fri',930),true,'Friday broad discovery must remain active through 15:30');
+assert.equal(isWeeklyResearchSlot('Fri',840),false,'weekly research must not displace live Friday afternoon discovery');
+assert.equal(isWeeklyResearchSlot('Sat',675),true,'weekly research should begin Saturday after the live week is complete');
 const coverage=broadDiscoveryCoverage();
 assert.equal(coverage.startEt,'09:45');
 assert.equal(coverage.endEt,'15:30');
 assert.equal(coverage.extendedHours,false);
+assert.equal(coverage.fridayBroadDiscovery,true);
+assert.equal(coverage.maxScheduledRadarQuoteRequestsPerMarketDay,135);
+assert.match(coverage.weeklyResearchWindow,/Sat/);
 
 const evidence=fs.readFileSync(new URL('../src/evidence.js',import.meta.url),'utf8');
 const latency=fs.readFileSync(new URL('../src/detection-latency.js',import.meta.url),'utf8');
-const index=fs.readFileSync(new URL('../src/index.js',import.meta.url),'utf8');
+const scheduler=fs.readFileSync(new URL('../src/scheduler.js',import.meta.url),'utf8');
+const entry=fs.readFileSync(new URL('../src/entry.js',import.meta.url),'utf8');
 const html=fs.readFileSync(new URL('../public/index.html',import.meta.url),'utf8');
 assert.match(evidence,/import \{ MIN_BUY_REWARD_RISK \} from '\.\/hard-guardrails\.js'/,'evidence must consume the authoritative 1.80:1 BUY policy');
 assert.match(evidence,/rewardRiskMin:MIN_BUY_REWARD_RISK/,'evidence must persist the authoritative BUY threshold');
 assert.match(latency,/rewardRiskMin:MIN_BUY_REWARD_RISK/,'Stage 14.28 must consume the same authoritative BUY threshold');
-assert.match(index,/\/api\/detection-latency/);
-assert.match(index,/isBroadDiscoverySlot\(weekday,minutes\)/);
+assert.match(scheduler,/isBroadDiscoverySlot\(weekday,minutes\)/,'central scheduler must own broad discovery timing');
+assert.match(entry,/runScheduledCycle/,'production entry must delegate scheduled work to the central scheduler');
 assert.match(html,/detection-latency-ui\.js/);
 console.log('Stage 14.28 detection latency audit regression passed');
 
