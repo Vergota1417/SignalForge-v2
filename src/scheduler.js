@@ -144,6 +144,5 @@ async function runBackgroundSummary(env,{weekday,now,weekend}){
   console.log(JSON.stringify({event:weekend?'weekend_background_summary':'daily_background_summary',weekday,symbol:top?.symbol||null,...push}));
 }
 
-function bestSummaryCandidate(rows=[]){return[...(rows||[])].filter(Boolean).sort((a,b)=>summaryPriority(b)-summaryPriority(a)||Number(b.screenScore||0)-Number(a.screenScore||0))[0]||null;}
-function summaryPriority(row){const action=String(row?.unifiedAction?.action||row?.status||''),order={'BUY NOW':5,'SETUP — READY SOON':4,'WAIT FOR PULLBACK':3,'WAIT — SETUP NOT READY':2,'AVOID':0,'SELL / EXIT':0};return(order[action]||0)*1000+Number(row?.screenScore||0);}
+function bestSummaryCandidate(rows){return(rows||[]).find(row=>row?.bucket&&row.bucket!=='AVOID')||(rows||[])[0]||null;}
 function easternParts(date){const parts=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',weekday:'short',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(date);return Object.fromEntries(parts.map(x=>[x.type,x.value]));}
