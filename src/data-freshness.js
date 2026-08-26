@@ -13,9 +13,9 @@ export function normalizeProviderId(value){
 
 export function providerLabel(provider){const id=normalizeProviderId(provider);return id==='alpaca'?'Alpaca':id==='twelve-data'?'Twelve Data':'Unknown';}
 
-export function cacheSourceTag({provider,feed='unknown',dataTimestamp=0}={}){
-  const id=normalizeProviderId(provider),safeFeed=String(feed||'unknown').trim().toLowerCase().replace(/[^a-z0-9_-]/g,'_').slice(0,32)||'unknown',ts=Math.max(0,Math.round(Number(dataTimestamp)||0));
-  return`${CACHE_TAG_VERSION}|${id}|${safeFeed}|${ts}`;
+export function cacheSourceTag({provider,feed='unknown'}={}){
+  const id=normalizeProviderId(provider),safeFeed=String(feed||'unknown').trim().toLowerCase().replace(/[^a-z0-9_-]/g,'_').slice(0,32)||'unknown';
+  return`${providerLabel(id)} [${safeFeed}]`;
 }
 
 export function parseCacheSource(source){
@@ -24,6 +24,8 @@ export function parseCacheSource(source){
     const[,provider,feed,timestamp]=raw.split('|');
     return{provider:normalizeProviderId(provider),providerLabel:providerLabel(provider),feed:String(feed||'unknown'),dataTimestamp:Math.max(0,Number(timestamp)||0),legacy:false};
   }
+  const human=raw.match(/^(Alpaca|Twelve Data)\s*\[([^\]]+)\]$/i);
+  if(human){const provider=normalizeProviderId(human[1]);return{provider,providerLabel:providerLabel(provider),feed:String(human[2]||'unknown').toLowerCase(),dataTimestamp:0,legacy:false};}
   const provider=normalizeProviderId(raw);return{provider,providerLabel:providerLabel(provider),feed:'unknown',dataTimestamp:0,legacy:true};
 }
 
