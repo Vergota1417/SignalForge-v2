@@ -1,5 +1,5 @@
 import app from './index.js';
-import { authorizeDevice, ensureSchema, getSignalAnalysis } from './db.js';
+import { authorizeDevice, ensureSchema, getSignalAnalysis, listRadarQuotes } from './db.js';
 import { getOperationsStatus } from './operations.js';
 import { runBackendSelfTest } from './self-test.js';
 import { buildTradePlan } from './trade-plan.js';
@@ -7,6 +7,7 @@ import { MIN_BUY_REWARD_RISK } from './hard-guardrails.js';
 import { runScheduledCycle, scheduledCoverage } from './scheduler.js';
 import { configuredProviders } from './market.js';
 import { getDiscoveryStatus } from './discovery.js';
+import { summarizeFeedHealth } from './data-freshness.js';
 import { getOpportunityValidation, OPPORTUNITY_EPISODE_START_SCORE, OPPORTUNITY_REVIEW_MIN_SAMPLE } from './opportunity-validation.js';
 
 const SELF_TEST_COOLDOWN_MS=60_000;
@@ -27,13 +28,19 @@ export default {
       try{return json({validation:await getOpportunityValidation(env,{horizon:normalizeOpportunityHorizon(url.searchParams.get('horizon')),minSample:clampInt(url.searchParams.get('minSample'),OPPORTUNITY_REVIEW_MIN_SAMPLE,100,OPPORTUNITY_REVIEW_MIN_SAMPLE)})});}
       catch(error){console.error(JSON.stringify({event:'opportunity_validation_request_error',message:error?.message||String(error)}));return json({error:'Opportunity Score validation is temporarily unavailable.'},500);}
     }
+    if(url.pathname==='/api/screener'&&request.method==='GET'){
+      const response=await app.fetch(request,env,ctx);if(!response.ok)return response;const body=await response.json(),quotes=await listRadarQuotes(env,14_400_000,80),quoteMap=new Map((quotes||[]).map(row=>[row.symbol,row]));
+      if(Array.isArray(body?.screener?.rows))body.screener.rows=body.screener.rows.map(row=>enrichScreenerFreshness(row,quoteMap.get(row.symbol)));
+      if(body?.screener){body.screener.coverage={...(body.screener.coverage||{}),feedHealth:summarizeFeedHealth(quotes)};}
+      return json(body);
+    }
     if(url.pathname==='/api/portfolio'&&request.method==='GET'){
       const response=await app.fetch(request,env,ctx);if(!response.ok)return response;const body=await response.json();if(Array.isArray(body.positions))body.positions.sort(managedPositionSort);return json(body);
     }
     if(url.pathname==='/api/health'&&request.method==='GET'){
       const response=await app.fetch(request,env,ctx);if(!response.ok)return response;
-      const body=await response.json(),marketDataProviders=configuredProviders(env),marketDataConfigured=Boolean(marketDataProviders.alpaca||marketDataProviders.twelveData),discovery=await getDiscoveryStatus(env),providerDailyCap=Number(env.MAX_PROVIDER_REQUESTS_PER_DAY)||700;
-      return json({...body,marketDataConfigured,marketDataProviders,discoveryPoolSize:discovery.configuredPoolSize,discoveryCoverage:{weekKey:discovery.weekKey,configuredPoolSize:discovery.configuredPoolSize,currentWeeklyPoolSize:discovery.currentWeeklyPoolSize,poolFillPct:discovery.poolFillPct,catalogSize:discovery.catalogSize,scannedSymbols:discovery.scannedSymbols,lastScanned:discovery.lastScanned,catalogUpdatedAt:discovery.catalogUpdatedAt},scheduler:scheduledCoverage(),tradePlan:true,postBuyManager:true,portfolioPricePulseMinutes:5,partialProfitManagement:true,opportunityScoreValidation:{enabled:true,shadowOnly:true,affectsBuyNow:false,episodeStartScore:OPPORTUNITY_EPISODE_START_SCORE,reviewMinSample:OPPORTUNITY_REVIEW_MIN_SAMPLE,endpoint:'/api/opportunity-validation'},guardrails:{hardBuyAuthorization:true,minBuyRewardRisk:MIN_BUY_REWARD_RISK,participationRequired:true,thesisMustRemainIntact:true,overextensionHardBlock:true,backgroundUiReadMinutes:5,cacheOnlyChartReadMinutes:30,patternNetworkUiEnabled:false,opportunityScoreAffectsBuyNow:false,providerDailyCap,reliabilityCiWorkflow:true}});
+      const body=await response.json(),marketDataProviders=configuredProviders(env),marketDataConfigured=Boolean(marketDataProviders.alpaca||marketDataProviders.twelveData),[discovery,recentQuotes]=await Promise.all([getDiscoveryStatus(env),listRadarQuotes(env,14_400_000,24)]),providerDailyCap=Number(env.MAX_PROVIDER_REQUESTS_PER_DAY)||700;
+      return json({...body,marketDataConfigured,marketDataProviders,marketDataFeed:{alpacaFeed:String(env.ALPACA_DATA_FEED||'iex').toLowerCase(),freshnessAware:true,providerAwareCache:true,staleExecutionFallback:false},marketDataFeedHealth:summarizeFeedHealth(recentQuotes),discoveryPoolSize:discovery.configuredPoolSize,discoveryCoverage:{weekKey:discovery.weekKey,configuredPoolSize:discovery.configuredPoolSize,currentWeeklyPoolSize:discovery.currentWeeklyPoolSize,poolFillPct:discovery.poolFillPct,catalogSize:discovery.catalogSize,scannedSymbols:discovery.scannedSymbols,lastScanned:discovery.lastScanned,catalogUpdatedAt:discovery.catalogUpdatedAt},scheduler:scheduledCoverage(),tradePlan:true,postBuyManager:true,portfolioPricePulseMinutes:5,partialProfitManagement:true,opportunityScoreValidation:{enabled:true,shadowOnly:true,affectsBuyNow:false,episodeStartScore:OPPORTUNITY_EPISODE_START_SCORE,reviewMinSample:OPPORTUNITY_REVIEW_MIN_SAMPLE,endpoint:'/api/opportunity-validation'},guardrails:{hardBuyAuthorization:true,minBuyRewardRisk:MIN_BUY_REWARD_RISK,participationRequired:true,thesisMustRemainIntact:true,overextensionHardBlock:true,backgroundUiReadMinutes:5,cacheOnlyChartReadMinutes:30,patternNetworkUiEnabled:false,opportunityScoreAffectsBuyNow:false,staleMarketDataCannotAuthorizeBuy:true,providerDailyCap,reliabilityCiWorkflow:true}});
     }
     if(url.pathname!=='/api/backend-self-test')return app.fetch(request,env,ctx);
     if(request.method!=='POST')return json({error:'Method not allowed.'},405);
@@ -49,6 +56,7 @@ export default {
   scheduled(controller,env,ctx){ctx.waitUntil(runScheduledCycle(env,Number(controller.scheduledTime)||Date.now()));}
 };
 
+function enrichScreenerFreshness(row,quote){if(!quote)return{...row,dataProvider:null,dataFeed:null,dataFreshness:'UNKNOWN',dataTimestamp:0,dataAgeMs:null,dataFallback:null};return{...row,dataProvider:String(quote.provider||quote.source||''),dataFeed:String(quote.feed||'unknown'),dataFreshness:String(quote.freshness?.state||'UNKNOWN'),dataSession:String(quote.freshness?.session||''),dataTimestamp:Number(quote.dataTimestamp)||0,dataAgeMs:quote.freshness?.dataAgeMs??quote.dataAgeMs??null,dataFallback:quote.fallback||null,quoteUpdatedAt:Number(quote.updatedAt)||0};}
 function managedPositionSort(a,b){const order={'SELL / EXIT':5,'TAKE PARTIAL PROFIT':4,'REDUCE':3,'PROTECT PROFIT':2,'HOLD':1};const d=(order[b?.strategy?.state]||0)-(order[a?.strategy?.state]||0);if(d)return d;return(Number(b?.strategy?.continuationWeakness)||0)-(Number(a?.strategy?.continuationWeakness)||0);}
 async function readJson(request){const text=await request.text();if(text.length>10_000)throw new Error('Self-test request is too large.');try{return text?JSON.parse(text):{};}catch{throw new Error('Invalid JSON payload.');}}
 function sanitizeSymbol(v){const s=String(v||'').trim().toUpperCase().replace(/[^A-Z.]/g,'').slice(0,6);return/^[A-Z]{1,5}(?:\.[A-Z])?$/.test(s)?s:'';}
