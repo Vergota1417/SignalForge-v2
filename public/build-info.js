@@ -1,1 +1,1 @@
-window.SIGNALFORGE_BUILD=Object.freeze({version:'2.30.38',release:'central-request-ownership',shell:'v30-38'});
+window.SIGNALFORGE_BUILD=Object.freeze({version:'2.30.39',release:'marketpulse-opportunity-confidence-ui',shell:'v30-39'});
