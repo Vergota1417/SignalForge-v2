@@ -7,6 +7,7 @@ import { getAfterHoursResearchStatus, runAfterHoursResearch } from './research.j
 import { getWeeklyStrategySnapshot, runPortfolioCloseReview, runPortfolioPricePulse, runWeeklyResearchBatch } from './weekly.js';
 import { rankOpportunities } from './strategy.js';
 import { broadcastBackgroundSummaryPush, broadcastPortfolioStrategyPush, broadcastWeeklyOpportunityPush } from './push.js';
+import { runOpportunityValidationCycle } from './opportunity-validation.js';
 import {
   RADAR_BATCH_SIZE,
   WEEKLY_RESEARCH_SCHEDULE,
@@ -74,7 +75,7 @@ export async function runScheduledCycle(env,scheduledTime=Date.now()){
   }
 }
 
-export function scheduledCoverage(){return{...schedulerCoverage(),providerEnvelope:discoveryProviderEnvelope(),broadDiscovery:broadDiscoveryCoverage(),owner:'scheduler-v1'};}
+export function scheduledCoverage(){return{...schedulerCoverage(),providerEnvelope:discoveryProviderEnvelope(),broadDiscovery:broadDiscoveryCoverage(),opportunityValidation:{afterHours:true,shadowOnly:true,affectsBuyNow:false},owner:'scheduler-v1'};}
 
 async function runMarketScanCycle(env,{now,weekday,minutes,phase}){
   const operationKey=isOpeningScanSlot(weekday,minutes)?'opening-pipeline':'radar-scan-cycle';
@@ -123,6 +124,10 @@ async function runPortfolioCloseCycle(env,{now}){
 async function runAfterHoursCycle(env,{now,weekday,minutes}){
   const result=await runAfterHoursResearch(env,{now,maxPerRun:6});
   console.log(JSON.stringify({event:'after_hours_research_cycle',...result}));
+  try{
+    const validation=await runOpportunityValidationCycle(env,{now,maxSymbols:3});
+    console.log(JSON.stringify({event:'opportunity_score_validation_cycle',status:validation.validation.status,completedEpisodes:validation.validation.completedEpisodes,pendingEpisodes:validation.validation.pendingEpisodes,trackerOutcomes:validation.tracker.outcomesCompleted,affectsBuyNow:false}));
+  }catch(error){console.error(JSON.stringify({event:'opportunity_score_validation_cycle_error',message:error?.message||String(error),affectsBuyNow:false}));}
   if(minutes===18*60+45)await runBackgroundSummary(env,{weekday,now,weekend:false});
 }
 
