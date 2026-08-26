@@ -26,8 +26,15 @@ assert.match(sw,/REQUEST_POLICY\?\.ttlFor/,'service worker must delegate API TTL
 assert.doesNotMatch(sw,/API_TTL_MS=new Map/,'service worker must not own a second endpoint TTL map');
 assert.ok(html.indexOf('api-request-policy.js')<html.indexOf('api-request-coordinator.js'),'policy must load before the page coordinator');
 assert.match(sw,/\/api-request-policy\.js/,'shared policy must be cached with the PWA shell');
-assert.match(build,/shell:'v30-38'/,'request ownership release must advance the PWA shell');
-assert.match(sw,/signalforge-shell-v30-38/,'service worker shell must match the request ownership release');
+
+const buildShell=build.match(/shell:'v(\d+)-(\d+)'/);
+const workerShell=sw.match(/CACHE_NAME='signalforge-shell-v(\d+)-(\d+)'/);
+assert.ok(buildShell,'build-info must expose a versioned PWA shell');
+assert.ok(workerShell,'service worker must expose a versioned PWA cache shell');
+assert.deepEqual(workerShell.slice(1),buildShell.slice(1),'service worker shell must match build-info shell');
+const shellMajor=Number(buildShell[1]),shellMinor=Number(buildShell[2]);
+assert.ok(shellMajor>30||(shellMajor===30&&shellMinor>=38),'request ownership shell must never regress below v30-38');
+
 assert.doesNotMatch(pwa,/loadScriptThen\('\/pattern-context-ui\.js'/,'disabled Pattern network UI must remain disabled');
 assert.doesNotMatch(pwa,/loadScriptThen\('\/pattern-overlay-(?:stable|reliability)\.js'/,'disabled Pattern overlay network layer must remain disabled');
 
