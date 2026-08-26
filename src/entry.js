@@ -8,9 +8,9 @@ import { buildTradePlan } from './trade-plan.js';
 import { runPortfolioPricePulse } from './weekly.js';
 import { broadcastPortfolioStrategyPush } from './push.js';
 import { MIN_BUY_REWARD_RISK } from './hard-guardrails.js';
+import { RADAR_BATCH_SIZE, isOpeningScanSlot, isPriorityExecutionSlot, openingScanLabel } from './scanner-schedule.js';
 
 const SELF_TEST_COOLDOWN_MS=60_000;
-const OPENING_SCAN_MINUTES=new Set([570,575,580]);
 
 export default {
   async fetch(request,env,ctx){
@@ -44,16 +44,11 @@ export default {
   },
   scheduled(controller,env,ctx){
     const scheduledTime=Number(controller.scheduledTime)||Date.now(),now=new Date(scheduledTime),parts=easternParts(now),minutes=Number(parts.hour)*60+Number(parts.minute),weekday=parts.weekday;
-    if(isWeekday(weekday)&&OPENING_SCAN_MINUTES.has(minutes)){
-      ctx.waitUntil(runMarketScanCycle(env,{now:scheduledTime,weekday,minutes,phase:openingLabel(minutes)}));
+    if(isOpeningScanSlot(weekday,minutes)){
+      ctx.waitUntil(runMarketScanCycle(env,{now:scheduledTime,weekday,minutes,phase:openingScanLabel(minutes)}));
       return;
     }
-    if(weekday==='Fri'&&minutes>=585&&minutes<840&&minutes%15===0){
-      ctx.waitUntil(runMarketScanCycle(env,{now:scheduledTime,weekday,minutes,phase:'FRIDAY REGULAR'}));
-      return;
-    }
-    const prioritySlot=isWeekday(weekday)&&minutes>=590&&minutes<=955&&minutes%5===0&&minutes%15!==0;
-    if(prioritySlot){
+    if(isPriorityExecutionSlot(weekday,minutes)){
       app.scheduled(controller,env,ctx);
       ctx.waitUntil(runPortfolioPulseCycle(env,{now:scheduledTime,weekday,minutes}));
       return;
@@ -73,12 +68,12 @@ async function runPortfolioPulseCycle(env,{now,weekday,minutes}){
 }
 
 async function runMarketScanCycle(env,{now,weekday,minutes,phase}){
-  const operationKey=OPENING_SCAN_MINUTES.has(minutes)?'opening-pipeline':'radar-scan-cycle';
+  const operationKey=isOpeningScanSlot(weekday,minutes)?'opening-pipeline':'radar-scan-cycle';
   try{
     await ensureSchema(env);
     await recordOperation(env,'cron-heartbeat',{status:'OK',at:now,detail:{weekday,minutes,marketDataConfigured:Boolean(env.TWELVE_DATA_API_KEY),phase}});
     if(!env.TWELVE_DATA_API_KEY){await recordOperation(env,operationKey,{status:'ERROR',at:now,detail:{phase,message:'Market-data provider is not configured.'}});return;}
-    const radar=await runRadarDiscovery(env,{batchSize:5,now}),promotion=await runScreenerPromotion(env,{maxPromotions:1,now});
+    const radar=await runRadarDiscovery(env,{batchSize:RADAR_BATCH_SIZE,now}),promotion=await runScreenerPromotion(env,{maxPromotions:1,now});
     const detail={phase,requested:radar.selected||null,scanned:(radar.scanned||[]).map(x=>x.symbol),leaders:(radar.leaders||[]).map(x=>x.symbol),promoted:(promotion.promoted||[]).map(x=>({symbol:x.symbol,status:x.status,readiness:x.readiness})),candidates:promotion.candidates||[],universeSize:Number(radar.universeSize)||0};
     await recordOperation(env,operationKey,{status:detail.scanned.length?'OK':'IDLE',at:now,detail});
     console.log(JSON.stringify({event:'scheduled_market_scan_cycle',...detail}));
@@ -86,8 +81,6 @@ async function runMarketScanCycle(env,{now,weekday,minutes,phase}){
 }
 
 function managedPositionSort(a,b){const order={'SELL / EXIT':5,'TAKE PARTIAL PROFIT':4,'REDUCE':3,'PROTECT PROFIT':2,'HOLD':1};const d=(order[b?.strategy?.state]||0)-(order[a?.strategy?.state]||0);if(d)return d;return(Number(b?.strategy?.continuationWeakness)||0)-(Number(a?.strategy?.continuationWeakness)||0);}
-function openingLabel(minutes){return minutes===570?'OPENING SWEEP 1':minutes===575?'OPENING SWEEP 2':'OPENING SWEEP 3';}
-function isWeekday(day){return day==='Mon'||day==='Tue'||day==='Wed'||day==='Thu'||day==='Fri';}
 function easternParts(date){const parts=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',weekday:'short',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(date);return Object.fromEntries(parts.map(x=>[x.type,x.value]));}
 async function readJson(request){const text=await request.text();if(text.length>10_000)throw new Error('Self-test request is too large.');try{return text?JSON.parse(text):{};}catch{throw new Error('Invalid JSON payload.');}}
 function sanitizeSymbol(v){const s=String(v||'').trim().toUpperCase().replace(/[^A-Z.]/g,'').slice(0,6);return/^[A-Z]{1,5}(?:\.[A-Z])?$/.test(s)?s:'';}
