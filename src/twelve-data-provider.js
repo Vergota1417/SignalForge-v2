@@ -1,19 +1,19 @@
 import { TIMEFRAMES } from './constants.js';
 import { getCachedMarket, putCachedMarket, getCachedSymbolSearch, putCachedSymbolSearch } from './db.js';
 import { reserveProviderPurpose } from './provider-usage.js';
+import { cachePolicyFor, cacheProviderMatches, cacheSourceTag, candleFreshness, parseCacheSource } from './data-freshness.js';
 
 const MINIMUM_HISTORY={ '1D':1,'5D':60,'1M':60,'3M':60,'6M':100,'1Y':120,'2Y':80 };
 const US_EXCHANGES=new Set(['NASDAQ','NYSE','NYSE AMERICAN','NYSE ARCA','CBOE','BATS']);
 
 export async function getMarketData(env,symbol,timeframe,forceRefresh=false,options={}){
   const cfg=TIMEFRAMES[timeframe];if(!cfg)throw new Error('Unsupported timeframe.');
-  const completedOnly=Boolean(options?.completedOnly),purpose=String(options?.purpose||`time-series-${String(timeframe).toLowerCase()}`);
+  const completedOnly=Boolean(options?.completedOnly),purpose=String(options?.purpose||`time-series-${String(timeframe).toLowerCase()}`),policy=cachePolicyFor(timeframe,{purpose});
   if(!forceRefresh){
-    const cached=await getCachedMarket(env,symbol,timeframe,cfg.cacheSeconds*1000);
-    if(cached){
-      const processed=completedOnly?removeFormingHigherTimeframeBar(cached.candles,timeframe,Date.now()):cached.candles;
-      validateMinimumHistory(processed,timeframe);
-      return{...cached,candles:processed,quality:qualitySummary({rawBars:cached.candles.length,acceptedBars:processed.length,formingBarsRemoved:cached.candles.length-processed.length,historyRequired:minimumHistory(timeframe),cacheDerived:true})};
+    const cached=await getCachedMarket(env,symbol,timeframe,policy.ttlMs);
+    if(cached&&cacheProviderMatches('twelve-data',cached.source)){
+      const processed=completedOnly?removeFormingHigherTimeframeBar(cached.candles,timeframe,Date.now()):cached.candles;validateMinimumHistory(processed,timeframe);const meta=parseCacheSource(cached.source),dataTimestamp=meta.dataTimestamp||Number(processed.at(-1)?.time)||0,feed=meta.feed==='unknown'?'time_series':meta.feed;
+      return{...cached,source:'Twelve Data',provider:'twelve-data',feed,dataTimestamp,candles:processed,freshness:candleFreshness({fetchedAt:cached.fetchedAt,dataTimestamp,cached:true,ttlMs:policy.ttlMs}),quality:qualitySummary({rawBars:cached.candles.length,acceptedBars:processed.length,formingBarsRemoved:cached.candles.length-processed.length,historyRequired:minimumHistory(timeframe),cacheDerived:true})};
     }
   }
   if(!env.TWELVE_DATA_API_KEY)throw new Error('Twelve Data API key is not configured.');
@@ -38,8 +38,8 @@ export async function getMarketData(env,symbol,timeframe,forceRefresh=false,opti
   const formingBarsRemoved=beforeCompletedFilter-candles.length;
   validateMinimumHistory(candles,timeframe);
 
-  const fetchedAt=await putCachedMarket(env,symbol,timeframe,'Twelve Data',completedOnly?mergeForCache(parsed,cfg):candles);
-  return{candles,source:'Twelve Data',cached:false,fetchedAt,quality:qualitySummary({rawBars,acceptedBars:candles.length,rejectedBars,duplicatesRemoved,formingBarsRemoved,historyRequired:minimumHistory(timeframe),cacheDerived:false})};
+  const cacheRows=completedOnly?mergeForCache(parsed,cfg):candles,dataTimestamp=Number(cacheRows.at(-1)?.time)||Number(candles.at(-1)?.time)||0,feed='time_series',fetchedAt=await putCachedMarket(env,symbol,timeframe,cacheSourceTag({provider:'twelve-data',feed,dataTimestamp}),cacheRows);
+  return{candles,source:'Twelve Data',provider:'twelve-data',feed,cached:false,fetchedAt,dataTimestamp,freshness:candleFreshness({fetchedAt,dataTimestamp,cached:false,ttlMs:policy.ttlMs}),quality:qualitySummary({rawBars,acceptedBars:candles.length,rejectedBars,duplicatesRemoved,formingBarsRemoved,historyRequired:minimumHistory(timeframe),cacheDerived:false})};
 }
 
 export async function searchSymbols(env,query){
@@ -84,4 +84,4 @@ function weekdayIndex(v){return{Sun:0,Mon:1,Tue:2,Wed:3,Thu:4,Fri:5,Sat:6}[v]??0
 function weekKeyFromEasternParts(p){const base=new Date(Date.UTC(Number(p.year),Number(p.month)-1,Number(p.day))),weekday=(base.getUTCDay()+6)%7;base.setUTCDate(base.getUTCDate()-weekday);return base.toISOString().slice(0,10);}
 function weekKeyFromUtcTimestamp(time){const d=new Date(time),base=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate())),weekday=(base.getUTCDay()+6)%7;base.setUTCDate(base.getUTCDate()-weekday);return base.toISOString().slice(0,10);}
 function isSupportedSearchResult(row){const exchange=String(row.exchange||'').toUpperCase(),country=String(row.country||'').toLowerCase(),currency=String(row.currency||'').toUpperCase(),type=String(row.type||'').toLowerCase();const usVenue=US_EXCHANGES.has(exchange)||country==='united states';const supportedType=!type||type.includes('stock')||type.includes('common')||type.includes('etf');return usVenue&&currency==='USD'&&supportedType;}
-async function fetchProviderJson(url,label){const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),10_000);try{const response=await fetch(url,{signal:controller.signal,headers:{accept:'application/json'}});if(!response.ok)throw new Error(`${label} HTTP ${response.status}`);return await response.json();}catch(error){if(error?.name==='AbortError')throw new Error(`${label} request timed out.`);throw error;}finally{clearTimeout(timer);}}
+async function fetchProviderJson(url,label){const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),10_000);try{const response=await fetch(url,{signal:controller.signal,headers:{accept:'application/json'}});if(!response.ok){const error=new Error(`${label} HTTP ${response.status}`);error.status=response.status;throw error;}return await response.json();}catch(error){if(error?.name==='AbortError')throw new Error(`${label} request timed out.`);throw error;}finally{clearTimeout(timer);}}
