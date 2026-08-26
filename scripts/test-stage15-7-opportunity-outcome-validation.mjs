@@ -29,6 +29,7 @@ assert.equal(good.status,'REVIEW CANDIDATE','well-sampled positive high-score ep
 assert.equal(good.affectsBuyNow,false,'review candidates must remain unable to affect BUY NOW');
 assert.equal(good.shadowOnly,true,'Opportunity Score validation must remain shadow-only');
 assert.equal(good.criteria.sampleSize,true);
+assert.equal(good.criteria.marketCoverage,true,'review status requires enough market-benchmark outcomes, not just raw stock outcomes');
 assert.equal(good.criteria.winRate,true);
 assert.equal(good.criteria.positiveExpectancy,true);
 assert.equal(good.criteria.positiveMarketExcess,true);
@@ -39,7 +40,13 @@ const rejected=summarizeOpportunityValidation(badMarket,{horizon:5});
 assert.equal(rejected.status,'NOT VALIDATED','negative market excess must block review-candidate status');
 assert.equal(rejected.affectsBuyNow,false);
 
-const collecting=summarizeOpportunityValidation(validatedEpisodes.slice(0,10),{horizon:5});
+const missingBenchmarks=validatedEpisodes.map((x,i)=>i<10?x:{...x,outcomes:{5:outcome(.03,null,.05,-.015)}});
+const weakBenchmarkCoverage=summarizeOpportunityValidation(missingBenchmarks,{horizon:5});
+assert.equal(weakBenchmarkCoverage.status,'NOT VALIDATED','incomplete benchmark coverage must block review-candidate status');
+assert.equal(weakBenchmarkCoverage.criteria.marketCoverage,false);
+
+const collecting=summarizeOpportunityValidation(validatedEpisodes.slice(0,10),{horizon:5,minSample:10});
+assert.equal(collecting.minSample,OPPORTUNITY_REVIEW_MIN_SAMPLE,'callers must never lower the statistical review floor below 30');
 assert.equal(collecting.status,'COLLECTING','small samples must remain collecting rather than being promoted');
 
 assert.equal(isOpportunityValidationSlot(Date.UTC(2026,7,26,22,15,0)),true,'18:15 ET weekday is an after-hours validation slot');
@@ -49,16 +56,22 @@ assert.equal(isOpportunityValidationSlot(Date.UTC(2026,7,29,22,15,0)),false,'wee
 const entry=fs.readFileSync(new URL('../src/entry.js',import.meta.url),'utf8');
 const scheduler=fs.readFileSync(new URL('../src/scheduler.js',import.meta.url),'utf8');
 const validator=fs.readFileSync(new URL('../src/opportunity-validation.js',import.meta.url),'utf8');
+const outcomes=fs.readFileSync(new URL('../src/outcomes.js',import.meta.url),'utf8');
 assert.match(entry,/\/api\/opportunity-validation/,'production must expose read-only Opportunity Score validation status');
 assert.match(entry,/ctx\.waitUntil\(runScheduledCycle\(/,'entry must keep delegating scheduled work to the sole scheduler owner');
 assert.doesNotMatch(entry,/runOpportunityValidationCycle/,'entry must not become a second Opportunity Score schedule owner');
+assert.match(entry,/clampInt\(url\.searchParams\.get\('minSample'\),OPPORTUNITY_REVIEW_MIN_SAMPLE,100,OPPORTUNITY_REVIEW_MIN_SAMPLE\)/,'public validation endpoint must not lower the 30-sample floor');
 assert.match(scheduler,/runOpportunityValidationCycle/,'scheduler owner must run Opportunity Score validation after hours');
 assert.match(scheduler,/async function runAfterHoursCycle/,'Opportunity validation must remain in the existing after-hours lane');
 assert.match(scheduler,/opportunityValidation:\{afterHours:true,shadowOnly:true,affectsBuyNow:false\}/,'scheduler coverage must expose shadow-only Opportunity validation');
 assert.match(entry,/opportunityScoreAffectsBuyNow:false/,'health must explicitly preserve the BUY firewall');
-assert.match(validator,/runOutcomeTracker/,'Opportunity validation must reuse the existing forward-outcome tracker');
+assert.match(validator,/runOutcomeTracker\(env,\{now,maxSymbols:[\s\S]*observationType:'RADAR'/,'Opportunity validation must prioritize RADAR evidence in the existing outcome tracker');
+assert.match(validator,/querySince=since-OPPORTUNITY_EPISODE_GAP_MS/,'lookback must include a pre-window episode buffer');
 assert.match(validator,/FIRST_THRESHOLD_CROSSING_PER_EPISODE/,'validation must count episodes rather than repeated 15-minute observations');
+assert.match(validator,/marketCoverage:highScore\.marketSampleSize>=requiredSample/,'review status must require benchmark coverage equal to the sample floor');
 assert.match(validator,/affectsBuyNow:false/,'validation module must never authorize BUY NOW');
+assert.match(outcomes,/observationType=null/,'generic outcome tracker must keep its existing all-evidence default');
+assert.match(outcomes,/e\.observation_type=\?/,'generic outcome tracker must support a targeted evidence type when requested');
 assert.doesNotMatch(validator,/recordSignal\(|hardBuyGuardrails\s*=|status\s*=\s*['"]BUY NOW/,'validation must not mutate live trading state');
 
 console.log('Stage 15.7 Opportunity Score forward outcome validation checks passed.');
