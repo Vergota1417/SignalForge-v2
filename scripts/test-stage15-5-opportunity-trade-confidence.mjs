@@ -1,13 +1,17 @@
 import assert from 'node:assert/strict';
-import { buildScreenerRows, opportunityScoreFor, tradeConfidenceFor } from '../src/screener.js';
+import { buildScreenerRows, normalizeProbabilityPercent, opportunityScoreFor, tradeConfidenceFor } from '../src/screener.js';
 
 const hotOpportunity=opportunityScoreFor({discoveryScore:70,scoreVelocity:10,relativeVolume:2.2,dollarVolume:50_000_000,changePct:4});
 assert.ok(hotOpportunity>=80&&hotOpportunity<=100,'strong discovery conditions should produce a high Opportunity Score');
 assert.equal(tradeConfidenceFor(null),null,'Trade Confidence must not exist before deep analysis');
+assert.equal(normalizeProbabilityPercent(.64),64,'fraction probabilities must normalize to percent units');
+assert.equal(normalizeProbabilityPercent(64),64,'percent probabilities must remain percent units');
+assert.equal(normalizeProbabilityPercent(150),null,'invalid probability values must be ignored rather than clamped into false confidence');
 
 const buyLike={readiness:92,dailyGatesReady:true,calibratedProbability:.64,status:'BUY NOW',engines:{trend:{ready:true},entry:{ready:true},context:{ready:true},validation:{ready:true}},intradayConfirmation:{pass:true,participationPass:true},hardBuyGuardrails:{pass:true}};
 const buyConfidence=tradeConfidenceFor(buyLike);
 assert.ok(buyConfidence>=80&&buyConfidence<=100,'deep analysis with all production gates cleared should produce strong Trade Confidence');
+assert.equal(tradeConfidenceFor({...buyLike,calibratedProbability:64}),buyConfidence,'fraction and percent representations of the same probability must produce identical Trade Confidence');
 
 const avoidConfidence=tradeConfidenceFor({...buyLike,status:'AVOID'});
 assert.ok(avoidConfidence<=35,'AVOID must cap user-facing Trade Confidence');
