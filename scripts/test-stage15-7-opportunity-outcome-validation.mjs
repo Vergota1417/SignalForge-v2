@@ -65,12 +65,13 @@ assert.match(scheduler,/runOpportunityValidationCycle/,'scheduler owner must run
 assert.match(scheduler,/async function runAfterHoursCycle/,'Opportunity validation must remain in the existing after-hours lane');
 assert.match(scheduler,/opportunityValidation:\{afterHours:true,shadowOnly:true,affectsBuyNow:false\}/,'scheduler coverage must expose shadow-only Opportunity validation');
 assert.match(entry,/opportunityScoreAffectsBuyNow:false/,'health must explicitly preserve the BUY firewall');
-assert.match(validator,/runOutcomeTracker\(env,\{now,maxSymbols:[\s\S]*observationType:'RADAR'/,'Opportunity validation must prioritize RADAR evidence in the existing outcome tracker');
+assert.match(validator,/runOutcomeTracker\(env,\{now,maxSymbols:[\s\S]*observationType:'RADAR',requiredHorizon:5/,'Opportunity validation must prioritize RADAR evidence and stop revisiting rows once the five-session result exists');
 assert.match(validator,/querySince=since-OPPORTUNITY_EPISODE_GAP_MS/,'lookback must include a pre-window episode buffer');
 assert.match(validator,/FIRST_THRESHOLD_CROSSING_PER_EPISODE/,'validation must count episodes rather than repeated 15-minute observations');
 assert.match(validator,/marketCoverage:highScore\.marketSampleSize>=requiredSample/,'review status must require benchmark coverage equal to the sample floor');
 assert.match(validator,/affectsBuyNow:false/,'validation module must never authorize BUY NOW');
-assert.match(outcomes,/observationType=null/,'generic outcome tracker must keep its existing all-evidence default');
+assert.match(outcomes,/observationType=null,requiredHorizon=20/,'generic outcome tracker must keep its existing all-evidence and 20-session defaults');
+assert.match(outcomes,/o\.horizon_sessions=\?\)/,'outcome tracker must use the requested completion horizon instead of hard-coding 20 sessions');
 assert.match(outcomes,/e\.observation_type=\?/,'generic outcome tracker must support a targeted evidence type when requested');
 assert.doesNotMatch(validator,/recordSignal\(|hardBuyGuardrails\s*=|status\s*=\s*['"]BUY NOW/,'validation must not mutate live trading state');
 
