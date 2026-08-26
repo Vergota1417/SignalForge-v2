@@ -9,9 +9,13 @@ const build=fs.readFileSync(new URL('../public/build-info.js',import.meta.url),'
 
 assert.match(index,/marketpulse-opportunities-ui\.js/,'app shell must load the MarketPulse opportunities module');
 assert.match(sw,/marketpulse-opportunities-ui\.js/,'PWA shell must cache the MarketPulse opportunities module');
-assert.match(sw,/signalforge-shell-v30-39/,'MarketPulse UI release must bump the PWA shell');
-assert.match(build,/version:'2\.30\.39'/,'MarketPulse UI release must expose a visible build');
-assert.match(build,/shell:'v30-39'/,'build shell must match the service worker shell');
+const buildShell=build.match(/shell:'v(\d+)-(\d+)'/),workerShell=sw.match(/CACHE_NAME='signalforge-shell-v(\d+)-(\d+)'/);
+assert.ok(buildShell,'MarketPulse build must expose a versioned PWA shell');
+assert.ok(workerShell,'MarketPulse service worker must expose a versioned shell cache');
+assert.deepEqual(workerShell.slice(1),buildShell.slice(1),'MarketPulse build and service-worker shells must match');
+const shellMajor=Number(buildShell[1]),shellMinor=Number(buildShell[2]);
+assert.ok(shellMajor>30||(shellMajor===30&&shellMinor>=39),'MarketPulse UI shell must never regress below v30-39');
+assert.match(build,/version:'2\.30\.\d+'/,'MarketPulse UI must expose a visible 2.30.x build');
 assert.match(ui,/Opportunity Score/,'mobile opportunities UI must label Opportunity Score explicitly');
 assert.match(ui,/Trade Confidence/,'mobile opportunities UI must label Trade Confidence explicitly');
 assert.match(ui,/high Opportunity Score is not a BUY signal/,'UI must warn that Opportunity Score does not authorize BUY');
