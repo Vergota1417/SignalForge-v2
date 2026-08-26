@@ -43,7 +43,7 @@ export const BASELINE_TESTS=Object.freeze([
   'scripts/test-stage14-19-adaptive-api-scheduler.mjs',
   'scripts/test-stage14-20-trade-plan-position-manager.mjs',
   'scripts/test-stage14-21-decision-cockpit.mjs',
-  'scripts/test-stage14-22-activity-rhythm.mjs',
+  'scripts/test-stage14-22-activity-rhythm-ui.mjs',
   'scripts/test-stage14-23-pattern-context.mjs',
   'scripts/test-stage14-24-pattern-validation-health.mjs',
   'scripts/test-stage14-25-pattern-episode-validation.mjs',
@@ -56,7 +56,8 @@ export const BASELINE_TESTS=Object.freeze([
   'scripts/test-stage15-5-opportunity-trade-confidence.mjs',
   'scripts/test-stage15-6-marketpulse-opportunities-ui.mjs',
   'scripts/test-stage15-7-opportunity-outcome-validation.mjs',
-  'scripts/test-stage15-8-production-data-correctness.mjs'
+  'scripts/test-stage15-8-production-data-correctness.mjs',
+  'scripts/test-stage16-marketpulse-action-center.mjs'
 ]);
 
 export const PRODUCTION_GUARDRAIL_TESTS=Object.freeze([
