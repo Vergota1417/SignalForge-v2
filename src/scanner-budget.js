@@ -5,19 +5,23 @@ const ACTIVE_RECHECK_MS=90*60*1000;
 const ANY_RECHECK_MS=15*60*1000;
 const HOT_CAP=12;
 const ACTIVE_CAP=48;
+const DEFAULT_POOL_SIZE=500;
+const MAX_POOL_SIZE=1000;
 
 export async function getTieredScannerBatch(env,{limit=6,exploreCursor=0,now=Date.now()}={}){
-  const pool=await getDiscoveryPool(env,{limit:120,now});
-  if(!pool.length)return{symbols:[],tiers:{hot:0,active:0,explore:0},selected:{hot:[],active:[],explore:[]},nextExploreCursor:0,universeSize:0,cooldownCount:0};
+  const poolSize=discoveryPoolSize(env),pool=await getDiscoveryPool(env,{limit:poolSize,now});
+  if(!pool.length)return{symbols:[],tiers:{hot:0,active:0,explore:0},selected:{hot:[],active:[],explore:[]},nextExploreCursor:0,universeSize:0,cooldownCount:0,poolSize};
   const rows=await env.DB.prepare(`SELECT symbol,last_scanned AS lastScanned,scan_count AS scanCount,rolling_score AS rollingScore,score_velocity AS scoreVelocity,dollar_volume AS dollarVolume,relative_volume AS relativeVolume,cooldown_until AS cooldownUntil FROM discovery_stats`).all();
   const stats=new Map((rows.results||[]).map(r=>[String(r.symbol||'').toUpperCase(),normalizeStat(r)]));
   const eligiblePool=pool.filter(symbol=>Number(stats.get(symbol)?.cooldownUntil||0)<=now),cooldownCount=pool.length-eligiblePool.length;
-  if(!eligiblePool.length)return{symbols:[],tiers:{hot:0,active:0,explore:0},selected:{hot:[],active:[],explore:[]},nextExploreCursor:0,universeSize:pool.length,cooldownCount};
+  if(!eligiblePool.length)return{symbols:[],tiers:{hot:0,active:0,explore:0},selected:{hot:[],active:[],explore:[]},nextExploreCursor:0,universeSize:pool.length,cooldownCount,poolSize};
   const classified=classifyScannerUniverse(eligiblePool,stats,{now});
   const allocation=allocationForLimit(limit);
   const batch=selectTieredSymbols(classified,{limit,exploreCursor,now,allocation});
-  return{...batch,tiers:{hot:classified.hot.length,active:classified.active.length,explore:classified.explore.length},universeSize:pool.length,cooldownCount};
+  return{...batch,tiers:{hot:classified.hot.length,active:classified.active.length,explore:classified.explore.length},universeSize:pool.length,cooldownCount,poolSize};
 }
+
+export function discoveryPoolSize(env={}){const requested=Number(env.DISCOVERY_POOL_SIZE)||DEFAULT_POOL_SIZE;return Math.max(120,Math.min(MAX_POOL_SIZE,Math.round(requested)));}
 
 export function classifyScannerUniverse(pool,stats,{now=Date.now()}={}){
   const rows=(pool||[]).map(symbol=>({symbol,...(stats.get(symbol)||emptyStat(symbol))})).filter(x=>Number(x.cooldownUntil||0)<=now);
