@@ -9,6 +9,7 @@ export const CORE_DISCOVERY_SYMBOLS=[
 const CATALOG_TTL=86_400_000;
 const DEFAULT_DISCOVERY_SIZE=500;
 const MAX_DISCOVERY_SIZE=1000;
+const MIN_DISCOVERY_SIZE=120;
 const DEFAULT_WEEKLY_SIZE=36;
 const WEAK_COOLDOWN_MS=30*86_400_000;
 const discoverySchemaReadyByDb=new WeakMap();
@@ -55,15 +56,20 @@ export async function refreshDiscoveryCatalog(env,{force=false}={}){
   }
 }
 
+export function discoveryPoolTarget(env={}){const requested=Number(env.DISCOVERY_POOL_SIZE)||DEFAULT_DISCOVERY_SIZE;return Math.max(MIN_DISCOVERY_SIZE,Math.min(MAX_DISCOVERY_SIZE,Math.round(requested)));}
+
 export async function getDiscoveryPool(env,{limit=DEFAULT_DISCOVERY_SIZE,now=Date.now(),weekKey=investmentWeekKey(new Date(now))}={}){
   await ensureDiscoverySchema(env);await refreshDiscoveryCatalog(env);
-  const existing=await env.DB.prepare(`SELECT symbol FROM discovery_weekly_pool WHERE week_key=? ORDER BY position`).bind(weekKey).all();if((existing.results||[]).length)return(existing.results||[]).map(r=>r.symbol);
-  const capped=Math.max(20,Math.min(MAX_DISCOVERY_SIZE,Number(limit)||DEFAULT_DISCOVERY_SIZE)),pinned=envSymbols(env),core=CORE_DISCOVERY_SYMBOLS;
+  const capped=Math.max(20,Math.min(MAX_DISCOVERY_SIZE,Number(limit)||DEFAULT_DISCOVERY_SIZE));
+  const existingRows=await env.DB.prepare(`SELECT symbol,position FROM discovery_weekly_pool WHERE week_key=? ORDER BY position`).bind(weekKey).all(),existing=(existingRows.results||[]).map(r=>({symbol:String(r.symbol||''),position:Number(r.position)||0})).filter(r=>r.symbol),existingSymbols=existing.map(r=>r.symbol);
+  if(existingSymbols.length>=capped)return existingSymbols.slice(0,capped);
+  const pinned=envSymbols(env),core=CORE_DISCOVERY_SYMBOLS;
   const promisingRows=await env.DB.prepare(`SELECT symbol FROM discovery_stats WHERE cooldown_until<=? ORDER BY rolling_score DESC,score_velocity DESC,last_scanned ASC LIMIT 120`).bind(now).all();
-  const promising=(promisingRows.results||[]).map(r=>r.symbol).filter(Boolean),used=new Set([...pinned,...core,...promising]),exploration=await explorationSymbols(env,Math.max(0,capped-used.size),used,now);
-  const pool=composeDiscoveryPool({pinned,core,promising,exploration,limit:capped}),createdAt=Date.now();
-  if(pool.length)await env.DB.batch(pool.map((symbol,position)=>env.DB.prepare(`INSERT OR IGNORE INTO discovery_weekly_pool(week_key,position,symbol,created_at) VALUES(?,?,?,?)`).bind(weekKey,position,symbol,createdAt)));
-  return pool;
+  const promising=(promisingRows.results||[]).map(r=>r.symbol).filter(Boolean),used=new Set(existingSymbols),priorityAdditions=unique([...pinned,...core,...promising]).filter(symbol=>!used.has(symbol));
+  for(const symbol of priorityAdditions)used.add(symbol);
+  const exploration=await explorationSymbols(env,Math.max(0,capped-used.size),used,now),additions=unique([...priorityAdditions,...exploration]).filter(symbol=>!existingSymbols.includes(symbol)).slice(0,Math.max(0,capped-existingSymbols.length)),createdAt=Date.now(),nextPosition=existing.length?Math.max(...existing.map(r=>r.position))+1:0;
+  if(additions.length)await env.DB.batch(additions.map((symbol,index)=>env.DB.prepare(`INSERT OR IGNORE INTO discovery_weekly_pool(week_key,position,symbol,created_at) VALUES(?,?,?,?)`).bind(weekKey,nextPosition+index,symbol,createdAt)));
+  return[...existingSymbols,...additions].slice(0,capped);
 }
 
 export async function getWeeklyResearchUniverse(env,{limit=DEFAULT_WEEKLY_SIZE,now=Date.now(),weekKey=investmentWeekKey(new Date(now))}={}){
@@ -86,7 +92,7 @@ export async function recordDiscoveryObservation(env,quote,{now=Date.now()}={}){
   return{symbol,scanCount,currentScore:score,rollingScore:rolling,scoreVelocity:velocity,dollarVolume,cooldownUntil};
 }
 
-export async function getDiscoveryStatus(env){await ensureDiscoverySchema(env);const meta=await getDiscoveryMeta(env),catalogSize=await catalogCount(env),stats=await env.DB.prepare(`SELECT COUNT(*) AS scanned,MAX(last_scanned) AS lastScanned FROM discovery_stats`).first();return{catalogSize,scannedSymbols:Number(stats?.scanned)||0,lastScanned:Number(stats?.lastScanned)||0,catalogUpdatedAt:meta.catalogUpdatedAt,defaultPoolSize:DEFAULT_DISCOVERY_SIZE,maxPoolSize:MAX_DISCOVERY_SIZE};}
+export async function getDiscoveryStatus(env,{now=Date.now()}={}){await ensureDiscoverySchema(env);const weekKey=investmentWeekKey(new Date(now)),configuredPoolSize=discoveryPoolTarget(env),[meta,catalogSize,stats,weekly]=await Promise.all([getDiscoveryMeta(env),catalogCount(env),env.DB.prepare(`SELECT COUNT(*) AS scanned,MAX(last_scanned) AS lastScanned FROM discovery_stats`).first(),env.DB.prepare(`SELECT COUNT(*) AS count FROM discovery_weekly_pool WHERE week_key=?`).bind(weekKey).first()]);const currentWeeklyPoolSize=Number(weekly?.count)||0;return{catalogSize,scannedSymbols:Number(stats?.scanned)||0,lastScanned:Number(stats?.lastScanned)||0,catalogUpdatedAt:meta.catalogUpdatedAt,weekKey,currentWeeklyPoolSize,configuredPoolSize,poolFillPct:configuredPoolSize?Math.round(currentWeeklyPoolSize/configuredPoolSize*1000)/10:0,defaultPoolSize:DEFAULT_DISCOVERY_SIZE,maxPoolSize:MAX_DISCOVERY_SIZE};}
 export function composeDiscoveryPool({pinned=[],core=[],promising=[],exploration=[],limit=DEFAULT_DISCOVERY_SIZE}={}){return unique([...pinned,...core,...promising,...exploration]).slice(0,limit);}
 export function composeWeeklyShortlist({pinned=[],previous=[],leaders=[],exploration=[],core=[],limit=36}={}){return unique([...pinned,...previous,...leaders,...exploration,...core]).slice(0,limit);}
 
