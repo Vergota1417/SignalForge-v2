@@ -1,12 +1,10 @@
-import { getDiscoveryPool } from './discovery.js';
+import { discoveryPoolTarget, getDiscoveryPool } from './discovery.js';
 
 const HOT_RECHECK_MS=30*60*1000;
 const ACTIVE_RECHECK_MS=90*60*1000;
 const ANY_RECHECK_MS=15*60*1000;
 const HOT_CAP=12;
 const ACTIVE_CAP=48;
-const DEFAULT_POOL_SIZE=500;
-const MAX_POOL_SIZE=1000;
 
 export async function getTieredScannerBatch(env,{limit=6,exploreCursor=0,now=Date.now()}={}){
   const poolSize=discoveryPoolSize(env),pool=await getDiscoveryPool(env,{limit:poolSize,now});
@@ -21,7 +19,7 @@ export async function getTieredScannerBatch(env,{limit=6,exploreCursor=0,now=Dat
   return{...batch,tiers:{hot:classified.hot.length,active:classified.active.length,explore:classified.explore.length},universeSize:pool.length,cooldownCount,poolSize};
 }
 
-export function discoveryPoolSize(env={}){const requested=Number(env.DISCOVERY_POOL_SIZE)||DEFAULT_POOL_SIZE;return Math.max(120,Math.min(MAX_POOL_SIZE,Math.round(requested)));}
+export function discoveryPoolSize(env={}){return discoveryPoolTarget(env);}
 
 export function classifyScannerUniverse(pool,stats,{now=Date.now()}={}){
   const rows=(pool||[]).map(symbol=>({symbol,...(stats.get(symbol)||emptyStat(symbol))})).filter(x=>Number(x.cooldownUntil||0)<=now);
