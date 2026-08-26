@@ -1,6 +1,6 @@
 import { TIMEFRAMES } from './constants.js';
 import { getCachedMarket, putCachedMarket, getCachedSymbolSearch, putCachedSymbolSearch } from './db.js';
-import { getMarketData as getTwelveDataMarketData, searchSymbols as searchTwelveDataSymbols } from './market.js';
+import { getMarketData as getTwelveDataMarketData, searchSymbols as searchTwelveDataSymbols } from './twelve-data-provider.js';
 
 const DEFAULT_PROVIDER='auto';
 const ASSET_CACHE_TTL_MS=6*60*60*1000;
