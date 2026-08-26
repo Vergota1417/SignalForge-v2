@@ -1,4 +1,5 @@
 import { reserveProviderPurpose } from './provider-usage.js';
+import { configuredProviders, listUsMarketAssets } from './market.js';
 
 export const CORE_DISCOVERY_SYMBOLS=[
   'AAPL','MSFT','NVDA','AMZN','META','GOOGL','AVGO','TSLA','AMD','NFLX','CRM','ORCL','ADBE','QCOM','INTC','MU','AMAT','ARM','PLTR','CRWD',
@@ -6,7 +7,8 @@ export const CORE_DISCOVERY_SYMBOLS=[
 ];
 
 const CATALOG_TTL=86_400_000;
-const DEFAULT_DISCOVERY_SIZE=120;
+const DEFAULT_DISCOVERY_SIZE=500;
+const MAX_DISCOVERY_SIZE=1000;
 const DEFAULT_WEEKLY_SIZE=36;
 const WEAK_COOLDOWN_MS=30*86_400_000;
 const discoverySchemaReadyByDb=new WeakMap();
@@ -30,17 +32,24 @@ export async function ensureDiscoverySchema(env){
 export async function refreshDiscoveryCatalog(env,{force=false}={}){
   await ensureDiscoverySchema(env);const meta=await getDiscoveryMeta(env),now=Date.now();
   if(!force&&meta.catalogUpdatedAt>0&&now-meta.catalogUpdatedAt<CATALOG_TTL)return{refreshed:false,catalogSize:await catalogCount(env),updatedAt:meta.catalogUpdatedAt};
-  if(!env.TWELVE_DATA_API_KEY)return seedCoreCatalog(env,true,now);
   try{
+    const providers=configuredProviders(env);
+    if(providers.alpaca){
+      const assets=await listUsMarketAssets(env,{force});
+      const eligible=assets.map(item=>({symbol:sanitizeSymbol(item.symbol),name:String(item.name||''),exchange:String(item.exchange||''),country:String(item.country||'United States'),securityType:String(item.securityType||'US Equity'),source:'alpaca'})).filter(row=>row.symbol);
+      if(eligible.length){
+        await upsertCatalogRows(env,eligible,now);await seedCoreCatalog(env,false,now);await putDiscoveryMeta(env,{catalogUpdatedAt:now});return{refreshed:true,catalogSize:await catalogCount(env),updatedAt:now,source:'alpaca'};
+      }
+    }
+    if(!env.TWELVE_DATA_API_KEY)return seedCoreCatalog(env,true,now);
     await reserveProviderPurpose(env,'stock-catalog');
     const url=new URL('https://api.twelvedata.com/stocks');url.searchParams.set('country','United States');url.searchParams.set('type','Common Stock');url.searchParams.set('apikey',env.TWELVE_DATA_API_KEY);
     const response=await fetch(url,{headers:{accept:'application/json'}});if(!response.ok)throw new Error(`Twelve Data HTTP ${response.status}`);
     const payload=await response.json();if(payload?.status==='error')throw new Error(`Twelve Data: ${payload.message||'provider error'}`);
     const rows=Array.isArray(payload?.data)?payload.data:[];
-    const eligible=rows.filter(isEligibleUsCommonStock).map(item=>({symbol:sanitizeSymbol(item.symbol),name:String(item.name||''),exchange:String(item.exchange||''),country:String(item.country||'United States'),securityType:String(item.type||'Common Stock')})).filter(row=>row.symbol);
+    const eligible=rows.filter(isEligibleUsCommonStock).map(item=>({symbol:sanitizeSymbol(item.symbol),name:String(item.name||''),exchange:String(item.exchange||''),country:String(item.country||'United States'),securityType:String(item.type||'Common Stock'),source:'twelve-data'})).filter(row=>row.symbol);
     if(!eligible.length)throw new Error('Stock catalog returned no eligible U.S. common stocks.');
-    for(let i=0;i<eligible.length;i+=75){const batch=eligible.slice(i,i+75).map(row=>env.DB.prepare(`INSERT INTO discovery_catalog(symbol,name,exchange,country,security_type,source,eligible,updated_at) VALUES(?,?,?,?,?,'twelve-data',1,?) ON CONFLICT(symbol) DO UPDATE SET name=excluded.name,exchange=excluded.exchange,country=excluded.country,security_type=excluded.security_type,source=excluded.source,eligible=1,updated_at=excluded.updated_at`).bind(row.symbol,row.name,row.exchange,row.country,row.securityType,now));if(batch.length)await env.DB.batch(batch);}
-    await seedCoreCatalog(env,false,now);await putDiscoveryMeta(env,{catalogUpdatedAt:now});return{refreshed:true,catalogSize:await catalogCount(env),updatedAt:now};
+    await upsertCatalogRows(env,eligible,now);await seedCoreCatalog(env,false,now);await putDiscoveryMeta(env,{catalogUpdatedAt:now});return{refreshed:true,catalogSize:await catalogCount(env),updatedAt:now,source:'twelve-data'};
   }catch(error){
     console.error(JSON.stringify({event:'discovery_catalog_error',message:error?.message||String(error)}));await seedCoreCatalog(env,false,now);await putDiscoveryMeta(env,{catalogUpdatedAt:now});return{refreshed:false,catalogSize:await catalogCount(env),updatedAt:now,fallback:true,error:error?.message||String(error)};
   }
@@ -49,8 +58,8 @@ export async function refreshDiscoveryCatalog(env,{force=false}={}){
 export async function getDiscoveryPool(env,{limit=DEFAULT_DISCOVERY_SIZE,now=Date.now(),weekKey=investmentWeekKey(new Date(now))}={}){
   await ensureDiscoverySchema(env);await refreshDiscoveryCatalog(env);
   const existing=await env.DB.prepare(`SELECT symbol FROM discovery_weekly_pool WHERE week_key=? ORDER BY position`).bind(weekKey).all();if((existing.results||[]).length)return(existing.results||[]).map(r=>r.symbol);
-  const capped=Math.max(20,Math.min(200,Number(limit)||DEFAULT_DISCOVERY_SIZE)),pinned=envSymbols(env),core=CORE_DISCOVERY_SYMBOLS;
-  const promisingRows=await env.DB.prepare(`SELECT symbol FROM discovery_stats WHERE cooldown_until<=? ORDER BY rolling_score DESC,score_velocity DESC,last_scanned ASC LIMIT 60`).bind(now).all();
+  const capped=Math.max(20,Math.min(MAX_DISCOVERY_SIZE,Number(limit)||DEFAULT_DISCOVERY_SIZE)),pinned=envSymbols(env),core=CORE_DISCOVERY_SYMBOLS;
+  const promisingRows=await env.DB.prepare(`SELECT symbol FROM discovery_stats WHERE cooldown_until<=? ORDER BY rolling_score DESC,score_velocity DESC,last_scanned ASC LIMIT 120`).bind(now).all();
   const promising=(promisingRows.results||[]).map(r=>r.symbol).filter(Boolean),used=new Set([...pinned,...core,...promising]),exploration=await explorationSymbols(env,Math.max(0,capped-used.size),used,now);
   const pool=composeDiscoveryPool({pinned,core,promising,exploration,limit:capped}),createdAt=Date.now();
   if(pool.length)await env.DB.batch(pool.map((symbol,position)=>env.DB.prepare(`INSERT OR IGNORE INTO discovery_weekly_pool(week_key,position,symbol,created_at) VALUES(?,?,?,?)`).bind(weekKey,position,symbol,createdAt)));
@@ -77,14 +86,15 @@ export async function recordDiscoveryObservation(env,quote,{now=Date.now()}={}){
   return{symbol,scanCount,currentScore:score,rollingScore:rolling,scoreVelocity:velocity,dollarVolume,cooldownUntil};
 }
 
-export async function getDiscoveryStatus(env){await ensureDiscoverySchema(env);const meta=await getDiscoveryMeta(env),catalogSize=await catalogCount(env),stats=await env.DB.prepare(`SELECT COUNT(*) AS scanned,MAX(last_scanned) AS lastScanned FROM discovery_stats`).first();return{catalogSize,scannedSymbols:Number(stats?.scanned)||0,lastScanned:Number(stats?.lastScanned)||0,catalogUpdatedAt:meta.catalogUpdatedAt};}
-export function composeDiscoveryPool({pinned=[],core=[],promising=[],exploration=[],limit=120}={}){return unique([...pinned,...core,...promising,...exploration]).slice(0,limit);}
+export async function getDiscoveryStatus(env){await ensureDiscoverySchema(env);const meta=await getDiscoveryMeta(env),catalogSize=await catalogCount(env),stats=await env.DB.prepare(`SELECT COUNT(*) AS scanned,MAX(last_scanned) AS lastScanned FROM discovery_stats`).first();return{catalogSize,scannedSymbols:Number(stats?.scanned)||0,lastScanned:Number(stats?.lastScanned)||0,catalogUpdatedAt:meta.catalogUpdatedAt,defaultPoolSize:DEFAULT_DISCOVERY_SIZE,maxPoolSize:MAX_DISCOVERY_SIZE};}
+export function composeDiscoveryPool({pinned=[],core=[],promising=[],exploration=[],limit=DEFAULT_DISCOVERY_SIZE}={}){return unique([...pinned,...core,...promising,...exploration]).slice(0,limit);}
 export function composeWeeklyShortlist({pinned=[],previous=[],leaders=[],exploration=[],core=[],limit=36}={}){return unique([...pinned,...previous,...leaders,...exploration,...core]).slice(0,limit);}
 
 async function explorationSymbols(env,limit,exclude=new Set(),now=Date.now()){
   if(limit<=0)return[];const rows=await env.DB.prepare(`SELECT c.symbol FROM discovery_catalog c LEFT JOIN discovery_stats s ON s.symbol=c.symbol WHERE c.eligible=1 AND COALESCE(s.cooldown_until,0)<=? ORDER BY c.symbol`).bind(now).all(),all=(rows.results||[]).map(r=>r.symbol).filter(symbol=>symbol&&!exclude.has(symbol));if(!all.length)return[];
   const offset=weekSeed(new Date(now))%all.length,result=[];for(let i=0;i<all.length&&result.length<limit;i++)result.push(all[(offset+i)%all.length]);return result;
 }
+async function upsertCatalogRows(env,rows,now){for(let i=0;i<rows.length;i+=75){const batch=rows.slice(i,i+75).map(row=>env.DB.prepare(`INSERT INTO discovery_catalog(symbol,name,exchange,country,security_type,source,eligible,updated_at) VALUES(?,?,?,?,?,?,1,?) ON CONFLICT(symbol) DO UPDATE SET name=excluded.name,exchange=excluded.exchange,country=excluded.country,security_type=excluded.security_type,source=excluded.source,eligible=1,updated_at=excluded.updated_at`).bind(row.symbol,row.name,row.exchange,row.country,row.securityType,row.source||'provider',now));if(batch.length)await env.DB.batch(batch);}}
 async function seedCoreCatalog(env,markRefresh=false,now=Date.now()){await ensureDiscoverySchema(env);await env.DB.batch(CORE_DISCOVERY_SYMBOLS.map(symbol=>env.DB.prepare(`INSERT INTO discovery_catalog(symbol,name,exchange,country,security_type,source,eligible,updated_at) VALUES(?,?,'','United States','Common Stock','core',1,?) ON CONFLICT(symbol) DO UPDATE SET eligible=1,updated_at=excluded.updated_at`).bind(symbol,symbol,now)));const meta=await getDiscoveryMeta(env);if(markRefresh)await putDiscoveryMeta(env,{catalogUpdatedAt:now});return{refreshed:false,catalogSize:await catalogCount(env),updatedAt:markRefresh?now:meta.catalogUpdatedAt,fallback:true};}
 async function catalogCount(env){const row=await env.DB.prepare(`SELECT COUNT(*) AS count FROM discovery_catalog WHERE eligible=1`).first();return Number(row?.count)||0;}
 async function getDiscoveryMeta(env){const row=await env.DB.prepare(`SELECT catalog_updated_at AS catalogUpdatedAt FROM discovery_meta WHERE id=1`).first();return row?{catalogUpdatedAt:Number(row.catalogUpdatedAt)||0}:{catalogUpdatedAt:0};}
