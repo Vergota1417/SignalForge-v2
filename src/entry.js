@@ -23,7 +23,7 @@ export default {
     }
     if(url.pathname==='/api/opportunity-validation'){
       if(request.method!=='GET')return json({error:'Method not allowed.'},405);
-      try{return json({validation:await getOpportunityValidation(env,{horizon:normalizeOpportunityHorizon(url.searchParams.get('horizon')),minSample:clampInt(url.searchParams.get('minSample'),10,100,OPPORTUNITY_REVIEW_MIN_SAMPLE)})});}
+      try{return json({validation:await getOpportunityValidation(env,{horizon:normalizeOpportunityHorizon(url.searchParams.get('horizon')),minSample:clampInt(url.searchParams.get('minSample'),OPPORTUNITY_REVIEW_MIN_SAMPLE,100,OPPORTUNITY_REVIEW_MIN_SAMPLE)})});}
       catch(error){console.error(JSON.stringify({event:'opportunity_validation_request_error',message:error?.message||String(error)}));return json({error:'Opportunity Score validation is temporarily unavailable.'},500);}
     }
     if(url.pathname==='/api/portfolio'&&request.method==='GET'){
