@@ -1,5 +1,6 @@
 import { ensureSchema, listPortfolioPositions } from './db.js';
 import { recordOperation } from './operations.js';
+import { configuredProviders } from './market.js';
 import { runRadarDiscovery } from './radar.js';
 import { getSmartScreenerSnapshot, runPriorityExecutionPulse, runScreenerPromotion } from './screener.js';
 import { getAfterHoursResearchStatus, runAfterHoursResearch } from './research.js';
@@ -27,8 +28,9 @@ export async function runScheduledCycle(env,scheduledTime=Date.now()){
   const at=Number(scheduledTime)||Date.now(),date=new Date(at),p=easternParts(date),minutes=Number(p.hour)*60+Number(p.minute),weekday=p.weekday;
   try{
     await ensureSchema(env);
-    await recordOperation(env,'cron-heartbeat',{status:'OK',at,detail:{weekday,minutes,marketDataConfigured:Boolean(env.TWELVE_DATA_API_KEY),scheduleOwner:'scheduler-v1'}});
-    if(!env.TWELVE_DATA_API_KEY)return;
+    const marketDataProviders=configuredProviders(env),marketDataConfigured=Boolean(marketDataProviders.alpaca||marketDataProviders.twelveData);
+    await recordOperation(env,'cron-heartbeat',{status:marketDataConfigured?'OK':'IDLE',at,detail:{weekday,minutes,marketDataConfigured,marketDataProviders,scheduleOwner:'scheduler-v1'}});
+    if(!marketDataConfigured)return;
 
     if(isOpeningScanSlot(weekday,minutes)){
       await runMarketScanCycle(env,{now:at,weekday,minutes,phase:openingScanLabel(minutes)});
