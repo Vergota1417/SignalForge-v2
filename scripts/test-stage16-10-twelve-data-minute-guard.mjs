@@ -36,11 +36,9 @@ assert.match(ui,/Local throttles never reach Twelve Data and are not counted as 
 
 assert.match(db,/MAX_PROVIDER_REQUESTS_PER_DAY/,'existing daily quota guard must remain active');
 assert.match(db,/clampInt\(env\.MAX_PROVIDER_REQUESTS_PER_DAY,\s*50,\s*5000,\s*700\)/,'internal daily safety cap must remain 700, below the 800-credit provider plan');
-assert.equal(pkg.version,'2.30.49');
-assert.match(build,/version:'2\.30\.49'/);
-assert.match(build,/release:'twelve-data-minute-guard'/);
-assert.match(build,/shell:'v30-49'/);
-assert.match(sw,/signalforge-shell-v30-49/,'PWA must invalidate the previous provider-health UI');
-assert.match(sw,/signalforge-api-snapshots-v11/,'provider-health response shape change must invalidate stale API snapshots');
+const [major,minor,patch]=String(pkg.version).split('.').map(Number);assert.ok(major>2||(major===2&&(minor>30||(minor===30&&patch>=49))),'later releases must preserve the Stage 16.10 minute guard');
+assert.match(build,/version:'2\.30\.\d+'/);
+const shell=Number(build.match(/shell:'v30-(\d+)'/)?.[1]||0);assert.ok(shell>=49,'later PWA shells must preserve the Twelve Data minute guard');
+assert.match(sw,/signalforge-api-snapshots-v1[1-9]/,'provider-health response must retain a post-Stage-16.10 API snapshot generation');
 
 console.log('Stage 16.10 Twelve Data minute guard regression: PASS');
