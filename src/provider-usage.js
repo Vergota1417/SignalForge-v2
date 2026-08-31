@@ -28,6 +28,7 @@ export async function recordProviderSuccess(env,{provider,purpose='general',symb
 
 export async function recordProviderFailure(env,{provider,purpose='general',symbol='',latencyMs=0,error=''}={}){
   await ensureProviderUsageDetailSchema(env);const now=Date.now(),dayKey=new Date(now).toISOString().slice(0,10),p=sanitizeProvider(provider),key=sanitizePurpose(purpose),message=String(error||'provider request failed').slice(0,240);
+  if(/\[LOCAL_RATE_LIMIT\]/i.test(message))return{skipped:true,localThrottle:true};
   await env.DB.batch([
     env.DB.prepare(`INSERT INTO provider_api_daily(day_key,provider,requests,successes,errors,updated_at) VALUES(?,?,0,0,1,?) ON CONFLICT(day_key,provider) DO UPDATE SET errors=errors+1,updated_at=excluded.updated_at`).bind(dayKey,p,now),
     env.DB.prepare(`INSERT INTO provider_api_health(provider,last_status,last_success_at,last_failure_at,last_latency_ms,last_symbol,last_bars,last_purpose,last_cached,last_source,last_error,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(provider) DO UPDATE SET last_status=excluded.last_status,last_failure_at=excluded.last_failure_at,last_latency_ms=excluded.last_latency_ms,last_symbol=excluded.last_symbol,last_bars=0,last_purpose=excluded.last_purpose,last_cached=0,last_source=excluded.last_source,last_error=excluded.last_error,updated_at=excluded.updated_at`).bind(p,'FAIL',0,now,Math.max(0,Math.round(Number(latencyMs)||0)),sanitizeSymbol(symbol),0,key,0,p,message,now)
@@ -61,7 +62,7 @@ export async function getProviderUsageBreakdown(env,{dayKey=new Date().toISOStri
     canonical?env.DB.prepare(`SELECT requests,updated_at AS updatedAt FROM provider_usage WHERE day_key=?`).bind(dayKey).first():Promise.resolve(null)
   ]);
   const byPurpose=Object.fromEntries((rows.results||[]).map(r=>[r.purpose,Number(r.requests)||0])),purposeTrackedTotal=Object.values(byPurpose).reduce((a,b)=>a+b,0),total=canonical?Math.max(Number(totalRow?.requests)||0,purposeTrackedTotal):purposeTrackedTotal;
-  return{dayKey,total,purposeTrackedTotal,unattributedMathOnly:Math.max(0,total-purposeTrackedTotal),byPurpose,rows:(rows.results||[]).map(r=>({...r,requests:Number(r.requests)||0,updatedAt:Number(r.updatedAt)||0}))};
+  return{dayKey,total,purposeTrackedTotal,unattributedMathOnly:Math.max(0,total-purposeTrackedTotal),byPurpose:usageByPurpose(byPurpose),rows:(rows.results||[]).map(r=>({...r,requests:Number(r.requests)||0,updatedAt:Number(r.updatedAt)||0}))};
 }
 
 export function twelveDataRateConfig(env={}){
@@ -115,3 +116,4 @@ function sanitizeProvider(value){const p=String(value||'unknown').trim().toLower
 function sanitizeSymbol(value){return String(value||'').trim().toUpperCase().replace(/[^A-Z0-9.:-]/g,'').slice(0,16);}
 function clampInt(value,min,max,fallback){const n=Math.trunc(Number(value));return Number.isFinite(n)?Math.min(max,Math.max(min,n)):fallback;}
 function sleep(ms){return new Promise(resolve=>setTimeout(resolve,Math.max(0,Math.round(ms))));}
+function usageByPurpose(value){return value;}
