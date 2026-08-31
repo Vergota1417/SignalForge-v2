@@ -1,6 +1,7 @@
 import { TIMEFRAMES } from './constants.js';
 import { getCachedMarket, putCachedMarket, getCachedSymbolSearch, putCachedSymbolSearch } from './db.js';
 import { getMarketData as getTwelveDataMarketData, searchSymbols as searchTwelveDataSymbols } from './twelve-data-provider.js';
+import { reserveProviderPurpose, recordProviderSuccess, recordProviderFailure } from './provider-usage.js';
 
 const DEFAULT_PROVIDER='auto';
 const ASSET_CACHE_TTL_MS=6*60*60*1000;
@@ -8,7 +9,7 @@ let alpacaAssetCache={fetchedAt:0,rows:[]};
 
 export async function getCandles(env,symbol,timeframe,options={}){
   const cfg=TIMEFRAMES[timeframe];if(!cfg)throw new Error('Unsupported timeframe.');
-  const forceRefresh=Boolean(options.forceRefresh),completedOnly=Boolean(options.completedOnly);
+  const forceRefresh=Boolean(options.forceRefresh),completedOnly=Boolean(options.completedOnly),purpose=String(options.purpose||`time-series-${String(timeframe).toLowerCase()}`);
   if(!forceRefresh){
     const cached=await getCachedMarket(env,symbol,timeframe,cfg.cacheSeconds*1000);
     if(cached){
@@ -21,10 +22,19 @@ export async function getCandles(env,symbol,timeframe,options={}){
   const provider=normalizeProvider(options.provider||env.MARKET_DATA_PROVIDER||DEFAULT_PROVIDER),ordered=providerOrder(provider,env);let lastError=null;
   if(!ordered.length)throw new Error('No market-data provider is configured.');
   for(const candidate of ordered){
+    const started=Date.now();
     try{
-      if(candidate==='alpaca')return await getAlpacaCandles(env,symbol,timeframe,{...options,completedOnly});
-      if(candidate==='twelve-data')return await getTwelveDataMarketData(env,symbol,timeframe,forceRefresh,{...options,completedOnly});
-    }catch(error){lastError=error;if(provider!=='auto')throw error;}
+      if(candidate==='alpaca')await reserveProviderPurpose(env,purpose,'alpaca');
+      const result=candidate==='alpaca'
+        ?await getAlpacaCandles(env,symbol,timeframe,{...options,completedOnly})
+        :await getTwelveDataMarketData(env,symbol,timeframe,forceRefresh,{...options,completedOnly,purpose});
+      await recordProviderSuccess(env,{provider:candidate,purpose,symbol,bars:result?.candles?.length||0,latencyMs:Date.now()-started,cached:Boolean(result?.cached),source:result?.source||candidate});
+      return result;
+    }catch(error){
+      lastError=error;
+      await recordProviderFailure(env,{provider:candidate,purpose,symbol,latencyMs:Date.now()-started,error:error?.message||String(error)}).catch(()=>{});
+      if(provider!=='auto')throw error;
+    }
   }
   throw lastError||new Error('No configured market-data provider could return candle data.');
 }
@@ -32,18 +42,33 @@ export async function getCandles(env,symbol,timeframe,options={}){
 export async function searchMarketSymbols(env,query,options={}){
   const normalized=String(query||'').trim().replace(/\s+/g,' ').slice(0,80);if(!normalized)return{results:[],cached:true,fetchedAt:Date.now()};
   const cacheKey=`GATEWAY:${normalized.toUpperCase()}`,cached=await getCachedSymbolSearch(env,cacheKey,86_400_000);if(cached)return cached;
-  const provider=normalizeProvider(options.provider||env.MARKET_DATA_PROVIDER||DEFAULT_PROVIDER);let result;
-  if(provider==='twelve-data')result=await searchTwelveDataSymbols(env,normalized);
-  else if(provider==='alpaca')result=await searchAlpacaAssets(env,normalized);
-  else if(configuredProviders(env).alpaca){try{result=await searchAlpacaAssets(env,normalized);}catch{result=await searchTwelveDataSymbols(env,normalized);}}
-  else result=await searchTwelveDataSymbols(env,normalized);
-  const results=Array.isArray(result?.results)?result.results:[];const fetchedAt=await putCachedSymbolSearch(env,cacheKey,results);return{...result,results,cached:false,fetchedAt};
+  const provider=normalizeProvider(options.provider||env.MARKET_DATA_PROVIDER||DEFAULT_PROVIDER),ordered=providerOrder(provider,env);let result=null,lastError=null;
+  for(const candidate of ordered){
+    const started=Date.now();
+    try{
+      if(candidate==='alpaca')await reserveProviderPurpose(env,'symbol-search','alpaca');
+      result=candidate==='alpaca'?await searchAlpacaAssets(env,normalized):await searchTwelveDataSymbols(env,normalized);
+      await recordProviderSuccess(env,{provider:candidate,purpose:'symbol-search',symbol:normalized,bars:Array.isArray(result?.results)?result.results.length:0,latencyMs:Date.now()-started,cached:false,source:result?.source||candidate});
+      break;
+    }catch(error){
+      lastError=error;await recordProviderFailure(env,{provider:candidate,purpose:'symbol-search',symbol:normalized,latencyMs:Date.now()-started,error:error?.message||String(error)}).catch(()=>{});
+      if(provider!=='auto')throw error;
+    }
+  }
+  if(!result)throw lastError||new Error('No configured market-data provider could search symbols.');
+  const results=Array.isArray(result?.results)?result.results:[],fetchedAt=await putCachedSymbolSearch(env,cacheKey,results);return{...result,results,cached:false,fetchedAt};
 }
 
 export async function listUsMarketAssets(env,{force=false}={}){
   if(configuredProviders(env).alpaca){
-    const rows=await getAlpacaAssets(env,{force});
-    return rows.filter(isEligibleAlpacaAsset).map(a=>({symbol:String(a.symbol).toUpperCase(),name:String(a.name||a.symbol),exchange:String(a.exchange||''),country:'United States',securityType:assetSecurityType(a),source:'alpaca'}));
+    const started=Date.now();
+    try{
+      const cacheHit=!force&&alpacaAssetCache.rows.length&&Date.now()-alpacaAssetCache.fetchedAt<ASSET_CACHE_TTL_MS;
+      if(!cacheHit)await reserveProviderPurpose(env,'asset-catalog','alpaca');
+      const rows=await getAlpacaAssets(env,{force});
+      if(!cacheHit)await recordProviderSuccess(env,{provider:'alpaca',purpose:'asset-catalog',bars:rows.length,latencyMs:Date.now()-started,source:'Alpaca'});
+      return rows.filter(isEligibleAlpacaAsset).map(a=>({symbol:String(a.symbol).toUpperCase(),name:String(a.name||a.symbol),exchange:String(a.exchange||''),country:'United States',securityType:assetSecurityType(a),source:'alpaca'}));
+    }catch(error){await recordProviderFailure(env,{provider:'alpaca',purpose:'asset-catalog',latencyMs:Date.now()-started,error:error?.message||String(error)}).catch(()=>{});throw error;}
   }
   return[];
 }
