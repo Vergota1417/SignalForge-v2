@@ -28,6 +28,7 @@
   loadModuleScript('/trade-plan-ui.js','sf-trade-plan');
   loadModuleScript('/cockpit-ui.js','sf-cockpit');
   loadModuleScript('/activity-rhythm-ui.js','sf-activity-rhythm');
+  loadModuleScript('/chart-studio-ui.js','sf-chart-studio');
   loadFinancialCharting();
 
   const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;

@@ -5,7 +5,7 @@
 
   const startupParams=new URLSearchParams(location.search);
   const deepLink=sanitize(startupParams.get('symbol'));
-  let remembered='';
+  let remembered='',draftDirty=false;
   try{remembered=sanitize(localStorage.getItem(KEY));}catch{}
 
   if(!deepLink&&remembered){
@@ -16,16 +16,18 @@
 
   const selection=window.SignalForgeSelection=window.SignalForgeSelection||{symbol:'',updatedAt:0};
 
+  function syncInput(symbol,force=false){
+    const input=document.getElementById('symbolInput');if(!input)return;
+    if(force||document.activeElement!==input||!draftDirty){if(sanitize(input.value)!==symbol)input.value=symbol;draftDirty=false;}
+  }
+
   function rememberDisplayedSymbol(){
     const badge=document.getElementById('tickerBadge');
-    const symbol=sanitize(badge?.textContent);
-    if(!symbol)return;
+    const symbol=sanitize(badge?.textContent);if(!symbol)return;
     const changed=selection.symbol!==symbol;
     selection.symbol=symbol;selection.updatedAt=Date.now();
     try{localStorage.setItem(KEY,symbol);}catch{}
-
-    const input=document.getElementById('symbolInput');
-    if(input&&document.activeElement!==input&&sanitize(input.value)!==symbol)input.value=symbol;
+    syncInput(symbol,changed);
 
     const params=new URLSearchParams(location.search);
     if(sanitize(params.get('symbol'))!==symbol){
@@ -38,12 +40,13 @@
 
   function bindInput(){
     const input=document.getElementById('symbolInput');if(!input){requestAnimationFrame(bindInput);return;}
-    input.addEventListener('blur',()=>{const active=sanitize(document.getElementById('tickerBadge')?.textContent);if(active&&sanitize(input.value)!==active)input.value=active;});
+    input.addEventListener('input',()=>{const active=sanitize(selection.symbol||document.getElementById('tickerBadge')?.textContent);draftDirty=document.activeElement===input&&sanitize(input.value)!==active;});
+    input.addEventListener('blur',()=>{draftDirty=false;const active=sanitize(selection.symbol||document.getElementById('tickerBadge')?.textContent);if(active)syncInput(active,true);});
+    window.addEventListener('signalforge:selected-symbol',event=>{const symbol=sanitize(event.detail?.symbol);if(symbol)syncInput(symbol,true);});
   }
 
   function observe(){
-    const badge=document.getElementById('tickerBadge');
-    if(!badge){requestAnimationFrame(observe);return;}
+    const badge=document.getElementById('tickerBadge');if(!badge){requestAnimationFrame(observe);return;}
     rememberDisplayedSymbol();
     new MutationObserver(rememberDisplayedSymbol).observe(badge,{childList:true,characterData:true,subtree:true});
   }

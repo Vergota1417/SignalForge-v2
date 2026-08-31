@@ -18,11 +18,10 @@ assert.match(radar,/\.sf-action-flow\{display:grid;grid-template-columns:repeat\
 assert.match(radar,/@media\(max-width:760px\)[\s\S]*?\.radar-block\{display:none!important\}/,'phone behavior must continue hiding the duplicate sidebar Radar');
 assert.match(css,/grid-template-columns:minmax\(0,1fr\)/,'external Radar CSS must agree with the stacked desktop card contract');
 assert.match(css,/overflow-wrap:anywhere/,'external Radar CSS must permit long labels to wrap safely under Windows scaling');
-assert.equal(pkg.version,'2.30.47');
-assert.match(build,/version:'2\.30\.47'/);
-assert.match(build,/release:'radar-windows-layout'/);
-assert.match(build,/shell:'v30-47'/);
-assert.match(sw,/signalforge-shell-v30-47/,'PWA shell must invalidate the old compressed Radar layout');
-assert.match(sw,/signalforge-api-snapshots-v10/,'UI-only Stage 16.8 must not unnecessarily invalidate API snapshots');
+const [major,minor,patch]=String(pkg.version).split('.').map(Number);assert.ok(major>2||(major===2&&(minor>30||(minor===30&&patch>=47))),'later releases must preserve the Stage 16.8 desktop layout');
+assert.match(build,/version:'2\.30\.\d+'/);
+const shell=Number(build.match(/shell:'v30-(\d+)'/)?.[1]||0);assert.ok(shell>=47,'later PWA shells must preserve the Stage 16.8 desktop layout');
+assert.match(sw,/signalforge-shell-v30-\d+/,'PWA shell must continue versioning Windows layout changes');
+assert.match(sw,/signalforge-api-snapshots-v10/,'UI-only releases must not unnecessarily invalidate API snapshots');
 
 console.log('Stage 16.8 Windows Opportunity Radar layout regression: PASS');
