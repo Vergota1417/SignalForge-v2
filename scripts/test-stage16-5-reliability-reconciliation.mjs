@@ -46,11 +46,11 @@ assert.match(openingUi,/\/api\/execution-shadow\?symbol=/,'opening structure UI 
 assert.match(trace,/discoveryState=quote\?'COMPLETE':\(signal\|\|latestMarket\)\?'SKIPPED':'NOT_RUN'/,'direct/manual loads must not be mislabeled as broken discovery');
 assert.match(trace,/observation_type='ANALYSIS'/,'decision outcome trace must use ANALYSIS evidence, not arbitrary latest evidence');
 assert.match(traceUi,/SKIPPED/,'trace UI must explain intentionally skipped stages');
-assert.equal(pkg.version,'2.30.44');
-assert.match(build,/version:'2\.30\.44'/);
-assert.match(build,/shell:'v30-44'/);
-assert.match(sw,/signalforge-shell-v30-44/);
-assert.match(sw,/signalforge-api-snapshots-v8/,'reliability reconciliation must invalidate old API snapshots');
+const patch=Number(String(pkg.version).split('.')[2]),buildPatch=Number(build.match(/version:'2\.30\.(\d+)'/)?.[1]),shellPatch=Number(build.match(/shell:'v30-(\d+)'/)?.[1]),swShell=Number(sw.match(/signalforge-shell-v30-(\d+)/)?.[1]),apiVersion=Number(sw.match(/signalforge-api-snapshots-v(\d+)/)?.[1]);
+assert.ok(patch>=44&&buildPatch>=44&&shellPatch>=44&&swShell>=44,'Stage 16.5 protections must survive later 2.30.x releases');
+assert.equal(buildPatch,patch,'visible build and package versions must match');
+assert.equal(shellPatch,swShell,'visible shell and service worker shell must match');
+assert.ok(apiVersion>=8,'reliability reconciliation must retain versioned API snapshot invalidation');
 
 console.log('Stage 16.5 reliability reconciliation regression: PASS');
 function read(relative){return fs.readFileSync(new URL(relative,import.meta.url),'utf8');}
