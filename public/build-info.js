@@ -1,1 +1,1 @@
-window.SIGNALFORGE_BUILD=Object.freeze({version:'2.30.39',release:'marketpulse-opportunity-confidence-ui',shell:'v30-39'});
+window.SIGNALFORGE_BUILD=Object.freeze({version:'2.30.40',release:'marketpulse-auction-method-v0',shell:'v30-40'});
