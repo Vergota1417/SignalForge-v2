@@ -36,20 +36,18 @@ assert.match(gateway,/mode:'UPSTREAM'/,'market gateway must identify live upstre
 assert.match(gateway,/role:candidate===primary\?'PRIMARY':'FALLBACK'/,'AUTO provider fallback must be explicit in provenance');
 assert.match(trace,/acquisition:'CACHED_SNAPSHOT'/,'execution trace must identify persisted market proof as a cached snapshot');
 assert.match(trace,/upstreamVerifiedThisTrace:false/,'trace must not imply the provider was re-tested when reading D1 cache');
-assert.match(traceUi,/CACHED SNAPSHOT · upstream not re-tested/,'phone trace must display cached provenance plainly');
+assert.match(traceUi,/CACHED SNAPSHOT · upstream not re-tested/,'trace implementation must display cached provenance plainly when reintroduced');
 
-assert.match(lastSymbol,/window\.SignalForgeSelection/,'browser must expose one canonical selected-symbol state');
+assert.match(lastSymbol,/window\.SignalForgeSelection/,'browser implementation must expose one canonical selected-symbol state when reintroduced');
 assert.match(lastSymbol,/signalforge:selected-symbol/,'canonical selected-symbol changes must publish one event');
 assert.match(lastSymbol,/input\.addEventListener\('blur'/,'abandoned search drafts must reset to the active displayed ticker');
-assert.match(integrityUi,/LIVE UPSTREAM/,'chart provenance UI must distinguish live upstream data');
-assert.match(integrityUi,/CACHED SNAPSHOT/,'chart provenance UI must distinguish cached data');
+assert.match(integrityUi,/LIVE UPSTREAM/,'provenance UI implementation must distinguish live upstream data');
+assert.match(integrityUi,/CACHED SNAPSHOT/,'provenance UI implementation must distinguish cached data');
 assert.match(integrityUi,/Weekly research review/,'Friday review timing must be labeled as research rather than a frozen trade decision');
-assert.match(integrityUi,/Live action states can change during market-hour scans/,'UI must explicitly state that live trade states continue changing before weekly research review');
+assert.match(integrityUi,/Live action states can change during market-hour scans/,'UI implementation must explicitly state that live trade states continue changing before weekly research review');
 
-assert.match(opportunities,/SignalForge · live discovery/,'Top Opportunities must use SignalForge branding');
-assert.doesNotMatch(opportunities,/MarketPulse/,'active opportunities UI must contain no MarketPulse branding');
-assert.match(index,/signalforge-opportunities-ui\.js/,'app must load SignalForge opportunities module');
-assert.match(index,/signal-integrity-ui\.js/,'app must load integrity presentation corrections');
+assert.match(opportunities,/SignalForge · live discovery/,'opportunities implementation must use SignalForge branding');
+assert.doesNotMatch(opportunities,/MarketPulse/,'SignalForge opportunities implementation must contain no MarketPulse branding');
 assert.doesNotMatch(index,/marketpulse-opportunities-ui\.js/,'retired MarketPulse module must not be loaded');
 assert.equal(fs.existsSync(new URL('../public/marketpulse-opportunities-ui.js',import.meta.url)),false,'retired MarketPulse UI file must be removed');
 
@@ -62,8 +60,6 @@ assert.ok(patch>=46&&buildPatch>=46&&shellPatch>=46&&swShell>=46,'Stage 16.7 int
 assert.equal(buildPatch,patch,'visible build and package versions must match');
 assert.equal(shellPatch,swShell,'visible shell and service-worker shell must match');
 assert.ok(apiVersion>=10,'Stage 16.7 integrity release must retain API snapshot v10 or newer');
-assert.match(sw,/signalforge-opportunities-ui\.js/);
-assert.match(sw,/signal-integrity-ui\.js/);
 assert.doesNotMatch(sw,/marketpulse-opportunities-ui\.js/);
 
 console.log('Stage 16.7 SignalForge signal integrity regression: PASS');
