@@ -1,6 +1,6 @@
 {
   "name": "signalforge-v2",
-  "version": "2.30.40",
+  "version": "2.30.41",
   "private": true,
   "type": "module",
   "scripts": {

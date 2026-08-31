@@ -57,7 +57,8 @@ export const BASELINE_TESTS=Object.freeze([
   'scripts/test-stage15-6-marketpulse-opportunities-ui.mjs',
   'scripts/test-stage15-7-opportunity-outcome-validation.mjs',
   'scripts/test-stage15-8-production-data-correctness.mjs',
-  'scripts/test-stage16-auction-method-v0.mjs'
+  'scripts/test-stage16-auction-method-v0.mjs',
+  'scripts/test-stage16-2-provider-api-health.mjs'
 ]);
 
 export const PRODUCTION_GUARDRAIL_TESTS=Object.freeze([
@@ -80,8 +81,4 @@ export const HISTORICAL_DISABLED_TESTS=Object.freeze([
   'scripts/test-stage14-31-live-pattern-context-bridge.mjs'
 ]);
 
-export const TEST_GROUPS=Object.freeze({
-  baseline:BASELINE_TESTS,
-  reliability:PRODUCTION_GUARDRAIL_TESTS,
-  historical:HISTORICAL_DISABLED_TESTS
-});
+export const TEST_GROUPS=Object.freeze({baseline:BASELINE_TESTS,reliability:PRODUCTION_GUARDRAIL_TESTS,historical:HISTORICAL_DISABLED_TESTS});
