@@ -17,23 +17,16 @@
     '/api/evidence-optimization':FIVE_MINUTES,
     '/api/health':FIVE_MINUTES,
     '/api/trade-plan':FIVE_MINUTES,
-    '/api/auction-context':FIVE_MINUTES
+    '/api/auction-context':FIVE_MINUTES,
+    '/api/provider-health':FIVE_MINUTES
   });
 
   function ttlFor(input,base){
     let url;
-    try{
-      if(input instanceof URL)url=input;
-      else url=new URL(String(input||''),base||root.location?.origin||'https://signalforge.invalid');
-    }catch{return 0;}
+    try{if(input instanceof URL)url=input;else url=new URL(String(input||''),base||root.location?.origin||'https://signalforge.invalid');}catch{return 0;}
     if(url.pathname==='/api/market-data'&&url.searchParams.get('cacheOnly')==='1')return THIRTY_MINUTES;
     return SAFE_GET_TTL_MS[url.pathname]||0;
   }
 
-  root.SignalForgeApiRequestPolicy=Object.freeze({
-    backgroundReadMs:FIVE_MINUTES,
-    cacheOnlyMarketDataMs:THIRTY_MINUTES,
-    safeGetTtlMs:SAFE_GET_TTL_MS,
-    ttlFor
-  });
+  root.SignalForgeApiRequestPolicy=Object.freeze({backgroundReadMs:FIVE_MINUTES,cacheOnlyMarketDataMs:THIRTY_MINUTES,safeGetTtlMs:SAFE_GET_TTL_MS,ttlFor});
 })();
