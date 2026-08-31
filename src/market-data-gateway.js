@@ -44,14 +44,14 @@ export async function searchMarketSymbols(env,query,options={}){
   const cacheKey=`GATEWAY:${normalized.toUpperCase()}`,cached=await getCachedSymbolSearch(env,cacheKey,86_400_000);if(cached)return cached;
   const provider=normalizeProvider(options.provider||env.MARKET_DATA_PROVIDER||DEFAULT_PROVIDER),ordered=providerOrder(provider,env);let result=null,lastError=null;
   for(const candidate of ordered){
-    const started=Date.now();
+    const started=Date.now(),alpacaCacheHit=candidate==='alpaca'&&alpacaAssetCacheFresh();
     try{
-      if(candidate==='alpaca')await reserveProviderPurpose(env,'symbol-search','alpaca');
+      if(candidate==='alpaca'&&!alpacaCacheHit)await reserveProviderPurpose(env,'symbol-search','alpaca');
       result=candidate==='alpaca'?await searchAlpacaAssets(env,normalized):await searchTwelveDataSymbols(env,normalized);
-      await recordProviderSuccess(env,{provider:candidate,purpose:'symbol-search',symbol:normalized,bars:Array.isArray(result?.results)?result.results.length:0,latencyMs:Date.now()-started,cached:false,source:result?.source||candidate});
+      if(candidate!=='alpaca'||!alpacaCacheHit)await recordProviderSuccess(env,{provider:candidate,purpose:'symbol-search',symbol:normalized,bars:Array.isArray(result?.results)?result.results.length:0,latencyMs:Date.now()-started,cached:false,source:result?.source||candidate});
       break;
     }catch(error){
-      lastError=error;await recordProviderFailure(env,{provider:candidate,purpose:'symbol-search',symbol:normalized,latencyMs:Date.now()-started,error:error?.message||String(error)}).catch(()=>{});
+      lastError=error;if(candidate!=='alpaca'||!alpacaCacheHit)await recordProviderFailure(env,{provider:candidate,purpose:'symbol-search',symbol:normalized,latencyMs:Date.now()-started,error:error?.message||String(error)}).catch(()=>{});
       if(provider!=='auto')throw error;
     }
   }
@@ -61,14 +61,13 @@ export async function searchMarketSymbols(env,query,options={}){
 
 export async function listUsMarketAssets(env,{force=false}={}){
   if(configuredProviders(env).alpaca){
-    const started=Date.now();
+    const started=Date.now(),cacheHit=!force&&alpacaAssetCacheFresh();
     try{
-      const cacheHit=!force&&alpacaAssetCache.rows.length&&Date.now()-alpacaAssetCache.fetchedAt<ASSET_CACHE_TTL_MS;
       if(!cacheHit)await reserveProviderPurpose(env,'asset-catalog','alpaca');
       const rows=await getAlpacaAssets(env,{force});
       if(!cacheHit)await recordProviderSuccess(env,{provider:'alpaca',purpose:'asset-catalog',bars:rows.length,latencyMs:Date.now()-started,source:'Alpaca'});
       return rows.filter(isEligibleAlpacaAsset).map(a=>({symbol:String(a.symbol).toUpperCase(),name:String(a.name||a.symbol),exchange:String(a.exchange||''),country:'United States',securityType:assetSecurityType(a),source:'alpaca'}));
-    }catch(error){await recordProviderFailure(env,{provider:'alpaca',purpose:'asset-catalog',latencyMs:Date.now()-started,error:error?.message||String(error)}).catch(()=>{});throw error;}
+    }catch(error){if(!cacheHit)await recordProviderFailure(env,{provider:'alpaca',purpose:'asset-catalog',latencyMs:Date.now()-started,error:error?.message||String(error)}).catch(()=>{});throw error;}
   }
   return[];
 }
@@ -88,8 +87,9 @@ async function getAlpacaCandles(env,symbol,timeframe,options={}){
   return{candles,source:'Alpaca',cached:false,fetchedAt,quality:qualitySummary({rawBars:bars.length,acceptedBars:candles.length,rejectedBars:bars.length-parsed.length,duplicatesRemoved:parsed.length-deduped.length,formingBarsRemoved:deduped.length-candles.length,historyRequired:minimumHistory(timeframe),cacheDerived:false})};
 }
 
-async function searchAlpacaAssets(env,query){const q=String(query||'').trim().toUpperCase(),rows=await getAlpacaAssets(env),results=rows.filter(isEligibleAlpacaAsset).filter(a=>!q||String(a.symbol).toUpperCase().includes(q)||String(a.name||'').toUpperCase().includes(q)).slice(0,12).map(a=>({symbol:String(a.symbol).toUpperCase(),name:String(a.name||a.symbol),exchange:String(a.exchange||''),micCode:'',type:assetSecurityType(a),country:'United States',currency:'USD',plan:'alpaca'}));return{results,cached:false,fetchedAt:Date.now(),source:'Alpaca'};}
-async function getAlpacaAssets(env,{force=false}={}){assertAlpaca(env);if(!force&&alpacaAssetCache.rows.length&&Date.now()-alpacaAssetCache.fetchedAt<ASSET_CACHE_TTL_MS)return alpacaAssetCache.rows;const payload=await fetchAlpacaJson(env,new URL('https://paper-api.alpaca.markets/v2/assets?status=active&asset_class=us_equity'));const rows=Array.isArray(payload)?payload:[];alpacaAssetCache={fetchedAt:Date.now(),rows};return rows;}
+async function searchAlpacaAssets(env,query){const q=String(query||'').trim().toUpperCase(),rows=await getAlpacaAssets(env),results=rows.filter(isEligibleAlpacaAsset).filter(a=>!q||String(a.symbol).toUpperCase().includes(q)||String(a.name||'').toUpperCase().includes(q)).slice(0,12).map(a=>({symbol:String(a.symbol).toUpperCase(),name:String(a.name||a.symbol),exchange:String(a.exchange||''),micCode:'',type:assetSecurityType(a),country:'United States',currency:'USD',plan:'alpaca'}));return{results,cached:alpacaAssetCacheFresh(),fetchedAt:Date.now(),source:'Alpaca'};}
+async function getAlpacaAssets(env,{force=false}={}){assertAlpaca(env);if(!force&&alpacaAssetCacheFresh())return alpacaAssetCache.rows;const payload=await fetchAlpacaJson(env,new URL('https://paper-api.alpaca.markets/v2/assets?status=active&asset_class=us_equity'));const rows=Array.isArray(payload)?payload:[];alpacaAssetCache={fetchedAt:Date.now(),rows};return rows;}
+function alpacaAssetCacheFresh(){return Boolean(alpacaAssetCache.rows.length&&Date.now()-alpacaAssetCache.fetchedAt<ASSET_CACHE_TTL_MS);}
 
 export function alpacaTimeframe(timeframe){const map={'1D':{timeframe:'5Min',limit:120,startDaysAgo:2},'5D':{timeframe:'15Min',limit:500,startDaysAgo:10},'1M':{timeframe:'1Hour',limit:500,startDaysAgo:45},'3M':{timeframe:'1Day',limit:120,startDaysAgo:150},'6M':{timeframe:'1Day',limit:180,startDaysAgo:260},'1Y':{timeframe:'1Day',limit:260,startDaysAgo:420},'2Y':{timeframe:'1Week',limit:130,startDaysAgo:900}};const cfg=map[timeframe];if(!cfg)throw new Error('Unsupported timeframe.');return{...cfg,minimum:minimumHistory(timeframe)};}
 export function validCandle(c){return Number.isFinite(c?.time)&&Number.isFinite(c?.open)&&Number.isFinite(c?.high)&&Number.isFinite(c?.low)&&Number.isFinite(c?.close)&&Number.isFinite(c?.volume)&&c.open>0&&c.high>0&&c.low>0&&c.close>0&&c.volume>=0&&c.high>=c.low&&c.high>=c.open&&c.high>=c.close&&c.low<=c.open&&c.low<=c.close;}
