@@ -20,12 +20,11 @@ assert.match(operationsUi,/ANALYSIS tracker has not run yet/,'operations detail 
 assert.match(operationsUi,/legacy\/general tracker last result/,'generic outcome history may be shown only as separately labeled legacy/general proof');
 assert.doesNotMatch(operationsUi,/tracker=analysisTracker\.lastRunAt\?analysisTracker:genericTracker/,'generic outcome tracker must never masquerade as ANALYSIS tracker');
 assert.match(operationsUi,/All resolved outcomes/,'aggregate outcome count must be labeled as aggregate rather than ANALYSIS-only');
-assert.equal(pkg.version,'2.30.45');
-assert.match(build,/version:'2\.30\.45'/);
-assert.match(build,/release:'live-proof-cleanup'/);
-assert.match(build,/shell:'v30-45'/);
-assert.match(sw,/signalforge-shell-v30-45/);
-assert.match(sw,/signalforge-api-snapshots-v9/,'Stage 16.6 must invalidate the stale provider-health snapshot cache');
+const patch=Number(String(pkg.version).split('.')[2]),buildPatch=Number(build.match(/version:'2\.30\.(\d+)'/)?.[1]),shellPatch=Number(build.match(/shell:'v30-(\d+)'/)?.[1]),swShell=Number(sw.match(/signalforge-shell-v30-(\d+)/)?.[1]),apiVersion=Number(sw.match(/signalforge-api-snapshots-v(\d+)/)?.[1]);
+assert.ok(patch>=45&&buildPatch>=45&&shellPatch>=45&&swShell>=45,'Stage 16.6 protections must survive later 2.30.x releases');
+assert.equal(buildPatch,patch,'visible build and package versions must match');
+assert.equal(shellPatch,swShell,'visible shell and service worker shell must match');
+assert.ok(apiVersion>=9,'live-proof cleanup must retain API snapshot invalidation at v9 or newer');
 
 console.log('Stage 16.6 live-proof cleanup regression: PASS');
 function read(relative){return fs.readFileSync(new URL(relative,import.meta.url),'utf8');}

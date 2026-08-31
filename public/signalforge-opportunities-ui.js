@@ -8,20 +8,20 @@
 
   function ensurePanel(){
     const view=document.getElementById('smartScreenerView');
-    if(!view||document.getElementById('mpTopOpportunities'))return;
+    if(!view||document.getElementById('sfTopOpportunities'))return;
     const panel=document.createElement('section');
-    panel.id='mpTopOpportunities';
+    panel.id='sfTopOpportunities';
     panel.className='mp-opportunities';
     panel.innerHTML=`
       <div class="mp-head">
         <div>
-          <div class="eyebrow">MarketPulse · live discovery</div>
+          <div class="eyebrow">SignalForge · live discovery</div>
           <h2>Top Opportunities</h2>
           <p>Opportunity Score answers <strong>“what deserves attention?”</strong> Trade Confidence answers <strong>“is it actually ready?”</strong></p>
         </div>
-        <div id="mpCoverage" class="mp-coverage">Loading coverage…</div>
+        <div id="sfOpportunityCoverage" class="mp-coverage">Loading coverage…</div>
       </div>
-      <div id="mpOpportunityRows" class="mp-grid"><div class="mp-empty">Loading MarketPulse opportunities…</div></div>
+      <div id="sfOpportunityRows" class="mp-grid"><div class="mp-empty">Loading SignalForge opportunities…</div></div>
       <div class="mp-rule"><strong>Important:</strong> a high Opportunity Score is not a BUY signal. BUY NOW still requires the full SignalForge hard-gate path.</div>
     `;
     const hero=view.querySelector('.sf-screen-hero');
@@ -30,8 +30,8 @@
   }
 
   function injectStyles(){
-    if(document.getElementById('mpOpportunityStyles'))return;
-    const style=document.createElement('style');style.id='mpOpportunityStyles';style.textContent=`
+    if(document.getElementById('sfOpportunityStyles'))return;
+    const style=document.createElement('style');style.id='sfOpportunityStyles';style.textContent=`
       .mp-opportunities{display:grid;gap:12px;padding:15px;border:1px solid #254869;border-radius:14px;background:linear-gradient(135deg,rgba(16,34,58,.96),rgba(9,20,36,.96));box-shadow:0 14px 36px rgba(0,0,0,.16)}
       .mp-head{display:flex;justify-content:space-between;gap:14px;align-items:flex-start}.mp-head h2{margin:2px 0 4px;font-size:21px}.mp-head p{margin:0;color:var(--muted);font-size:12px;max-width:720px}.mp-head p strong{color:var(--text)}
       .mp-coverage{border:1px solid var(--border);border-radius:999px;padding:7px 10px;color:var(--muted);font-size:11px;white-space:nowrap;background:var(--panel)}
@@ -50,10 +50,10 @@
 
   function render(screener){
     ensurePanel();
-    const coverage=screener?.coverage||{},rows=topRows(screener?.rows||[]),root=document.getElementById('mpOpportunityRows'),coverageRoot=document.getElementById('mpCoverage');
+    const coverage=screener?.coverage||{},rows=topRows(screener?.rows||[]),root=document.getElementById('sfOpportunityRows'),coverageRoot=document.getElementById('sfOpportunityCoverage');
     if(coverageRoot)coverageRoot.textContent=`${fmtCompact(coverage.scannedSymbols||0)} scanned · ${fmtCompact(coverage.catalogSize||0)} catalog · ${fmtCompact(coverage.deepAnalyzed||0)} deep analyzed`;
     if(!root)return;
-    if(!rows.length){root.innerHTML='<div class="mp-empty">No qualified MarketPulse opportunities yet. Discovery is still building history.</div>';return;}
+    if(!rows.length){root.innerHTML='<div class="mp-empty">No qualified SignalForge opportunities yet. Discovery is still building history.</div>';return;}
     root.innerHTML=rows.map((r,i)=>{
       const confidence=r.tradeConfidence===null||r.tradeConfidence===undefined?null:Number(r.tradeConfidence),status=displayState(r),bucketClass=stateClass(r.bucket);
       return `<button type="button" class="mp-card" data-symbol="${esc(r.symbol)}">
@@ -67,8 +67,8 @@
   }
 
   async function load(){
-    if(loading)return;loading=true;ensurePanel();const root=document.getElementById('mpOpportunityRows');if(root)root.innerHTML='<div class="mp-empty">Refreshing MarketPulse opportunities…</div>';
-    try{const res=await fetch(`${apiBase()}/api/screener?limit=40`,{headers:{accept:'application/json'}}),body=await res.json();if(!res.ok)throw new Error(body.error||`HTTP ${res.status}`);render(body.screener||{});}catch(error){if(root)root.innerHTML=`<div class="mp-empty">MarketPulse opportunities unavailable: ${esc(error.message||'request failed')}</div>`;}finally{loading=false;}
+    if(loading)return;loading=true;ensurePanel();const root=document.getElementById('sfOpportunityRows');if(root)root.innerHTML='<div class="mp-empty">Refreshing SignalForge opportunities…</div>';
+    try{const res=await fetch(`${apiBase()}/api/screener?limit=40`,{headers:{accept:'application/json'}}),body=await res.json();if(!res.ok)throw new Error(body.error||`HTTP ${res.status}`);render(body.screener||{});}catch(error){if(root)root.innerHTML=`<div class="mp-empty">SignalForge opportunities unavailable: ${esc(error.message||'request failed')}</div>`;}finally{loading=false;}
   }
 
   function openSymbol(symbol){const dashboard=document.getElementById('dashboardNavBtn'),input=document.getElementById('symbolInput'),loadBtn=document.getElementById('loadSymbolBtn');dashboard?.click();if(input)input.value=symbol;if(loadBtn)loadBtn.click();}

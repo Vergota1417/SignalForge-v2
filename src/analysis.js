@@ -1,5 +1,5 @@
 import { assessPatternContext } from './pattern-context.js';
-import { evaluateHardBuyGuardrails, MIN_BUY_REWARD_RISK } from './hard-guardrails.js';
+import { evaluateHardBuyGuardrails, MIN_BUY_REWARD_RISK, MIN_BUY_STOP_DISTANCE_PCT, MIN_BUY_STOP_DISTANCE_ATR } from './hard-guardrails.js';
 
 const average = arr => arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : 0;
 
@@ -43,7 +43,7 @@ function walkForward(candles){
     if(!(closes[i]>s50&&s20>s50&&momentum>0&&rsiValue<72&&extension<.045))continue;
     const ret=closes[i+horizon]/closes[i]-1;total++;returns.push(ret);if(ret>0)wins++;
   }
-  return {sample:total,winRate:total?wins/total:.5,avgReturn:returns.length?average(returns):0};
+  return {sample:total,winRate:total?wins/total:null,avgReturn:returns.length?average(returns):null};
 }
 
 function engineState(name,metrics,needed){const passes=metrics.filter(m=>m.pass).length,ready=passes>=needed;return{name,metrics,passes,total:metrics.length,ready,state:ready?'PASS':passes>=needed-1?'WARN':'FAIL'};}
@@ -131,7 +131,8 @@ export function analyze(candles,symbol,context={}){
   const legacyRelativeStrengthProxy=momentum20-average(closes.slice(-10).map((v,i,a)=>i?v/a[i-1]-1:0)),intradayConfirmation=context.intradayConfirmation||null;
   const preferredEntryLow=Math.max(.01,s20-.40*a14),preferredEntryHigh=s20+.18*a14,overextension=s20+1.45*a14;
   const structure=structureLevels(candles,a14),thesisBreak=structure.stop||Math.max(.01,s50-.75*a14),target=structure.target;
-  const risk=Math.max(.01,latest.close-thesisBreak),reward=target?Math.max(0,target-latest.close):0,rr=target?reward/risk:0,wf=walkForward(candles),patternContext=assessPatternContext(candles,{atr:a14,symbol});
+  const risk=Math.max(.01,latest.close-thesisBreak),riskPct=latest.close>0?risk/latest.close:null,riskAtr=a14>0?risk/a14:null,stopQualityPass=Number.isFinite(riskPct)&&Number.isFinite(riskAtr)&&riskPct>=MIN_BUY_STOP_DISTANCE_PCT&&riskAtr>=MIN_BUY_STOP_DISTANCE_ATR&&riskPct<=.08;
+  const reward=target?Math.max(0,target-latest.close):0,rr=target?reward/risk:0,wf=walkForward(candles),patternContext=assessPatternContext(candles,{atr:a14,symbol});
 
   const trendMetrics=[
     {name:'50-period trend',value:`Price ${latest.close>=s50?'above':'below'} 50-period trend`,pass:latest.close>s50},
@@ -147,31 +148,32 @@ export function analyze(candles,symbol,context={}){
   ];
   const regimePass=benchmark?!benchmark.riskOff:trendStrength>0,regimeValue=benchmark?(benchmark.bull?'SPY bull trend':benchmark.riskOff?'SPY risk-off':'SPY mixed/neutral'):(trendStrength>.005?'Bull trend':trendStrength>-.005?'Neutral':'Bearish');
   const probabilityMetrics=[
-    {name:'Walk-forward win rate',value:`${(wf.winRate*100).toFixed(0)}% (${wf.sample} samples)`,pass:wf.sample>=5&&wf.winRate>=.57,warn:wf.sample<5||(wf.winRate>=.52&&wf.winRate<.57)},
-    {name:'Forward expectancy',value:`${(wf.avgReturn*100).toFixed(2)}% avg`,pass:wf.sample>=5&&wf.avgReturn>0,warn:wf.sample<5},
+    {name:'Walk-forward win rate',value:wf.sample?`${(wf.winRate*100).toFixed(0)}% (${wf.sample} samples)`:'NO SAMPLE',pass:wf.sample>=5&&wf.winRate>=.57,warn:wf.sample<5||(wf.winRate!=null&&wf.winRate>=.52&&wf.winRate<.57)},
+    {name:'Forward expectancy',value:wf.sample?`${(wf.avgReturn*100).toFixed(2)}% avg`:'NOT ESTABLISHED',pass:wf.sample>=5&&wf.avgReturn>0,warn:wf.sample<5},
     {name:'Pattern sample quality',value:wf.sample>=12?'Good':wf.sample>=5?'Limited':'Insufficient',pass:wf.sample>=12,warn:wf.sample>=5},
     {name:'Market regime',value:regimeValue,pass:regimePass,warn:benchmark?!benchmark.bull:trendStrength>-.005}
   ];
   const rrMetrics=[
-    {name:'Structure stop distance',value:`${(risk/latest.close*100).toFixed(1)}% · ${structure.stopSource}`,pass:risk/latest.close<=.08,warn:risk/latest.close<=.12},
+    {name:'Structure stop quality',value:`${(riskPct*100).toFixed(2)}% · ${riskAtr.toFixed(2)} ATR · ${stopQualityPass?'quality OK':'too tight / invalid'} · ${structure.stopSource}`,pass:stopQualityPass,warn:Number.isFinite(riskPct)&&riskPct<=.12},
     {name:'Structure target',value:target?`${((reward/latest.close)*100).toFixed(1)}% · ${structure.targetSource}`:'No defensible target resolved',pass:Boolean(target)&&reward/latest.close>=.06,warn:Boolean(target)&&reward/latest.close>=.035},
-    {name:'Reward / risk',value:target?`${rr.toFixed(2)} : 1`:'Unresolved',pass:Boolean(target)&&rr>=MIN_BUY_REWARD_RISK,warn:Boolean(target)&&rr>=1.25},
+    {name:'Reward / risk',value:target?`${rr.toFixed(2)} : 1${stopQualityPass?'':' · NOT TRUSTED — stop too tight'}`:'Unresolved',pass:Boolean(target)&&stopQualityPass&&rr>=MIN_BUY_REWARD_RISK,warn:Boolean(target)&&rr>=1.25},
     {name:'Price vs thesis break',value:latest.close>thesisBreak?'Thesis intact':'Broken',pass:latest.close>thesisBreak}
   ];
   const engines={trend:engineState('TREND',trendMetrics,3),entry:engineState('ENTRY',entryMetrics,3),probability:engineState('PROBABILITY',probabilityMetrics,3),riskReward:engineState('RISK / REWARD',rrMetrics,3)};
   const allMetrics=[...trendMetrics,...entryMetrics,...probabilityMetrics,...rrMetrics],passed=allMetrics.filter(m=>m.pass).length,total=allMetrics.length,criticalFailed=Object.values(engines).filter(e=>!e.ready).map(e=>e.name),nearEntry=latest.close>=preferredEntryLow*.99&&latest.close<=preferredEntryHigh*1.02,dailyGatesReady=Object.values(engines).every(e=>e.ready);
-  const hardBuyGuardrails=evaluateHardBuyGuardrails({rewardRisk:rr,targetResolved:Boolean(target),thesisIntact:latest.close>thesisBreak,overextended:latest.close>overextension||r14>=76,higherTimeframeReady:dailyGatesReady,intradayConfirmation});
+  const hardBuyGuardrails=evaluateHardBuyGuardrails({rewardRisk:rr,targetResolved:Boolean(target),thesisIntact:latest.close>thesisBreak,overextended:latest.close>overextension||r14>=76,higherTimeframeReady:dailyGatesReady,intradayConfirmation,stopQuality:stopQualityPass,riskPct,riskAtr});
   let status,reason;
   if(latest.close<=thesisBreak){status='SELL / EXIT';reason='Price broke structure-based thesis support. The original setup is invalid until structure repairs.';}
   else if(!engines.trend.ready){status='AVOID';reason='Trend quality is not strong enough to justify a new investment.';}
   else if(benchmark?.riskOff&&!engines.probability.ready){status='WAIT — SETUP NOT READY';reason='The stock setup is improving, but the broad-market regime is risk-off.';}
   else if(latest.close>overextension||r14>=76){status='WAIT FOR PULLBACK';reason='Trend is strong, but price is too extended to chase.';}
+  else if(!hardBuyGuardrails.rules.stopQuality.pass){status='WAIT — SETUP NOT READY';reason=`BUY blocked by stop-quality guardrail: the stop is only ${(riskPct*100).toFixed(2)}% / ${riskAtr.toFixed(2)} ATR from price, which can artificially inflate reward/risk.`;}
   else if(dailyGatesReady&&!hardBuyGuardrails.rules.targetResolved.pass){status='WAIT — SETUP NOT READY';reason='BUY blocked by hard guardrail: no defensible structure target is resolved, so reward/risk cannot be authorized.';}
   else if(dailyGatesReady&&!hardBuyGuardrails.rules.rewardRisk.pass){status='WAIT — SETUP NOT READY';reason=`BUY blocked by hard guardrail: reward/risk is ${Number.isFinite(rr)?rr.toFixed(2):'unresolved'}:1 and must be at least ${hardBuyGuardrails.minRewardRisk.toFixed(2)}:1.`;}
-  else if(dailyGatesReady&&hardBuyGuardrails.pass){status='BUY NOW';reason=`All scored engines and every non-negotiable BUY guardrail passed, including ${MIN_BUY_REWARD_RISK.toFixed(2)}:1 reward/risk and participation confirmation.`;}
+  else if(dailyGatesReady&&hardBuyGuardrails.pass){status='BUY NOW';reason=`All scored engines and every non-negotiable BUY guardrail passed, including ${MIN_BUY_REWARD_RISK.toFixed(2)}:1 reward/risk, meaningful stop distance, and participation confirmation.`;}
   else if(dailyGatesReady){status='SETUP — READY SOON';reason=intradayConfirmation?.reason||hardBuyGuardrails.reason||'All higher-timeframe gates cleared. BUY NOW still requires participation/execution confirmation.';}
   else if(engines.trend.ready&&nearEntry&&(engines.probability.ready||engines.riskReward.ready)){status='SETUP — READY SOON';reason='Price is near the preferred entry zone, but one higher-timeframe gate is still missing.';}
   else{status='WAIT — SETUP NOT READY';reason='Several checks pass, but at least one higher-timeframe gate still blocks a buy setup.';}
-  let readiness=Math.round((passed/total)*55+((4-criticalFailed.length)/4)*45);if(hardBuyGuardrails.pass)readiness=Math.max(readiness,92);else if(dailyGatesReady&&hardBuyGuardrails.rules.targetResolved.pass&&hardBuyGuardrails.rules.rewardRisk.pass)readiness=Math.max(readiness,82);if(!hardBuyGuardrails.rules.targetResolved.pass||!hardBuyGuardrails.rules.rewardRisk.pass)readiness=Math.min(readiness,79);if(status==='AVOID'||status==='SELL / EXIT')readiness=Math.min(readiness,35);if(status==='WAIT FOR PULLBACK')readiness=Math.min(readiness,68);
-  return{symbol,latest,changePct:previous.close?latest.close/previous.close-1:0,sma20:s20,sma50:s50,atr:a14,rsi:r14,momentum20,relativeStrength20,extensionPct,pullbackDepth,trendStrength,benchmark,intradayConfirmation,dailyGatesReady,hardBuyGuardrails,preferredEntryLow,preferredEntryHigh,overextension,thesisBreak,target,rr,wf,structure,patternContext,engines,passed,total,criticalFailed,status,reason,readiness};
+  let readiness=Math.round((passed/total)*55+((4-criticalFailed.length)/4)*45);if(hardBuyGuardrails.pass)readiness=Math.max(readiness,92);else if(dailyGatesReady&&hardBuyGuardrails.rules.targetResolved.pass&&hardBuyGuardrails.rules.rewardRisk.pass&&hardBuyGuardrails.rules.stopQuality.pass)readiness=Math.max(readiness,82);if(!hardBuyGuardrails.rules.targetResolved.pass||!hardBuyGuardrails.rules.rewardRisk.pass||!hardBuyGuardrails.rules.stopQuality.pass)readiness=Math.min(readiness,79);if(status==='AVOID'||status==='SELL / EXIT')readiness=Math.min(readiness,35);if(status==='WAIT FOR PULLBACK')readiness=Math.min(readiness,68);
+  return{symbol,latest,changePct:previous.close?latest.close/previous.close-1:0,sma20:s20,sma50:s50,atr:a14,rsi:r14,momentum20,relativeStrength20,extensionPct,pullbackDepth,trendStrength,benchmark,intradayConfirmation,dailyGatesReady,hardBuyGuardrails,preferredEntryLow,preferredEntryHigh,overextension,thesisBreak,target,rr,wf,riskQuality:{risk,riskPct,riskAtr,stopQualityPass,minRiskPct:MIN_BUY_STOP_DISTANCE_PCT,minRiskAtr:MIN_BUY_STOP_DISTANCE_ATR},structure,patternContext,engines,passed,total,criticalFailed,status,reason,readiness};
 }
