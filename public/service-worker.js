@@ -1,8 +1,8 @@
 importScripts('/api-request-policy.js');
-const CACHE_NAME='signalforge-shell-v30-42';
-const API_CACHE_NAME='signalforge-api-snapshots-v6';
+const CACHE_NAME='signalforge-shell-v30-43';
+const API_CACHE_NAME='signalforge-api-snapshots-v7';
 const REQUEST_POLICY=self.SignalForgeApiRequestPolicy;
-const APP_SHELL=['/','/index.html','/styles.css','/pwa.css','/radar.css','/push.css','/portfolio.css','/config.js','/build-info.js','/api-request-policy.js','/api-request-coordinator.js','/last-symbol-ui.js','/crawler-ui.js','/app.js','/auction-method-ui.js','/decision-summary-ui.js','/detection-latency-ui.js','/trade-plan-ui.js','/cockpit-ui.js','/activity-rhythm-ui.js','/session-range-ui.js','/opening-range-ui.js','/watchlist-ui.js','/gate-ui.js','/screener-ui.js','/marketpulse-opportunities-ui.js','/weekend-ui.js','/simulation-capital-ui.js','/telemetry-ui.js','/provider-health-ui.js','/operations-ui.js','/self-test-ui.js','/unified-action-ui.js','/ui-router.js','/pwa.js','/radar-ui.js','/push-ui.js','/alert-history.js','/stock-meta.js','/portfolio-ui.js','/chart-inspector.js','/pattern-chart-hook.js','/chart-adapter.js','/chart-control-reliability.js','/manifest.webmanifest','/icons/signalforge-icon.svg','/icons/signalforge-maskable.svg'];
+const APP_SHELL=['/','/index.html','/styles.css','/pwa.css','/radar.css','/push.css','/portfolio.css','/config.js','/build-info.js','/api-request-policy.js','/api-request-coordinator.js','/last-symbol-ui.js','/crawler-ui.js','/app.js','/auction-method-ui.js','/decision-summary-ui.js','/execution-trace-ui.js','/detection-latency-ui.js','/trade-plan-ui.js','/cockpit-ui.js','/activity-rhythm-ui.js','/session-range-ui.js','/opening-range-ui.js','/watchlist-ui.js','/gate-ui.js','/screener-ui.js','/marketpulse-opportunities-ui.js','/weekend-ui.js','/simulation-capital-ui.js','/telemetry-ui.js','/provider-health-ui.js','/operations-ui.js','/self-test-ui.js','/unified-action-ui.js','/ui-router.js','/pwa.js','/radar-ui.js','/push-ui.js','/alert-history.js','/stock-meta.js','/portfolio-ui.js','/chart-inspector.js','/pattern-chart-hook.js','/chart-adapter.js','/chart-control-reliability.js','/manifest.webmanifest','/icons/signalforge-icon.svg','/icons/signalforge-maskable.svg'];
 
 self.addEventListener('install',event=>{event.waitUntil(caches.open(CACHE_NAME).then(cache=>cache.addAll(APP_SHELL)).then(()=>self.skipWaiting()));});
 self.addEventListener('activate',event=>{event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key!==CACHE_NAME&&key!==API_CACHE_NAME).map(key=>caches.delete(key)))).then(()=>self.clients.claim()));});
@@ -17,24 +17,8 @@ self.addEventListener('fetch',event=>{
   if(url.origin!==self.location.origin)return;
   event.respondWith(fetch(request).then(response=>{if(response.ok){const copy=response.clone();caches.open(CACHE_NAME).then(cache=>cache.put(request.mode==='navigate'?'/index.html':request,copy));}return response;}).catch(()=>request.mode==='navigate'?caches.match('/index.html'):caches.match(request)));
 });
-
 function apiTtl(url){return REQUEST_POLICY?.ttlFor?.(url,self.location.origin)||0;}
-
-async function apiSnapshot(event,request,ttl){
-  const cache=await caches.open(API_CACHE_NAME),cached=await cache.match(request),now=Date.now();
-  if(cached){const savedAt=Number(cached.headers.get('x-sf-cache-time'))||0;if(savedAt&&now-savedAt<ttl)return cached;}
-  try{
-    const response=await fetch(request);
-    if(response.ok){
-      const bytes=await response.clone().arrayBuffer(),headers=new Headers(response.headers);
-      headers.set('x-sf-cache-time',String(now));headers.set('x-sf-cache-source','service-worker-central-policy');headers.set('cache-control','private, max-age=0');
-      const stored=new Response(bytes,{status:response.status,statusText:response.statusText,headers});
-      event.waitUntil(cache.put(request,stored));
-    }
-    return response;
-  }catch(error){if(cached)return cached;throw error;}
-}
-
+async function apiSnapshot(event,request,ttl){const cache=await caches.open(API_CACHE_NAME),cached=await cache.match(request),now=Date.now();if(cached){const savedAt=Number(cached.headers.get('x-sf-cache-time'))||0;if(savedAt&&now-savedAt<ttl)return cached;}try{const response=await fetch(request);if(response.ok){const bytes=await response.clone().arrayBuffer(),headers=new Headers(response.headers);headers.set('x-sf-cache-time',String(now));headers.set('x-sf-cache-source','service-worker-central-policy');headers.set('cache-control','private, max-age=0');const stored=new Response(bytes,{status:response.status,statusText:response.statusText,headers});event.waitUntil(cache.put(request,stored));}return response;}catch(error){if(cached)return cached;throw error;}}
 self.addEventListener('push',event=>{let data={};try{data=event.data?.json()||{};}catch{data={title:'SignalForge Alert',body:event.data?.text()||'A SignalForge status changed.'};}const title=data.title||'SignalForge Alert';const options={body:data.body||'A SignalForge status changed.',icon:'/icons/signalforge-icon.svg',badge:'/icons/signalforge-icon.svg',tag:data.kind==='push-test'?'signalforge-test':data.symbol?`signalforge-${data.symbol}`:'signalforge-alert',renotify:true,data:{url:data.url||'/',symbol:data.symbol||null,status:data.status||null,previousStatus:data.previousStatus||null,reason:data.reason||null,occurredAt:data.occurredAt||null,kind:data.kind||null},actions:[{action:'open',title:'Open SignalForge'}]};event.waitUntil(self.registration.showNotification(title,options));});
 self.addEventListener('notificationclick',event=>{event.notification.close();const data=event.notification.data||{};const targetUrl=new URL(data.url||'/',self.location.origin);if(data.symbol&&!targetUrl.searchParams.get('symbol'))targetUrl.searchParams.set('symbol',data.symbol);if(data.kind&&!targetUrl.searchParams.get('alert')){targetUrl.searchParams.set('alert','1');if(data.symbol)targetUrl.searchParams.set('alertSymbol',data.symbol);if(data.kind)targetUrl.searchParams.set('alertKind',data.kind);if(data.status)targetUrl.searchParams.set('alertStatus',data.status);if(data.previousStatus)targetUrl.searchParams.set('alertPrevious',data.previousStatus);if(data.reason)targetUrl.searchParams.set('alertReason',String(data.reason).slice(0,240));if(data.occurredAt)targetUrl.searchParams.set('alertAt',data.occurredAt);}const target=targetUrl.href;event.waitUntil((async()=>{const windows=await clients.matchAll({type:'window',includeUncontrolled:true});for(const client of windows){if('focus'in client){await client.focus();if('navigate'in client)await client.navigate(target);return;}}if(clients.openWindow)return clients.openWindow(target);})());});
 self.addEventListener('message',event=>{if(event.data?.type==='SKIP_WAITING')self.skipWaiting();if(event.data?.type==='GET_SHELL_VERSION')event.source?.postMessage?.({type:'SHELL_VERSION',cacheName:CACHE_NAME});if(event.data?.type==='CLEAR_API_SNAPSHOT_CACHE')event.waitUntil(caches.delete(API_CACHE_NAME));});

@@ -13,11 +13,11 @@ assert.match(usage,/unattributedRequestsToday/,'snapshot must distinguish legacy
 assert.match(ui,/PENDING means the request was counted but has not yet settled/,'UI must explain pending state');
 assert.match(ui,/Success \/ errors \/ pending/,'UI must show pending alongside settled outcomes');
 assert.match(ui,/older\/unattributed/,'UI must identify requests that predate provider attribution');
-assert.equal(pkg.version,'2.30.42');
-assert.match(build,/version:'2\.30\.42'/);
-assert.match(build,/shell:'v30-42'/);
-assert.match(sw,/signalforge-shell-v30-42/);
-assert.match(sw,/signalforge-api-snapshots-v6/,'provider health settle release must invalidate stale API snapshots');
+assert.ok(Number(pkg.version.split('.')[2])>=42,'provider settle behavior must remain in later 2.30.x releases');
+assert.match(build,/version:'2\.30\.\d+'/);
+assert.match(build,/shell:'v30-\d+'/);
+assert.match(sw,/signalforge-shell-v30-\d+/);
+assert.match(sw,/signalforge-api-snapshots-v\d+/,'later releases must keep versioned API snapshots');
 
 console.log('Stage 16.3 provider health settle regression: PASS');
 function read(relative){return fs.readFileSync(new URL(relative,import.meta.url),'utf8');}

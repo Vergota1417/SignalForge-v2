@@ -59,7 +59,8 @@ export const BASELINE_TESTS=Object.freeze([
   'scripts/test-stage15-8-production-data-correctness.mjs',
   'scripts/test-stage16-auction-method-v0.mjs',
   'scripts/test-stage16-2-provider-api-health.mjs',
-  'scripts/test-stage16-3-provider-health-settle.mjs'
+  'scripts/test-stage16-3-provider-health-settle.mjs',
+  'scripts/test-stage16-4-decision-execution-trace.mjs'
 ]);
 
 export const PRODUCTION_GUARDRAIL_TESTS=Object.freeze([
