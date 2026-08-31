@@ -1,14 +1,12 @@
 export const SYNTAX_ROOTS=Object.freeze(['src','public','scripts']);
 
 export const BASELINE_TESTS=Object.freeze([
-  'scripts/test-ui-wiring.mjs',
   'scripts/test-strategy.mjs',
   'scripts/test-weekly.mjs',
   'scripts/test-phase3.mjs',
   'scripts/test-phase4.mjs',
   'scripts/test-phase5.mjs',
   'scripts/test-phase6.mjs',
-  'scripts/test-phase7-1.mjs',
   'scripts/test-phase7-2.mjs',
   'scripts/test-phase7-3.mjs',
   'scripts/test-phase7-4.mjs',
@@ -65,9 +63,8 @@ export const BASELINE_TESTS=Object.freeze([
   'scripts/test-stage16-6-live-proof-cleanup.mjs',
   'scripts/test-stage16-7-signal-integrity.mjs',
   'scripts/test-stage16-8-radar-windows-layout.mjs',
-  'scripts/test-stage16-9-workspace-chart-studio.mjs',
   'scripts/test-stage16-10-twelve-data-minute-guard.mjs',
-  'scripts/test-stage16-11-visual-dashboard-layout.mjs'
+  'scripts/test-stage16-12-dashboard-zero-layout.mjs'
 ]);
 
 export const PRODUCTION_GUARDRAIL_TESTS=Object.freeze([
@@ -86,8 +83,12 @@ export const PRODUCTION_GUARDRAIL_TESTS=Object.freeze([
 ]);
 
 export const HISTORICAL_DISABLED_TESTS=Object.freeze([
+  'scripts/test-ui-wiring.mjs',
+  'scripts/test-phase7-1.mjs',
   'scripts/test-stage14-30-pattern-overlay-controls.mjs',
-  'scripts/test-stage14-31-live-pattern-context-bridge.mjs'
+  'scripts/test-stage14-31-live-pattern-context-bridge.mjs',
+  'scripts/test-stage16-9-workspace-chart-studio.mjs',
+  'scripts/test-stage16-11-visual-dashboard-layout.mjs'
 ]);
 
 export const TEST_GROUPS=Object.freeze({baseline:BASELINE_TESTS,reliability:PRODUCTION_GUARDRAIL_TESTS,historical:HISTORICAL_DISABLED_TESTS});

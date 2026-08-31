@@ -46,11 +46,12 @@ assert.match(entry,/minBuyRewardRisk:MIN_BUY_REWARD_RISK/,'health must expose th
 assert.match(entry,/patternNetworkUiEnabled:false/,'health must prove the risky pattern network UI is disabled');
 assert.equal(requestPolicy.backgroundReadMs,5*60_000,'browser background API reads must remain guarded at five minutes');
 assert.equal(requestPolicy.cacheOnlyMarketDataMs,30*60_000,'cache-only chart reads must remain guarded at thirty minutes');
-assert.match(coordinator,/SignalForgeApiRequestPolicy/,'browser coordinator must consume the shared request guard');
+assert.match(coordinator,/SignalForgeApiRequestPolicy/,'dormant browser coordinator must consume the shared request guard before any block is reintroduced');
 assert.match(sw,/SignalForgeApiRequestPolicy/,'service worker must independently consume the shared request guard');
 assert.doesNotMatch(pwa,/loadScriptThen\('\/pattern-context-ui\.js'/,'pattern polling UI must remain disabled until rebuilt as passive-only');
 assert.doesNotMatch(pwa,/loadScriptThen\('\/pattern-overlay-(?:stable|reliability)\.js'/,'pattern network overlay must remain disabled until rebuilt as passive-only');
-assert.ok(index.indexOf('api-request-coordinator.js')<index.indexOf('app.js'),'API coordinator must load before application modules');
+assert.doesNotMatch(index,/<script\b/i,'zero-data Dashboard must load no application modules at all');
+assert.doesNotMatch(index,/\/api\//i,'zero-data Dashboard must not bypass request guards with direct API references');
 assert.match(build,/version:'2\.30\.\d+'/,'visible release must remain in the SignalForge 2.30.x line');
 const shell=build.match(/shell:'(v30-\d+)'/)?.[1];assert.ok(shell,'visible release must expose a versioned v30 shell');
 assert.ok(sw.includes(`signalforge-shell-${shell}`),'service-worker shell must match the visible release');

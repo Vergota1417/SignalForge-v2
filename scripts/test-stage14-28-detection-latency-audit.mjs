@@ -48,13 +48,13 @@ const evidence=fs.readFileSync(new URL('../src/evidence.js',import.meta.url),'ut
 const latency=fs.readFileSync(new URL('../src/detection-latency.js',import.meta.url),'utf8');
 const scheduler=fs.readFileSync(new URL('../src/scheduler.js',import.meta.url),'utf8');
 const entry=fs.readFileSync(new URL('../src/entry.js',import.meta.url),'utf8');
-const html=fs.readFileSync(new URL('../public/index.html',import.meta.url),'utf8');
+const dormantUi=fs.readFileSync(new URL('../public/detection-latency-ui.js',import.meta.url),'utf8');
 assert.match(evidence,/import \{ MIN_BUY_REWARD_RISK \} from '\.\/hard-guardrails\.js'/,'evidence must consume the authoritative 1.80:1 BUY policy');
 assert.match(evidence,/rewardRiskMin:MIN_BUY_REWARD_RISK/,'evidence must persist the authoritative BUY threshold');
 assert.match(latency,/rewardRiskMin:MIN_BUY_REWARD_RISK/,'Stage 14.28 must consume the same authoritative BUY threshold');
 assert.match(scheduler,/isBroadDiscoverySlot\(weekday,minutes\)/,'central scheduler must own broad discovery timing');
 assert.match(entry,/runScheduledCycle/,'production entry must delegate scheduled work to the central scheduler');
-assert.match(html,/detection-latency-ui\.js/);
+assert.match(dormantUi,/Missed Opportunity Audit/,'detection-latency UI implementation must remain available for later block-by-block reintroduction');
 console.log('Stage 14.28 detection latency audit regression passed');
 
 function row(type,at,price,changePct,status,o={}){const all=o.allGates===true;return{id:Math.round(at/1000),symbol:'BAC',observationType:type,source:type==='RADAR'?'scheduled-radar':'screener-promotion',observedAt:at,price,changePct,status,readiness:o.readiness??null,rr:o.rr??null,gatesReady:o.gatesReady??0,gateTotal:4,trendReady:all?1:0,entryReady:all?1:0,probabilityReady:all?1:0,riskRewardReady:all?1:0,payloadJson:JSON.stringify(o.payload||{})};}

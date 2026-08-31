@@ -40,9 +40,7 @@ assert.match(screener,/assessSessionRange\(intraday\.candles/,'Execution scans m
 assert.match(screener,/recordSessionRangeShadow/,'Every calculated room-to-run shadow should be stored for validation.');
 assert.doesNotMatch(screener,/session-range[^\n]*getMarketData/,'Room-to-run must not introduce its own provider request.');
 const ui=fs.readFileSync(new URL('../public/session-range-ui.js',import.meta.url),'utf8');
-assert.match(ui,/\/api\/signals/,'Phone room-to-run display must read saved D1 signal state rather than market-data provider calls.');
-assert.match(ui,/does not block or create BUY NOW/,'UI must clearly identify the feature as shadow-only.');
-const index=fs.readFileSync(new URL('../public/index.html',import.meta.url),'utf8');
-assert.match(index,/session-range-ui\.js/,'Dashboard must load the room-to-run UI.');
+assert.match(ui,/\/api\/signals/,'Dormant room-to-run display must read saved D1 signal state rather than market-data provider calls when reintroduced.');
+assert.match(ui,/does not block or create BUY NOW/,'Room-to-run UI implementation must remain clearly shadow-only.');
 
 console.log('Stage 14.13 session range shadow regression checks passed.');

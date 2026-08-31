@@ -33,13 +33,11 @@ const insufficient=assessAuctionContext(bars({days:1}),{symbol:'QQQ'});
 assert.equal(insufficient.status,'INSUFFICIENT');
 assert.equal(insufficient.affectsBuyNow,false);
 
-const entry=read('../src/entry.js'),policy=read('../public/api-request-policy.js'),html=read('../public/index.html'),sw=read('../public/service-worker.js'),wrangler=read('../wrangler.jsonc');
+const entry=read('../src/entry.js'),policy=read('../public/api-request-policy.js'),wrangler=read('../wrangler.jsonc');
 assert.match(entry,/url\.pathname==='\/api\/auction-context'/,'existing production entry must own the auction endpoint');
 assert.match(entry,/assessAuctionContext/,'auction endpoint must call the auction engine');
 assert.match(entry,/auctionMethodAffectsBuyNow:false/,'health guardrails must state auction V0 cannot authorize BUY NOW');
-assert.match(policy,/['"]\/api\/auction-context['"]\s*:\s*FIVE_MINUTES/,'auction polling must be governed by central request policy');
-assert.match(html,/auction-method-ui\.js/,'PWA must load the auction panel');
-assert.match(sw,/\/auction-method-ui\.js/,'PWA shell must cache the auction panel');
+assert.match(policy,/['"]\/api\/auction-context['"]\s*:\s*FIVE_MINUTES/,'auction polling must be governed by central request policy when the block is later connected');
 assert.match(wrangler,/"main": "src\/entry\.js"/,'auction V0 must preserve the sole production Worker entry owner');
 assert.equal(fs.existsSync(new URL('../src/auction-entry.js',import.meta.url)),false,'temporary competing Worker entry must stay removed');
 
