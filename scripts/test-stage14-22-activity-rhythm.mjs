@@ -19,7 +19,7 @@ function session(day,{surgeClose=false}={}){
 }
 
 const candles=[...session(17),...session(18),...session(19),...session(20),...session(21,{surgeClose:true})];
-candles.push({time:Date.UTC(2026,7,21,20,0),open:100,high:100,low:100,close:100,volume:1}); // incomplete candle intentionally dropped
+candles.push({time:Date.UTC(2026,7,21,20,0),open:100,high:100,low:100,close:100,volume:1});
 
 const rhythm=assessActivityRhythm(candles);
 assert.equal(rhythm.shadowOnly,true,'Activity Rhythm must start in shadow mode');
@@ -39,16 +39,15 @@ const ui=fs.readFileSync(new URL('../public/activity-rhythm-ui.js',import.meta.u
 const pwa=fs.readFileSync(new URL('../public/pwa.js',import.meta.url),'utf8');
 const sw=fs.readFileSync(new URL('../public/service-worker.js',import.meta.url),'utf8');
 const build=fs.readFileSync(new URL('../public/build-info.js',import.meta.url),'utf8');
-assert.match(ui,/INTRADAY ACTIVITY RHYTHM · SHADOW/,'chart must expose Activity Rhythm');
-assert.match(ui,/Historical/,'chart must show historical rhythm row');
-assert.match(ui,/Session/,'chart must label the saved execution session without implying stale data is today');
+assert.match(ui,/INTRADAY ACTIVITY RHYTHM · SHADOW/,'Activity Rhythm implementation must retain its shadow heading');
+assert.match(ui,/Historical/,'implementation must retain historical rhythm row');
+assert.match(ui,/Session/,'implementation must label the saved execution session without implying stale data is today');
 assert.match(ui,/matched-session count/,'UI must disclose that the current history is a recent sample');
 assert.match(ui,/55% volume-vs-normal/,'calculation weights must be explained');
 assert.match(ui,/does not change BUY NOW/,'UI must disclose shadow-only policy');
 assert.doesNotMatch(ui,/\/api\/market-data/,'Activity Rhythm UI must not spend provider market-data requests');
 assert.match(ui,/\/api\/signals/,'Activity Rhythm UI should read saved analysis only');
-assert.ok(pwa.indexOf("/activity-rhythm-ui.js")>pwa.indexOf("/cockpit-ui.js"),'Activity Rhythm UI should load after cockpit organization');
-assert.match(sw,/'\/activity-rhythm-ui\.js'/,'installed PWA must cache Activity Rhythm UI');
+assert.ok(pwa.indexOf("/activity-rhythm-ui.js")>pwa.indexOf("/cockpit-ui.js"),'dormant loader ordering must remain correct for later reintroduction');
 const swShell=sw.match(/CACHE_NAME='signalforge-shell-(v30-\d+)'/)?.[1];
 const visibleShell=build.match(/shell:'(v30-\d+)'/)?.[1];
 assert.ok(swShell,'service worker must expose a versioned v30 shell');
