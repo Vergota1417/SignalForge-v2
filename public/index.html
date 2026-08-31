@@ -3,65 +3,95 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#09111f" />
-  <meta name="mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="SignalForge" />
-  <title>SignalForge — Trading Decision Dashboard</title>
+  <meta name="theme-color" content="#07101b" />
+  <title>SignalForge — Dashboard Blueprint</title>
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/icons/signalforge-icon.svg" type="image/svg+xml" />
-  <link rel="apple-touch-icon" href="/icons/signalforge-icon.svg" />
-  <link rel="stylesheet" href="styles.css" />
-  <link rel="stylesheet" href="pwa.css" />
+  <link rel="stylesheet" href="/dashboard-blueprint.css" />
 </head>
 <body>
-  <div class="app-shell">
-    <header class="topbar">
-      <div class="brand-wrap"><div class="brand-mark" aria-hidden="true">SF</div><div><div class="brand-line"><div class="brand">SignalForge</div><span id="sfBuildBadge" class="sf-build-badge">v—</span></div><div class="brand-sub">Decision engine <span id="sfBuildShell" class="sf-build-shell"></span></div></div></div>
-      <nav class="topnav" aria-label="Primary"><button id="dashboardNavBtn" class="nav-btn active" type="button">Dashboard</button><button id="screenerNavBtn" class="nav-btn" type="button">Screener</button><button id="analysisNavBtn" class="nav-btn" type="button">Analysis</button><button id="systemNavBtn" class="nav-btn" type="button">System</button><button class="nav-btn" type="button" disabled title="Coming next">Alerts</button></nav>
-      <div class="top-actions"><label class="symbol-search"><span class="sr-only">Ticker or company</span><input id="symbolInput" type="text" value="XOM" autocomplete="off" aria-label="Ticker or company name" placeholder="Ticker or company" /></label><button id="loadSymbolBtn" class="btn ghost" type="button">Load</button><button id="installAppBtn" class="btn ghost pwa-install-btn" type="button">Install SignalForge</button></div>
+  <div class="sf-zero-shell">
+    <header class="sf-zero-topbar">
+      <div class="sf-zero-brand">
+        <div class="sf-zero-mark" aria-hidden="true">SF</div>
+        <div><strong>SignalForge</strong><small>Dashboard blueprint · zero data</small></div>
+      </div>
+      <nav class="sf-zero-nav" aria-label="Application sections">
+        <button class="active" type="button">Dashboard</button>
+        <button type="button" disabled>Screener</button>
+        <button type="button" disabled>Analysis</button>
+        <button type="button" disabled>Portfolio</button>
+        <button type="button" disabled>System</button>
+      </nav>
+      <div class="sf-zero-search">Stock selector will be connected later</div>
     </header>
-    <div class="page-grid">
-      <aside class="sidebar"><div class="sidebar-head"><div><div class="eyebrow">Watchlist</div><h2>Market radar</h2></div><button id="scanBtn" class="icon-btn" type="button" title="Refresh saved scanner results" aria-label="Refresh saved scanner results">↻</button></div><div id="watchlist" class="watchlist" aria-live="polite"></div><div class="mini-note"><strong>Decision rule</strong><span>A high pass count does not override a failed critical gate.</span></div></aside>
-      <main class="main-content">
-        <section class="hero-card"><div class="hero-left"><div class="stock-ident"><div class="ticker-badge" id="tickerBadge">XOM</div><div><div class="eyebrow">Selected symbol</div><h1 id="stockTitle">XOM</h1><div class="muted" id="stockSubtitle">Loading market feed</div></div></div><div class="price-row"><div class="price" id="priceValue">—</div><div id="priceChange" class="price-change neutral">—</div></div></div><div class="hero-right"><div class="status-caption">CURRENT STATUS</div><div id="statusBadge" class="status-badge status-wait">WAIT — SETUP NOT READY</div><div id="statusReason" class="status-reason">Analyzing critical gates…</div></div></section>
-        <section class="status-strip" aria-label="Status legend"><span class="legend-label">STATUS LEGEND</span><span class="pill buy">BUY NOW</span><span class="pill setup">SETUP — READY SOON</span><span class="pill pullback">WAIT FOR PULLBACK</span><span class="pill wait">WAIT — SETUP NOT READY</span><span class="pill avoid">AVOID</span><span class="pill sell">SELL / EXIT</span></section>
-        <section class="dashboard-row"><div class="chart-card"><div class="chart-head"><div><div class="eyebrow">Price + decision zones</div><h2 id="chartTitle">XOM chart</h2></div><div id="timeframeTabs" class="timeframe-tabs" role="tablist" aria-label="Chart timeframe"></div></div><div class="chart-meta"><span id="candleResolution">Resolution: —</span><span id="chartDataSource">Data: —</span></div><div class="canvas-wrap"><canvas id="priceChart" aria-label="Price chart with preferred entry, overextension and thesis break levels"></canvas></div><div class="level-legend"><div><span class="dot entry"></span><strong>Preferred Entry</strong><span id="entryLevel">—</span></div><div><span class="dot over"></span><strong>Overextension / Don’t Chase</strong><span id="overLevel">—</span></div><div><span class="dot stop"></span><strong>Thesis Break / Stop</strong><span id="stopLevel">—</span></div></div></div><aside class="decision-card"><div class="readiness-wrap"><div class="readiness-gauge" id="readinessGauge"><div class="gauge-inner"><div id="readinessValue" class="gauge-value">—%</div><div id="readinessLabel" class="gauge-label">Analyzing</div></div></div><div class="readiness-copy"><div class="eyebrow">Confidence / readiness</div><div id="checkSummary" class="big-copy">—</div><div id="gateSummary" class="muted">—</div></div></div><div class="divider"></div><div class="why-box"><h3>Why this is not a BUY yet</h3><div id="whyList" class="why-list"></div></div></aside></section>
-        <section class="engine-section"><div class="section-head"><div><div class="eyebrow">Critical decision gates</div><h2>Four-engine confirmation</h2></div><div class="gate-note">BUY requires all critical gates to clear.</div></div><div id="engineGrid" class="engine-grid"></div></section>
-        <section class="bottom-grid"><div class="panel"><div class="panel-head"><div><div class="eyebrow">Trigger map</div><h2>What changes the signal?</h2></div></div><div id="triggerMap" class="trigger-map"></div></div><div class="panel"><div class="panel-head"><div><div class="eyebrow">Model transparency</div><h2>How the decision is made</h2></div></div><div class="transparency-list"><p><strong>Trend</strong> decides whether the symbol deserves attention.</p><p><strong>Entry</strong> decides whether the current price is attractive instead of chased.</p><p><strong>Probability</strong> runs a lightweight walk-forward check on the loaded series.</p><p><strong>Risk / Reward</strong> requires a favorable target-to-stop relationship with a structurally meaningful stop distance.</p><p class="muted">SignalForge is a decision-support tool, not investment advice.</p></div></div></section>
-      </main>
-    </div>
+
+    <main class="sf-zero-main">
+      <div class="sf-zero-note"><strong>Layout-only stage.</strong> No stock API, no chart data, no scanner, no calculations, no live status and no provider requests are connected to this Dashboard.</div>
+
+      <section class="sf-zero-grid" aria-label="SignalForge dashboard blueprint">
+        <section class="sf-zero-card sf-zero-profile" data-block="stock-header">
+          <div>
+            <div class="sf-zero-example">RandomSTOCKASAN FIXed example</div>
+            <div class="sf-zero-example-sub">Fixed layout placeholder only · this will later change whenever a user opens a stock</div>
+          </div>
+          <div class="sf-zero-profile-slots" aria-label="Future stock profile fields">
+            <div class="sf-zero-slot">Company identity</div>
+            <div class="sf-zero-slot">Listing / sector</div>
+            <div class="sf-zero-slot">Refresh status</div>
+          </div>
+        </section>
+
+        <aside class="sf-zero-left">
+          <section class="sf-zero-card sf-zero-recent" data-block="recently-viewed">
+            <div class="sf-zero-card-head"><strong>Recently Viewed</strong><span class="sf-zero-block-id">BLOCK 01</span></div>
+            <div class="sf-zero-empty"><span>Empty layout surface</span></div>
+          </section>
+
+          <section class="sf-zero-card sf-zero-decision" data-block="decision">
+            <div class="sf-zero-card-head"><strong>What Should I Do?</strong><span class="sf-zero-block-id">BLOCK 02</span></div>
+            <div class="sf-zero-empty"><span>Decision logic will be designed later</span></div>
+          </section>
+        </aside>
+
+        <section class="sf-zero-card sf-zero-chart" data-block="main-chart">
+          <div class="sf-zero-card-head"><strong>Main Chart</strong><span class="sf-zero-block-id">BLOCK 03</span></div>
+          <div class="sf-zero-empty"><span>Chart surface only · no candles loaded</span></div>
+        </section>
+
+        <aside class="sf-zero-right">
+          <section class="sf-zero-card sf-zero-levels" data-block="price-levels">
+            <div class="sf-zero-card-head"><strong>Current Price + Levels</strong><span class="sf-zero-block-id">BLOCK 04</span></div>
+            <div class="sf-zero-empty"><span>Empty layout surface</span></div>
+          </section>
+
+          <section class="sf-zero-card sf-zero-structure" data-block="pattern-structure">
+            <div class="sf-zero-card-head"><strong>Pattern + Structure</strong><span class="sf-zero-block-id">BLOCK 05</span></div>
+            <div class="sf-zero-empty"><span>Empty layout surface</span></div>
+          </section>
+
+          <section class="sf-zero-card sf-zero-peers" data-block="related-companies">
+            <div class="sf-zero-card-head"><strong>Related Companies</strong><span class="sf-zero-block-id">BLOCK 07</span></div>
+            <div class="sf-zero-empty"><span>Empty layout surface</span></div>
+          </section>
+
+          <section class="sf-zero-card sf-zero-news" data-block="news-catalysts">
+            <div class="sf-zero-card-head"><strong>News + Catalysts</strong><span class="sf-zero-block-id">BLOCK 08</span></div>
+            <div class="sf-zero-empty"><span>Empty layout surface</span></div>
+          </section>
+        </aside>
+
+        <section class="sf-zero-card sf-zero-volume" data-block="volume-pressure">
+          <div class="sf-zero-card-head"><strong>Volume + Market Pressure</strong><span class="sf-zero-block-id">BLOCK 06</span></div>
+          <div class="sf-zero-empty"><span>Empty layout surface</span></div>
+        </section>
+
+        <details class="sf-zero-validation" data-block="data-validation">
+          <summary><strong>Data Validation · Prove What Was Pulled</strong><span>BLOCK 09 · collapsed by default</span></summary>
+          <div class="sf-zero-validation-body">No validation logic is connected yet. This drawer will eventually prove the exact master snapshot, source, freshness and inputs used by every block above.</div>
+        </details>
+      </section>
+    </main>
   </div>
-  <div id="updateBanner" class="pwa-update-banner" hidden role="status" aria-live="polite"><span id="updateBannerCopy" class="pwa-update-copy">A new SignalForge version is ready.</span><button id="updateAppBtn" type="button">Update</button></div>
-  <script src="config.js"></script>
-  <script src="build-info.js"></script>
-  <script src="api-request-policy.js"></script>
-  <script src="api-request-coordinator.js"></script>
-  <script src="chart-inspector.js"></script>
-  <script src="last-symbol-ui.js"></script>
-  <script src="crawler-ui.js"></script>
-  <script src="app.js"></script>
-  <script src="auction-method-ui.js"></script>
-  <script src="decision-summary-ui.js"></script>
-  <script src="execution-trace-ui.js"></script>
-  <script src="detection-latency-ui.js"></script>
-  <script src="session-range-ui.js"></script>
-  <script src="opening-range-ui.js"></script>
-  <script src="watchlist-ui.js"></script>
-  <script src="gate-ui.js"></script>
-  <script src="screener-ui.js"></script>
-  <script src="signalforge-opportunities-ui.js"></script>
-  <script src="weekend-ui.js"></script>
-  <script src="simulation-capital-ui.js"></script>
-  <script src="telemetry-ui.js"></script>
-  <script src="provider-health-ui.js"></script>
-  <script src="operations-ui.js"></script>
-  <script src="self-test-ui.js"></script>
-  <script src="unified-action-ui.js"></script>
-  <script src="signal-integrity-ui.js"></script>
-  <script src="workspace-ui.js"></script>
-  <script src="ui-router.js"></script>
-  <script src="pwa.js"></script>
 </body>
 </html>
