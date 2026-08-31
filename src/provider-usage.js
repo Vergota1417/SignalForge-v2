@@ -39,7 +39,11 @@ export async function getProviderHealthSnapshot(env,{configured={}}={}){
     env.DB.prepare(`SELECT requests,updated_at AS updatedAt FROM provider_usage WHERE day_key=?`).bind(dayKey).first()
   ]);
   const hm=new Map((health.results||[]).map(r=>[r.provider,r])),dm=new Map((daily.results||[]).map(r=>[r.provider,r]));
-  const providers=['alpaca','twelve-data'].map(provider=>{const h=hm.get(provider)||{},d=dm.get(provider)||{},requests=Number(d.requests)||0,successes=Number(d.successes)||0,errors=Number(d.errors)||0,pending=Math.max(0,requests-successes-errors),lastError=String(h.lastError||''),requestStatus=h.lastStatus||'NEVER',errorKind=classifyStoredProviderError(lastError),healthState=providerHealthState({requestStatus,errorKind,lastSuccessAt:Number(h.lastSuccessAt)||0,lastFailureAt:Number(h.lastFailureAt)||0});return{provider,configured:provider==='alpaca'?Boolean(configured.alpaca):Boolean(configured.twelveData),lastStatus:healthState,lastRequestStatus:requestStatus,errorKind,lastSuccessAt:Number(h.lastSuccessAt)||0,lastFailureAt:Number(h.lastFailureAt)||0,lastLatencyMs:Number(h.lastLatencyMs)||0,lastSymbol:h.lastSymbol||'',lastBars:Number(h.lastBars)||0,lastPurpose:h.lastPurpose||'',lastCached:Boolean(Number(h.lastCached)||0),lastSource:h.lastSource||'',lastError,requestsToday:requests,successesToday:successes,errorsToday:errors,pendingToday:pending,updatedAt:Number(h.updatedAt)||0};});
+  const providers=['alpaca','twelve-data'].map(provider=>{
+    const h=hm.get(provider)||{},d=dm.get(provider)||{},requests=Number(d.requests)||0,successes=Number(d.successes)||0,errors=Number(d.errors)||0,pending=Math.max(0,requests-successes-errors),lastError=String(h.lastError||''),requestStatus=h.lastStatus||'NEVER';
+    const classification=classifyStoredProviderError(lastError,{provider,lastSymbol:String(h.lastSymbol||''),lastPurpose:String(h.lastPurpose||''),lastBars:Number(h.lastBars)||0}),errorKind=classification.kind,healthState=providerHealthState({requestStatus,errorKind,lastSuccessAt:Number(h.lastSuccessAt)||0,lastFailureAt:Number(h.lastFailureAt)||0});
+    return{provider,configured:provider==='alpaca'?Boolean(configured.alpaca):Boolean(configured.twelveData),lastStatus:healthState,lastRequestStatus:requestStatus,errorKind,errorInferred:Boolean(classification.inferred),lastSuccessAt:Number(h.lastSuccessAt)||0,lastFailureAt:Number(h.lastFailureAt)||0,lastLatencyMs:Number(h.lastLatencyMs)||0,lastSymbol:h.lastSymbol||'',lastBars:Number(h.lastBars)||0,lastPurpose:h.lastPurpose||'',lastCached:Boolean(Number(h.lastCached)||0),lastSource:h.lastSource||'',lastError,requestsToday:requests,successesToday:successes,errorsToday:errors,pendingToday:pending,updatedAt:Number(h.updatedAt)||0};
+  });
   const attributedRequestsToday=providers.reduce((sum,p)=>sum+p.requestsToday,0),canonicalTotal=Math.max(Number(canonical?.requests)||0,attributedRequestsToday),purposeTrackedRequestsToday=Number(usage.purposeTrackedTotal)||0,unattributedRequestsToday=Math.max(0,canonicalTotal-attributedRequestsToday);
   return{dayKey,preferred:configured.preferred||'auto',totalRequestsToday:canonicalTotal,canonicalRequestsToday:canonicalTotal,purposeTrackedRequestsToday,attributedRequestsToday,unattributedRequestsToday,providers,byPurpose:usage.byPurpose};
 }
@@ -67,7 +71,17 @@ async function ensureProviderUsageDetailSchema(env){
   }
   return ready;
 }
-function classifyStoredProviderError(message){const m=String(message||'').toUpperCase();if(!m)return'';if(m.includes('[SYMBOL_NOT_FOUND]')||m.includes('INVALID SYMBOL')||m.includes('SYMBOL NOT FOUND'))return'SYMBOL_NOT_FOUND';if(m.includes('[AUTH]')||m.includes('API KEY')||m.includes('AUTHENTICATION'))return'AUTH';if(m.includes('[RATE_LIMIT]')||m.includes('429')||m.includes('RATE LIMIT'))return'RATE_LIMIT';if(m.includes('[NETWORK]')||m.includes('TIMED OUT'))return'NETWORK';if(m.includes('[PROVIDER]')||/HTTP 5\d\d/.test(m))return'PROVIDER';return'REQUEST';}
+function classifyStoredProviderError(message,{provider='',lastSymbol='',lastPurpose='',lastBars=0}={}){
+  const m=String(message||'').toUpperCase();if(!m)return{kind:'',inferred:false};
+  if(m.includes('[SYMBOL_NOT_FOUND]')||m.includes('INVALID SYMBOL')||m.includes('SYMBOL NOT FOUND'))return{kind:'SYMBOL_NOT_FOUND',inferred:false};
+  if(m.includes('[AUTH]')||m.includes('API KEY')||m.includes('AUTHENTICATION'))return{kind:'AUTH',inferred:false};
+  if(m.includes('[RATE_LIMIT]')||m.includes('429')||m.includes('RATE LIMIT'))return{kind:'RATE_LIMIT',inferred:false};
+  if(m.includes('[NETWORK]')||m.includes('TIMED OUT'))return{kind:'NETWORK',inferred:false};
+  if(m.includes('[PROVIDER]')||/HTTP 5\d\d/.test(m))return{kind:'PROVIDER',inferred:false};
+  const legacySymbol404=/HTTP 404/.test(m)&&provider==='twelve-data'&&Boolean(lastSymbol)&&/^time-series-/.test(lastPurpose)&&Number(lastBars)===0;
+  if(legacySymbol404)return{kind:'SYMBOL_NOT_FOUND',inferred:true};
+  return{kind:'REQUEST',inferred:false};
+}
 function providerHealthState({requestStatus,errorKind,lastSuccessAt,lastFailureAt}){if(requestStatus==='PENDING')return'PENDING';if(requestStatus==='PASS')return'PASS';if(requestStatus==='FAIL'&&errorKind==='SYMBOL_NOT_FOUND')return'SYMBOL_REJECTED';if(lastSuccessAt>lastFailureAt&&lastSuccessAt>0)return'PASS';return requestStatus||'NEVER';}
 function sanitizePurpose(value){const text=String(value||'general').trim().toLowerCase().replace(/[^a-z0-9-]+/g,'-').replace(/^-+|-+$/g,'');return(text||'general').slice(0,48);}
 function sanitizeProvider(value){const p=String(value||'unknown').trim().toLowerCase();return p==='alpaca'?'alpaca':p.includes('twelve')?'twelve-data':p.slice(0,32)||'unknown';}
