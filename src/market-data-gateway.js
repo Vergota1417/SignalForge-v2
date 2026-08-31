@@ -15,11 +15,11 @@ export async function getCandles(env,symbol,timeframe,options={}){
     if(cached){
       const candles=completedOnly?removeIncompleteHigherTimeframeBar(cached.candles,timeframe,Date.now()):cached.candles;
       validateMinimumHistory(candles,timeframe);
-      return{...cached,candles,quality:qualitySummary({rawBars:cached.candles.length,acceptedBars:candles.length,formingBarsRemoved:cached.candles.length-candles.length,historyRequired:minimumHistory(timeframe),cacheDerived:true})};
+      return{...cached,candles,provenance:{mode:'CACHE',provider:cached.source||null,providerKey:providerKeyFromSource(cached.source),role:'CACHE',upstreamRequest:false,fallbackFrom:null},quality:qualitySummary({rawBars:cached.candles.length,acceptedBars:candles.length,formingBarsRemoved:cached.candles.length-candles.length,historyRequired:minimumHistory(timeframe),cacheDerived:true})};
     }
   }
 
-  const provider=normalizeProvider(options.provider||env.MARKET_DATA_PROVIDER||DEFAULT_PROVIDER),ordered=providerOrder(provider,env);let lastError=null;
+  const provider=normalizeProvider(options.provider||env.MARKET_DATA_PROVIDER||DEFAULT_PROVIDER),ordered=providerOrder(provider,env),primary=ordered[0]||null;let lastError=null;
   if(!ordered.length)throw new Error('No market-data provider is configured.');
   for(const candidate of ordered){
     const started=Date.now();
@@ -29,7 +29,7 @@ export async function getCandles(env,symbol,timeframe,options={}){
         ?await getAlpacaCandles(env,symbol,timeframe,{...options,completedOnly})
         :await getTwelveDataMarketData(env,symbol,timeframe,forceRefresh,{...options,completedOnly,purpose});
       await recordProviderSuccess(env,{provider:candidate,purpose,symbol,bars:result?.candles?.length||0,latencyMs:Date.now()-started,cached:Boolean(result?.cached),source:result?.source||candidate});
-      return result;
+      return{...result,provenance:{mode:'UPSTREAM',provider:result?.source||candidate,providerKey:candidate,role:candidate===primary?'PRIMARY':'FALLBACK',upstreamRequest:true,fallbackFrom:candidate===primary?null:primary}};
     }catch(error){
       lastError=error;
       await recordProviderFailure(env,{provider:candidate,purpose,symbol,latencyMs:Date.now()-started,error:error?.message||String(error)}).catch(()=>{});
@@ -101,4 +101,5 @@ function weekKey(date){const d=new Date(Date.UTC(date.getUTCFullYear(),date.getU
 function isEligibleAlpacaAsset(a){if(!a?.symbol||!a?.tradable)return false;const exchange=String(a.exchange||'').toUpperCase();return['NASDAQ','NYSE','AMEX','ARCA','BATS'].includes(exchange)&&!String(a.symbol).includes('/');}
 function assetSecurityType(a){const cls=String(a?.class||a?.asset_class||'').toLowerCase();return cls.includes('us_equity')?'Stock/ETF':'US Equity';}
 function assertAlpaca(env){if(!env.ALPACA_API_KEY_ID||!env.ALPACA_API_SECRET_KEY)throw new Error('Alpaca API credentials are not configured.');}
+function providerKeyFromSource(source){const s=String(source||'').toLowerCase();if(s.includes('alpaca'))return'alpaca';if(s.includes('twelve'))return'twelve-data';return'';}
 async function fetchAlpacaJson(env,url){const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),10_000);try{const response=await fetch(url,{signal:controller.signal,headers:{accept:'application/json','APCA-API-KEY-ID':env.ALPACA_API_KEY_ID,'APCA-API-SECRET-KEY':env.ALPACA_API_SECRET_KEY}});if(!response.ok){const error=new Error(`Alpaca HTTP ${response.status}`);error.status=response.status;throw error;}return await response.json();}catch(error){if(error?.name==='AbortError')throw new Error('Alpaca request timed out.');throw error;}finally{clearTimeout(timer);}}
