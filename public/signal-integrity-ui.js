@@ -27,7 +27,25 @@
     }
   }
 
-  function refresh(){clarifyChartSource();clarifyRadarReview();addRadarRule();}
+  function clarifyDecisionCopy(){
+    document.querySelectorAll('.why-item').forEach(item=>{
+      const title=item.querySelector('.why-title'),copy=item.querySelector('.why-copy');if(!title||!copy)return;
+      const titleText=String(title.textContent||'').trim(),copyText=String(copy.textContent||'').trim();
+      if(/Probability confirmation is incomplete/i.test(titleText)&&/0\s+samples/i.test(copyText))copy.textContent='No walk-forward sample exists yet. Probability and forward expectancy are not established.';
+      if(/Risk \/ reward is not good enough/i.test(titleText)&&/\d+(?:\.\d+)?:1/.test(copyText)){
+        const riskCard=[...document.querySelectorAll('#engineGrid .engine-card')].find(card=>/RISK \/ REWARD/i.test(card.querySelector('.engine-name')?.textContent||''));
+        const stopTooTight=/too tight|invalid/i.test(riskCard?.textContent||'');
+        if(stopTooTight){const rr=copyText.match(/\d+(?:\.\d+)?:1/)?.[0]||'calculated R/R';title.textContent='Risk / Reward blocked';copy.textContent=`The ${rr} ratio is not trusted because the structural stop is too tight.`;}
+      }
+    });
+    const blocker=document.querySelector('[data-blocker]');
+    if(blocker&&/reward\/risk|risk \/ reward/i.test(blocker.textContent||'')&&/\d+(?:\.\d+)?:1/.test(blocker.textContent||'')){
+      const riskCard=[...document.querySelectorAll('#engineGrid .engine-card')].find(card=>/RISK \/ REWARD/i.test(card.querySelector('.engine-name')?.textContent||''));
+      if(/too tight|invalid/i.test(riskCard?.textContent||'')){const rr=String(blocker.textContent||'').match(/\d+(?:\.\d+)?:1/)?.[0]||'calculated R/R';blocker.textContent=`${rr} is not trusted because the structural stop is too tight.`;}
+    }
+  }
+
+  function refresh(){clarifyChartSource();clarifyRadarReview();addRadarRule();clarifyDecisionCopy();}
   const observer=new MutationObserver(()=>refresh());
   function bind(){observer.observe(document.body,{childList:true,subtree:true,characterData:true});refresh();}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',bind,{once:true});else bind();
