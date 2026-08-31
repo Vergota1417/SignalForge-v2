@@ -12,12 +12,12 @@ const screener=fs.readFileSync(new URL('../src/screener.js',import.meta.url),'ut
 
 for(const id of ['sfChartBase','sfChartMarkers','sfChartLatest','sfChartReset']){
   assert.match(controls,new RegExp(id),`${id} must be protected by the reliability layer`);
-  assert.match(adapter,new RegExp(id),`${id} must still be owned by the live chart adapter`);
+  assert.match(adapter,new RegExp(id),`${id} must still be owned by the chart adapter implementation`);
 }
 assert.match(controls,/document\.addEventListener\('click',[\s\S]*true\)/,'chart controls need a capture-phase observation path');
 assert.match(controls,/queueMicrotask\(\(\)=>reinforce/,'chart controls need a post-handler reliability check');
-assert.match(controls,/timeScale\(\)\?\.scrollToRealTime/,'Latest fallback must directly command the live chart');
-assert.match(controls,/timeScale\(\)\?\.fitContent/,'Reset fallback must directly fit live chart content');
+assert.match(controls,/timeScale\(\)\?\.scrollToRealTime/,'Latest fallback must directly command the live chart when reintroduced');
+assert.match(controls,/timeScale\(\)\?\.fitContent/,'Reset fallback must directly fit live chart content when reintroduced');
 assert.match(controls,/active\.click\(\)/,'Base-view fallback must be able to reload the active timeframe');
 assert.match(controls,/pointer-events:auto!important/,'toolbar/buttons must remain pointer-addressable');
 assert.match(controls,/touch-action:manipulation!important/,'toolbar buttons must be hardened for mobile taps');
@@ -27,10 +27,9 @@ assert.match(controls,/aria-controls/,'buttons must expose their chart target');
 assert.match(controls,/aria-pressed/,'marker toggle must expose state');
 
 const hook=pwa.indexOf("/pattern-chart-hook.js"),adapterPos=pwa.indexOf("/chart-adapter.js"),controlsPos=pwa.indexOf("/chart-control-reliability.js");
-assert.ok(hook>=0&&adapterPos>hook,'zero-network pattern bridge must still load before chart adapter');
-assert.ok(controlsPos>adapterPos,'control reliability must load after the chart exists');
+assert.ok(hook>=0&&adapterPos>hook,'dormant zero-network pattern bridge ordering must remain valid');
+assert.ok(controlsPos>adapterPos,'dormant control reliability must load after the chart exists when this stack is reintroduced');
 assert.doesNotMatch(pwa,/loadScriptThen\('\/pattern-context-ui\.js'/,'disabled Pattern network controls must not restart after chart hardening');
-assert.match(sw,/'\/chart-control-reliability\.js'/,'reliability asset must be cached for the installed app');
 const swShell=sw.match(/CACHE_NAME='signalforge-shell-(v30-\d+)'/)?.[1];
 const visibleShell=build.match(/shell:'(v30-\d+)'/)?.[1];
 assert.ok(swShell&&visibleShell,'current release must expose versioned v30 shell metadata');
