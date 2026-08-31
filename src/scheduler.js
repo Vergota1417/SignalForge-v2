@@ -8,6 +8,7 @@ import { getWeeklyStrategySnapshot, runPortfolioCloseReview, runPortfolioPricePu
 import { rankOpportunities } from './strategy.js';
 import { broadcastBackgroundSummaryPush, broadcastPortfolioStrategyPush, broadcastWeeklyOpportunityPush } from './push.js';
 import { runOpportunityValidationCycle } from './opportunity-validation.js';
+import { runOutcomeTracker } from './outcomes.js';
 import {
   RADAR_BATCH_SIZE,
   WEEKLY_RESEARCH_SCHEDULE,
@@ -75,7 +76,7 @@ export async function runScheduledCycle(env,scheduledTime=Date.now()){
   }
 }
 
-export function scheduledCoverage(){return{...schedulerCoverage(),providerEnvelope:discoveryProviderEnvelope(),broadDiscovery:broadDiscoveryCoverage(),opportunityValidation:{afterHours:true,shadowOnly:true,affectsBuyNow:false},owner:'scheduler-v1'};}
+export function scheduledCoverage(){return{...schedulerCoverage(),providerEnvelope:discoveryProviderEnvelope(),broadDiscovery:broadDiscoveryCoverage(),opportunityValidation:{afterHours:true,shadowOnly:true,affectsBuyNow:false},analysisOutcomeTracking:{afterHours:true,horizons:[1,3,5,10,20],affectsBuyNow:false},owner:'scheduler-v1'};}
 
 async function runMarketScanCycle(env,{now,weekday,minutes,phase}){
   const operationKey=isOpeningScanSlot(weekday,minutes)?'opening-pipeline':'radar-scan-cycle';
@@ -128,11 +129,16 @@ async function runAfterHoursCycle(env,{now,weekday,minutes}){
     const validation=await runOpportunityValidationCycle(env,{now,maxSymbols:3});
     console.log(JSON.stringify({event:'opportunity_score_validation_cycle',status:validation.validation.status,completedEpisodes:validation.validation.completedEpisodes,pendingEpisodes:validation.validation.pendingEpisodes,trackerOutcomes:validation.tracker.outcomesCompleted,affectsBuyNow:false}));
   }catch(error){console.error(JSON.stringify({event:'opportunity_score_validation_cycle_error',message:error?.message||String(error),affectsBuyNow:false}));}
+  try{
+    const tracker=await runOutcomeTracker(env,{now,maxSymbols:2,observationType:'ANALYSIS',requiredHorizon:20});
+    await recordOperation(env,'analysis-outcome-tracker',{status:tracker.errors?.length&&!tracker.outcomesCompleted?'ERROR':tracker.observationsConsidered?'OK':'IDLE',at:now,detail:{observationType:'ANALYSIS',requiredHorizon:20,symbolsProcessed:tracker.symbolsProcessed,observationsConsidered:tracker.observationsConsidered,outcomesCompleted:tracker.outcomesCompleted,deferred:tracker.deferred,errors:(tracker.errors||[]).slice(0,4)}});
+    console.log(JSON.stringify({event:'analysis_outcome_tracker_cycle',observationType:'ANALYSIS',requiredHorizon:20,symbolsProcessed:tracker.symbolsProcessed,observationsConsidered:tracker.observationsConsidered,outcomesCompleted:tracker.outcomesCompleted,deferred:tracker.deferred,errors:(tracker.errors||[]).length,affectsBuyNow:false}));
+  }catch(error){await recordOperation(env,'analysis-outcome-tracker',{status:'ERROR',at:now,detail:{message:error?.message||String(error),observationType:'ANALYSIS'}}).catch(()=>{});console.error(JSON.stringify({event:'analysis_outcome_tracker_cycle_error',message:error?.message||String(error),affectsBuyNow:false}));}
   if(minutes===18*60+45)await runBackgroundSummary(env,{weekday,now,weekend:false});
 }
 
 async function runWeeklyResearchCycle(env,{now}){
-  const result=await runWeeklyResearchBatch(env,{batchSize:WEEKLY_RESEARCH_SCHEDULE.batchSize,now});
+  const result=await runWeeklyResearchBatch(env,{batchSize:6,now});
   console.log(JSON.stringify({event:'weekly_research_batch',weekKey:result.weekKey,scanned:result.scanned,cursor:result.cursor,universeSize:result.universeSize,completed:result.completed,schedule:'SATURDAY'}));
   if(result.completed&&result.scanned.length){
     const[snapshot,positions]=await Promise.all([getWeeklyStrategySnapshot(env),listPortfolioPositions(env)]),top=rankOpportunities(snapshot.ranked,positions)[0];
