@@ -9,6 +9,7 @@ import { configuredProviders, getMarketData } from './market.js';
 import { getDiscoveryStatus } from './discovery.js';
 import { getOpportunityValidation, OPPORTUNITY_EPISODE_START_SCORE, OPPORTUNITY_REVIEW_MIN_SAMPLE } from './opportunity-validation.js';
 import { assessAuctionContext } from './auction-context.js';
+import { getProviderHealthSnapshot } from './provider-usage.js';
 
 const SELF_TEST_COOLDOWN_MS=60_000;
 
@@ -17,11 +18,8 @@ export default {
     const url=new URL(request.url);
     if(url.pathname==='/api/trade-plan'){
       if(request.method!=='GET')return json({error:'Method not allowed.'},405);
-      try{
-        await ensureSchema(env);const symbol=sanitizeSymbol(url.searchParams.get('symbol'));if(!symbol)return json({error:'Valid symbol is required.'},400);
-        const saved=await getSignalAnalysis(env,symbol);if(!saved?.analysis)return json({error:'No saved SignalForge analysis exists for this symbol yet.'},404);
-        const plan=buildTradePlan(saved.analysis);return json({symbol,updatedAt:saved.updatedAt,status:saved.analysis.status,readiness:saved.analysis.readiness,plan});
-      }catch(error){console.error(JSON.stringify({event:'trade_plan_request_error',message:error?.message||String(error)}));return json({error:'Trade plan is temporarily unavailable.'},500);}
+      try{await ensureSchema(env);const symbol=sanitizeSymbol(url.searchParams.get('symbol'));if(!symbol)return json({error:'Valid symbol is required.'},400);const saved=await getSignalAnalysis(env,symbol);if(!saved?.analysis)return json({error:'No saved SignalForge analysis exists for this symbol yet.'},404);const plan=buildTradePlan(saved.analysis);return json({symbol,updatedAt:saved.updatedAt,status:saved.analysis.status,readiness:saved.analysis.readiness,plan});}
+      catch(error){console.error(JSON.stringify({event:'trade_plan_request_error',message:error?.message||String(error)}));return json({error:'Trade plan is temporarily unavailable.'},500);}
     }
     if(url.pathname==='/api/opportunity-validation'){
       if(request.method!=='GET')return json({error:'Method not allowed.'},405);
@@ -30,12 +28,13 @@ export default {
     }
     if(url.pathname==='/api/auction-context'){
       if(request.method!=='GET')return json({error:'Method not allowed.'},405);
-      try{
-        const symbol=sanitizeSymbol(url.searchParams.get('symbol'));if(!symbol)return json({error:'Valid symbol is required.'},400);
-        const market=await getMarketData(env,symbol,'5D',false,{completedOnly:false});
-        const auction=assessAuctionContext(market.candles,{symbol,currentPrice:market.candles.at(-1)?.close});
-        return json({symbol,source:market.source,cached:Boolean(market.cached),fetchedAt:market.fetchedAt,auction});
-      }catch(error){console.error(JSON.stringify({event:'auction_context_request_error',message:error?.message||String(error)}));return json({error:'Auction context is temporarily unavailable.'},500);}
+      try{const symbol=sanitizeSymbol(url.searchParams.get('symbol'));if(!symbol)return json({error:'Valid symbol is required.'},400);const market=await getMarketData(env,symbol,'5D',false,{completedOnly:false,purpose:'auction-context'});const auction=assessAuctionContext(market.candles,{symbol,currentPrice:market.candles.at(-1)?.close});return json({symbol,source:market.source,cached:Boolean(market.cached),fetchedAt:market.fetchedAt,auction});}
+      catch(error){console.error(JSON.stringify({event:'auction_context_request_error',message:error?.message||String(error)}));return json({error:'Auction context is temporarily unavailable.'},500);}
+    }
+    if(url.pathname==='/api/provider-health'){
+      if(request.method!=='GET')return json({error:'Method not allowed.'},405);
+      try{await ensureSchema(env);const providers=configuredProviders(env);return json({health:await getProviderHealthSnapshot(env,{configured:providers})});}
+      catch(error){console.error(JSON.stringify({event:'provider_health_request_error',message:error?.message||String(error)}));return json({error:'Provider API health is temporarily unavailable.'},500);}
     }
     if(url.pathname==='/api/portfolio'&&request.method==='GET'){
       const response=await app.fetch(request,env,ctx);if(!response.ok)return response;const body=await response.json();if(Array.isArray(body.positions))body.positions.sort(managedPositionSort);return json(body);
@@ -43,18 +42,12 @@ export default {
     if(url.pathname==='/api/health'&&request.method==='GET'){
       const response=await app.fetch(request,env,ctx);if(!response.ok)return response;
       const body=await response.json(),marketDataProviders=configuredProviders(env),marketDataConfigured=Boolean(marketDataProviders.alpaca||marketDataProviders.twelveData),discovery=await getDiscoveryStatus(env),providerDailyCap=Number(env.MAX_PROVIDER_REQUESTS_PER_DAY)||700;
-      return json({...body,marketDataConfigured,marketDataProviders,discoveryPoolSize:discovery.configuredPoolSize,discoveryCoverage:{weekKey:discovery.weekKey,configuredPoolSize:discovery.configuredPoolSize,currentWeeklyPoolSize:discovery.currentWeeklyPoolSize,poolFillPct:discovery.poolFillPct,catalogSize:discovery.catalogSize,scannedSymbols:discovery.scannedSymbols,lastScanned:discovery.lastScanned,catalogUpdatedAt:discovery.catalogUpdatedAt},scheduler:scheduledCoverage(),tradePlan:true,auctionMethod:{version:'marketpulse-auction-v0',enabled:true,shadowOnly:true,affectsBuyNow:false,endpoint:'/api/auction-context'},postBuyManager:true,portfolioPricePulseMinutes:5,partialProfitManagement:true,opportunityScoreValidation:{enabled:true,shadowOnly:true,affectsBuyNow:false,episodeStartScore:OPPORTUNITY_EPISODE_START_SCORE,reviewMinSample:OPPORTUNITY_REVIEW_MIN_SAMPLE,endpoint:'/api/opportunity-validation'},guardrails:{hardBuyAuthorization:true,minBuyRewardRisk:MIN_BUY_REWARD_RISK,participationRequired:true,thesisMustRemainIntact:true,overextensionHardBlock:true,backgroundUiReadMinutes:5,cacheOnlyChartReadMinutes:30,patternNetworkUiEnabled:false,opportunityScoreAffectsBuyNow:false,auctionMethodAffectsBuyNow:false,providerDailyCap,reliabilityCiWorkflow:true}});
+      return json({...body,marketDataConfigured,marketDataProviders,providerHealthEndpoint:'/api/provider-health',discoveryPoolSize:discovery.configuredPoolSize,discoveryCoverage:{weekKey:discovery.weekKey,configuredPoolSize:discovery.configuredPoolSize,currentWeeklyPoolSize:discovery.currentWeeklyPoolSize,poolFillPct:discovery.poolFillPct,catalogSize:discovery.catalogSize,scannedSymbols:discovery.scannedSymbols,lastScanned:discovery.lastScanned,catalogUpdatedAt:discovery.catalogUpdatedAt},scheduler:scheduledCoverage(),tradePlan:true,auctionMethod:{version:'marketpulse-auction-v0',enabled:true,shadowOnly:true,affectsBuyNow:false,endpoint:'/api/auction-context'},postBuyManager:true,portfolioPricePulseMinutes:5,partialProfitManagement:true,opportunityScoreValidation:{enabled:true,shadowOnly:true,affectsBuyNow:false,episodeStartScore:OPPORTUNITY_EPISODE_START_SCORE,reviewMinSample:OPPORTUNITY_REVIEW_MIN_SAMPLE,endpoint:'/api/opportunity-validation'},guardrails:{hardBuyAuthorization:true,minBuyRewardRisk:MIN_BUY_REWARD_RISK,participationRequired:true,thesisMustRemainIntact:true,overextensionHardBlock:true,backgroundUiReadMinutes:5,cacheOnlyChartReadMinutes:30,patternNetworkUiEnabled:false,opportunityScoreAffectsBuyNow:false,auctionMethodAffectsBuyNow:false,providerDailyCap,reliabilityCiWorkflow:true}});
     }
     if(url.pathname!=='/api/backend-self-test')return app.fetch(request,env,ctx);
     if(request.method!=='POST')return json({error:'Method not allowed.'},405);
-    try{
-      const body=await readJson(request),endpoint=String(request.headers.get('x-sf-endpoint')||body?.deviceEndpoint||'').trim(),token=String(request.headers.get('x-sf-token')||body?.deviceToken||'').trim();
-      if(!endpoint.startsWith('https://')||!/^[A-Za-z0-9_-]{32,128}$/.test(token)||!await authorizeDevice(env,endpoint,token))return json({error:'Backend self-test requires an authorized SignalForge phone. Enable alerts on this phone first.'},403);
-      const operations=await getOperationsStatus(env),lastRun=Number(operations.operations?.['backend-self-test']?.lastRunAt)||0,retryAfterMs=Math.max(0,SELF_TEST_COOLDOWN_MS-(Date.now()-lastRun));
-      if(retryAfterMs>0)return json({error:'Backend self-test cooldown is active.',retryAfterMs},429);
-      const symbol=sanitizeSymbol(body?.symbol)||'XOM',selfTest=await runBackendSelfTest(env,{symbol,now:Date.now()});
-      return json({selfTest});
-    }catch(error){console.error(JSON.stringify({event:'backend_self_test_request_error',message:error?.message||String(error)}));return json({error:String(error?.message||'Backend self-test failed.')},500);}
+    try{const body=await readJson(request),endpoint=String(request.headers.get('x-sf-endpoint')||body?.deviceEndpoint||'').trim(),token=String(request.headers.get('x-sf-token')||body?.deviceToken||'').trim();if(!endpoint.startsWith('https://')||!/^[A-Za-z0-9_-]{32,128}$/.test(token)||!await authorizeDevice(env,endpoint,token))return json({error:'Backend self-test requires an authorized SignalForge phone. Enable alerts on this phone first.'},403);const operations=await getOperationsStatus(env),lastRun=Number(operations.operations?.['backend-self-test']?.lastRunAt)||0,retryAfterMs=Math.max(0,SELF_TEST_COOLDOWN_MS-(Date.now()-lastRun));if(retryAfterMs>0)return json({error:'Backend self-test cooldown is active.',retryAfterMs},429);const symbol=sanitizeSymbol(body?.symbol)||'XOM',selfTest=await runBackendSelfTest(env,{symbol,now:Date.now()});return json({selfTest});}
+    catch(error){console.error(JSON.stringify({event:'backend_self_test_request_error',message:error?.message||String(error)}));return json({error:String(error?.message||'Backend self-test failed.')},500);}
   },
   scheduled(controller,env,ctx){ctx.waitUntil(runScheduledCycle(env,Number(controller.scheduledTime)||Date.now()));}
 };
