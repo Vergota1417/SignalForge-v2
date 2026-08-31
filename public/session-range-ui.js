@@ -31,7 +31,10 @@
     const symbol=String(document.getElementById('tickerBadge')?.textContent||'').trim().toUpperCase();if(!symbol)return;
     lastSymbol=symbol;
     try{
-      const response=await fetch(`${API}/api/execution-shadow?symbol=${encodeURIComponent(symbol)}`,{headers:{accept:'application/json'}});if(!response.ok){const b=await response.json().catch(()=>({}));throw new Error(b.error||`HTTP ${response.status}`);}const body=await response.json(),range=body?.roomToRun||null;
+      const signalsResponse=await fetch(`${API}/api/signals`,{headers:{accept:'application/json'}});if(!signalsResponse.ok)throw new Error(`HTTP ${signalsResponse.status}`);const signalsBody=await signalsResponse.json(),row=(signalsBody.signals||[]).find(x=>String(x.symbol||'').toUpperCase()===symbol),savedRange=row?.analysis?.sessionRangeShadow||null;
+      if(lastSymbol!==symbol)return;
+      if(savedRange&&String(savedRange.state||'').toUpperCase()!=='INSUFFICIENT'){render(panel,savedRange);window.dispatchEvent(new CustomEvent('signalforge:execution-shadow',{detail:{symbol,body:{roomToRun:savedRange,openingStructure:savedRange.openingRangeShadow||null,source:'saved-signal'}}}));return;}
+      const response=await fetch(`${API}/api/execution-shadow?symbol=${encodeURIComponent(symbol)}`,{headers:{accept:'application/json'}});if(!response.ok){const b=await response.json().catch(()=>({}));throw new Error(b.error||`HTTP ${response.status}`);}const body=await response.json(),range=body?.roomToRun||savedRange||null;
       if(lastSymbol!==symbol)return;
       render(panel,range);
       window.dispatchEvent(new CustomEvent('signalforge:execution-shadow',{detail:{symbol,body}}));
