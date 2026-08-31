@@ -16,7 +16,8 @@
     '/api/evidence-evaluation':FIVE_MINUTES,
     '/api/evidence-optimization':FIVE_MINUTES,
     '/api/health':FIVE_MINUTES,
-    '/api/trade-plan':FIVE_MINUTES
+    '/api/trade-plan':FIVE_MINUTES,
+    '/api/auction-context':FIVE_MINUTES
   });
 
   function ttlFor(input,base){
