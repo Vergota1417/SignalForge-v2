@@ -1,7 +1,7 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "signalforge-v2",
-  "main": "src/auction-entry.js",
+  "main": "src/entry.js",
   "compatibility_date": "2026-08-21",
   "compatibility_flags": ["nodejs_compat"],
   "keep_vars": true,
