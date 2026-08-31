@@ -35,7 +35,7 @@ assert.match(ui,/Delayed \/ throttled/,'provider health must show queue/throttle
 assert.match(ui,/Local throttles never reach Twelve Data and are not counted as provider failures/,'UI must explain local throttling truthfully');
 
 assert.match(db,/MAX_PROVIDER_REQUESTS_PER_DAY/,'existing daily quota guard must remain active');
-assert.match(db,/,700\)/,'internal daily safety cap must remain 700, below the 800-credit provider plan');
+assert.match(db,/clampInt\(env\.MAX_PROVIDER_REQUESTS_PER_DAY,\s*50,\s*5000,\s*700\)/,'internal daily safety cap must remain 700, below the 800-credit provider plan');
 assert.equal(pkg.version,'2.30.49');
 assert.match(build,/version:'2\.30\.49'/);
 assert.match(build,/release:'twelve-data-minute-guard'/);
