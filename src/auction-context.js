@@ -1,6 +1,6 @@
 const DAY=86_400_000;
 
-export const AUCTION_METHOD_VERSION='marketpulse-auction-v0';
+export const AUCTION_METHOD_VERSION='signalforge-auction-v0';
 
 export function assessAuctionContext(candles,{symbol='',currentPrice=null}={}){
   const bars=(Array.isArray(candles)?candles:[]).filter(valid).sort((a,b)=>Number(a.time)-Number(b.time));
