@@ -21,7 +21,7 @@
     let panel=document.getElementById('sfSessionRangeShadow');if(panel)return panel;
     const anchor=document.getElementById('chartAction');if(!anchor)return null;
     panel=document.createElement('section');panel.id='sfSessionRangeShadow';panel.className='sf-range-shadow insufficient';panel.setAttribute('aria-live','polite');panel.innerHTML=`
-      <div><div class="sf-range-shadow-head"><span class="sf-range-shadow-title">ROOM TO RUN</span><span class="sf-range-shadow-badge" data-range-state>SHADOW</span></div><div class="sf-range-shadow-copy" data-range-copy>Waiting for the next 15-minute execution scan.</div><div class="sf-range-shadow-note">Experimental only · does not block or create BUY NOW.</div></div>
+      <div><div class="sf-range-shadow-head"><span class="sf-range-shadow-title">ROOM TO RUN</span><span class="sf-range-shadow-badge" data-range-state>SHADOW</span></div><div class="sf-range-shadow-copy" data-range-copy>Waiting for live 15-minute context.</div><div class="sf-range-shadow-note">Experimental only · read-only · does not block or create BUY NOW.</div></div>
       <div class="sf-range-metrics"><div class="sf-range-metric"><small>ATR used</small><strong data-atr-usage>—</strong></div><div class="sf-range-metric"><small>Vs median day</small><strong data-median-usage>—</strong></div><div class="sf-range-metric"><small>Same-time pace</small><strong data-pace>—</strong></div><div class="sf-range-metric"><small>Price in range</small><strong data-position>—</strong></div></div>`;
     anchor.insertAdjacentElement('afterend',panel);return panel;
   }
@@ -31,17 +31,17 @@
     const symbol=String(document.getElementById('tickerBadge')?.textContent||'').trim().toUpperCase();if(!symbol)return;
     lastSymbol=symbol;
     try{
-      const response=await fetch(`${API}/api/signals`,{headers:{accept:'application/json'}});if(!response.ok)throw new Error(`HTTP ${response.status}`);
-      const body=await response.json(),row=(body.signals||[]).find(x=>String(x.symbol||'').toUpperCase()===symbol),range=row?.analysis?.sessionRangeShadow||null;
+      const response=await fetch(`${API}/api/execution-shadow?symbol=${encodeURIComponent(symbol)}`,{headers:{accept:'application/json'}});if(!response.ok){const b=await response.json().catch(()=>({}));throw new Error(b.error||`HTTP ${response.status}`);}const body=await response.json(),range=body?.roomToRun||null;
       if(lastSymbol!==symbol)return;
       render(panel,range);
+      window.dispatchEvent(new CustomEvent('signalforge:execution-shadow',{detail:{symbol,body}}));
     }catch(error){render(panel,null,`Room-to-run shadow unavailable: ${String(error?.message||'request failed')}`);}
   }
 
   function render(panel,range,error=''){
     const state=String(range?.state||'INSUFFICIENT').toUpperCase(),cls=state.toLowerCase();panel.className=`sf-range-shadow ${['good','normal','caution','stretched'].includes(cls)?cls:'insufficient'}`;
     panel.querySelector('[data-range-state]').textContent=state==='INSUFFICIENT'?'COLLECTING':state;
-    panel.querySelector('[data-range-copy]').textContent=error||range?.reason||'Waiting for a 15-minute execution scan to calculate session range.';
+    panel.querySelector('[data-range-copy]').textContent=error||range?.reason||'Waiting for enough completed 15-minute history to calculate session range.';
     panel.querySelector('[data-atr-usage]').textContent=pctRatio(range?.atrUsage);
     panel.querySelector('[data-median-usage]').textContent=pctRatio(range?.medianRangeUsage);
     panel.querySelector('[data-pace]').textContent=ratio(range?.sameTimePace);
@@ -52,7 +52,6 @@
   function schedule(){clearInterval(timer);timer=setInterval(()=>{if(document.visibilityState!=='hidden')refresh();},REFRESH_MS);}
 
   const ticker=document.getElementById('tickerBadge');if(ticker)new MutationObserver(()=>setTimeout(refresh,120)).observe(ticker,{childList:true,subtree:true,characterData:true});
-  const status=document.getElementById('statusBadge');if(status)new MutationObserver(()=>setTimeout(refresh,160)).observe(status,{childList:true,subtree:true,characterData:true});
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')refresh();});
   window.addEventListener('load',()=>setTimeout(refresh,350));
   setTimeout(refresh,500);schedule();
