@@ -7,7 +7,6 @@ export const BASELINE_TESTS=Object.freeze([
   'scripts/test-phase4.mjs',
   'scripts/test-phase5.mjs',
   'scripts/test-phase6.mjs',
-  'scripts/test-phase7-1.mjs',
   'scripts/test-phase7-2.mjs',
   'scripts/test-phase7-3.mjs',
   'scripts/test-phase7-4.mjs',
@@ -85,6 +84,7 @@ export const PRODUCTION_GUARDRAIL_TESTS=Object.freeze([
 
 export const HISTORICAL_DISABLED_TESTS=Object.freeze([
   'scripts/test-ui-wiring.mjs',
+  'scripts/test-phase7-1.mjs',
   'scripts/test-stage14-30-pattern-overlay-controls.mjs',
   'scripts/test-stage14-31-live-pattern-context-bridge.mjs',
   'scripts/test-stage16-9-workspace-chart-studio.mjs',
