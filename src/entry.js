@@ -5,9 +5,10 @@ import { runBackendSelfTest } from './self-test.js';
 import { buildTradePlan } from './trade-plan.js';
 import { MIN_BUY_REWARD_RISK } from './hard-guardrails.js';
 import { runScheduledCycle, scheduledCoverage } from './scheduler.js';
-import { configuredProviders } from './market.js';
+import { configuredProviders, getMarketData } from './market.js';
 import { getDiscoveryStatus } from './discovery.js';
 import { getOpportunityValidation, OPPORTUNITY_EPISODE_START_SCORE, OPPORTUNITY_REVIEW_MIN_SAMPLE } from './opportunity-validation.js';
+import { assessAuctionContext } from './auction-context.js';
 
 const SELF_TEST_COOLDOWN_MS=60_000;
 
@@ -27,13 +28,22 @@ export default {
       try{return json({validation:await getOpportunityValidation(env,{horizon:normalizeOpportunityHorizon(url.searchParams.get('horizon')),minSample:clampInt(url.searchParams.get('minSample'),OPPORTUNITY_REVIEW_MIN_SAMPLE,100,OPPORTUNITY_REVIEW_MIN_SAMPLE)})});}
       catch(error){console.error(JSON.stringify({event:'opportunity_validation_request_error',message:error?.message||String(error)}));return json({error:'Opportunity Score validation is temporarily unavailable.'},500);}
     }
+    if(url.pathname==='/api/auction-context'){
+      if(request.method!=='GET')return json({error:'Method not allowed.'},405);
+      try{
+        const symbol=sanitizeSymbol(url.searchParams.get('symbol'));if(!symbol)return json({error:'Valid symbol is required.'},400);
+        const market=await getMarketData(env,symbol,'5D',false,{completedOnly:false});
+        const auction=assessAuctionContext(market.candles,{symbol,currentPrice:market.candles.at(-1)?.close});
+        return json({symbol,source:market.source,cached:Boolean(market.cached),fetchedAt:market.fetchedAt,auction});
+      }catch(error){console.error(JSON.stringify({event:'auction_context_request_error',message:error?.message||String(error)}));return json({error:'Auction context is temporarily unavailable.'},500);}
+    }
     if(url.pathname==='/api/portfolio'&&request.method==='GET'){
       const response=await app.fetch(request,env,ctx);if(!response.ok)return response;const body=await response.json();if(Array.isArray(body.positions))body.positions.sort(managedPositionSort);return json(body);
     }
     if(url.pathname==='/api/health'&&request.method==='GET'){
       const response=await app.fetch(request,env,ctx);if(!response.ok)return response;
       const body=await response.json(),marketDataProviders=configuredProviders(env),marketDataConfigured=Boolean(marketDataProviders.alpaca||marketDataProviders.twelveData),discovery=await getDiscoveryStatus(env),providerDailyCap=Number(env.MAX_PROVIDER_REQUESTS_PER_DAY)||700;
-      return json({...body,marketDataConfigured,marketDataProviders,discoveryPoolSize:discovery.configuredPoolSize,discoveryCoverage:{weekKey:discovery.weekKey,configuredPoolSize:discovery.configuredPoolSize,currentWeeklyPoolSize:discovery.currentWeeklyPoolSize,poolFillPct:discovery.poolFillPct,catalogSize:discovery.catalogSize,scannedSymbols:discovery.scannedSymbols,lastScanned:discovery.lastScanned,catalogUpdatedAt:discovery.catalogUpdatedAt},scheduler:scheduledCoverage(),tradePlan:true,postBuyManager:true,portfolioPricePulseMinutes:5,partialProfitManagement:true,opportunityScoreValidation:{enabled:true,shadowOnly:true,affectsBuyNow:false,episodeStartScore:OPPORTUNITY_EPISODE_START_SCORE,reviewMinSample:OPPORTUNITY_REVIEW_MIN_SAMPLE,endpoint:'/api/opportunity-validation'},guardrails:{hardBuyAuthorization:true,minBuyRewardRisk:MIN_BUY_REWARD_RISK,participationRequired:true,thesisMustRemainIntact:true,overextensionHardBlock:true,backgroundUiReadMinutes:5,cacheOnlyChartReadMinutes:30,patternNetworkUiEnabled:false,opportunityScoreAffectsBuyNow:false,providerDailyCap,reliabilityCiWorkflow:true}});
+      return json({...body,marketDataConfigured,marketDataProviders,discoveryPoolSize:discovery.configuredPoolSize,discoveryCoverage:{weekKey:discovery.weekKey,configuredPoolSize:discovery.configuredPoolSize,currentWeeklyPoolSize:discovery.currentWeeklyPoolSize,poolFillPct:discovery.poolFillPct,catalogSize:discovery.catalogSize,scannedSymbols:discovery.scannedSymbols,lastScanned:discovery.lastScanned,catalogUpdatedAt:discovery.catalogUpdatedAt},scheduler:scheduledCoverage(),tradePlan:true,auctionMethod:{version:'marketpulse-auction-v0',enabled:true,shadowOnly:true,affectsBuyNow:false,endpoint:'/api/auction-context'},postBuyManager:true,portfolioPricePulseMinutes:5,partialProfitManagement:true,opportunityScoreValidation:{enabled:true,shadowOnly:true,affectsBuyNow:false,episodeStartScore:OPPORTUNITY_EPISODE_START_SCORE,reviewMinSample:OPPORTUNITY_REVIEW_MIN_SAMPLE,endpoint:'/api/opportunity-validation'},guardrails:{hardBuyAuthorization:true,minBuyRewardRisk:MIN_BUY_REWARD_RISK,participationRequired:true,thesisMustRemainIntact:true,overextensionHardBlock:true,backgroundUiReadMinutes:5,cacheOnlyChartReadMinutes:30,patternNetworkUiEnabled:false,opportunityScoreAffectsBuyNow:false,auctionMethodAffectsBuyNow:false,providerDailyCap,reliabilityCiWorkflow:true}});
     }
     if(url.pathname!=='/api/backend-self-test')return app.fetch(request,env,ctx);
     if(request.method!=='POST')return json({error:'Method not allowed.'},405);
