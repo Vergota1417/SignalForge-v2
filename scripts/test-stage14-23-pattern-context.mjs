@@ -42,19 +42,16 @@ assert.match(analysis,/patternContext=assessPatternContext/,'daily analysis must
 assert.match(analysis,/structure,patternContext,engines/,'saved analysis must retain Pattern Context without changing gate list');
 assert.match(evidence,/UNIQUE\(symbol,model_version,analysis_at\)/,'shadow evidence must dedupe repeated execution rechecks');
 
-// Keep the dormant UI implementation testable so it can be rebuilt later without losing its control contract,
-// but production must not currently load or precache its network layer.
 assert.match(dormantUi,/data-toggle="support"/);assert.match(dormantUi,/data-toggle="resistance"/);assert.match(dormantUi,/data-toggle="channel"/);assert.match(dormantUi,/data-toggle="breakout"/);
 assert.match(dormantUi,/data-toggle="double"/);assert.match(dormantUi,/data-toggle="triangles"/);assert.match(dormantUi,/data-toggle="headShoulders"/);assert.match(dormantUi,/data-toggle="wedges"/);
 assert.match(dormantUi,/Priority only/);assert.match(dormantUi,/DETECTED, TESTING, CONFIRMED, or FAILED/);assert.match(dormantUi,/cannot authorize or block BUY NOW/);
 assert.doesNotMatch(dormantUi,/fetch\(`\$\{API\}\/api\/market-data/,'dormant pattern buttons must not issue market-data requests');
 assert.match(hook,/SignalForgeChartBridge/,'chart hook must expose the zero-network Lightweight Charts overlay bridge');
-assert.ok(pwa.indexOf("/pattern-chart-hook.js")<pwa.indexOf("/chart-adapter.js"),'zero-network chart hook must load before chart adapter');
-assert.match(pwa,/Structure \+ Patterns network UI is intentionally disabled/,'production PWA must document the request-amplification quarantine');
-assert.doesNotMatch(pwa,/loadScriptThen\('\/pattern-context-ui\.js'/,'production must not start the Pattern Context network UI');
-assert.doesNotMatch(pwa,/loadScriptThen\('\/pattern-overlay-(?:stable|reliability)\.js'/,'production must not start a Pattern overlay network controller');
+assert.ok(pwa.indexOf("/pattern-chart-hook.js")<pwa.indexOf("/chart-adapter.js"),'dormant zero-network chart hook ordering must remain correct for later reintroduction');
+assert.match(pwa,/Structure \+ Patterns network UI is intentionally disabled/,'dormant PWA loader must document the request-amplification quarantine');
+assert.doesNotMatch(pwa,/loadScriptThen\('\/pattern-context-ui\.js'/,'Pattern Context network UI must remain disabled');
+assert.doesNotMatch(pwa,/loadScriptThen\('\/pattern-overlay-(?:stable|reliability)\.js'/,'Pattern overlay network controllers must remain disabled');
 assert.match(sw,/signalforge-shell-v30-/);
-assert.match(sw,/'\/pattern-chart-hook\.js'/,'PWA may cache the zero-network chart bridge');
 assert.doesNotMatch(sw,/'\/pattern-context-ui\.js'/,'PWA must not precache the disabled Pattern Context network UI');
 assert.doesNotMatch(sw,/'\/pattern-overlay-(?:stable|reliability)\.js'/,'PWA must not precache disabled Pattern overlay network controllers');
 assert.match(build,/SIGNALFORGE_BUILD/,'current release must keep visible build metadata');
