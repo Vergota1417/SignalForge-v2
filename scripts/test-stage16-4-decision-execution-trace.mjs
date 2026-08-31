@@ -24,11 +24,12 @@ assert.match(ui,/COMPLETE/,'trace UI must represent completed state');
 assert.match(ui,/BLOCKED/,'trace UI must represent blocked state');
 assert.match(index,/execution-trace-ui\.js/,'app shell must load execution trace UI');
 assert.match(sw,/execution-trace-ui\.js/,'PWA must cache execution trace UI');
-assert.equal(pkg.version,'2.30.43');
-assert.match(build,/version:'2\.30\.43'/);
-assert.match(build,/shell:'v30-43'/);
-assert.match(sw,/signalforge-shell-v30-43/);
-assert.match(sw,/signalforge-api-snapshots-v7/);
+assert.ok(Number(pkg.version.split('.')[2])>=43,'execution-trace behavior must remain in later 2.30.x releases');
+const shell=sw.match(/signalforge-shell-v30-(\d+)/),buildShell=build.match(/shell:'v30-(\d+)'/),version=build.match(/version:'2\.30\.(\d+)'/);
+assert.ok(shell&&buildShell&&version,'execution trace release must keep versioned build metadata');
+assert.equal(shell[1],buildShell[1],'service worker and build shell must match');
+assert.equal(Number(version[1]),Number(pkg.version.split('.')[2]),'build and package patch versions must match');
+assert.match(sw,/signalforge-api-snapshots-v\d+/);
 
 console.log('Stage 16.4 decision execution trace regression: PASS');
 function read(relative){return fs.readFileSync(new URL(relative,import.meta.url),'utf8');}
