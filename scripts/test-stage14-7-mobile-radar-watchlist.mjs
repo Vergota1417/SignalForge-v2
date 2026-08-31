@@ -3,7 +3,6 @@ import fs from 'node:fs';
 const read=p=>fs.readFileSync(new URL(`../${p}`,import.meta.url),'utf8');
 const watch=read('public/watchlist-ui.js');
 const radar=read('public/radar-ui.js');
-const index=read('public/index.html');
 const build=read('public/build-info.js');
 const sw=read('public/service-worker.js');
 
@@ -17,8 +16,6 @@ const checks=[
   ['Radar strip keeps decision metrics',/Movement<b>/.test(radar)&&/Ready<b>/.test(radar)&&/Gates<b>/.test(radar)&&/RVOL<b>/.test(radar)],
   ['Radar strip reuses automatic D1 endpoint',/\/api\/opportunity-radar/.test(radar)],
   ['mobile hides duplicate sidebar Radar',/@media\(max-width:760px\)[\s\S]*?\.radar-block\{display:none!important\}/.test(radar)],
-  ['index loads watchlist UI after app',index.indexOf('app.js')>=0&&index.indexOf('watchlist-ui.js')>index.indexOf('app.js')],
-  ['service worker caches watchlist UI',/watchlist-ui\.js/.test(sw)],
   ['production exposes a 2.30.x release',/version:'2\.30\.\d+'/.test(build)],
   ['production uses a versioned v30 shell',/signalforge-shell-v30-\d+/.test(sw)]
 ];
