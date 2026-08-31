@@ -1,1 +1,1 @@
-window.SIGNALFORGE_BUILD=Object.freeze({version:'2.30.43',release:'decision-execution-trace',shell:'v30-43'});
+window.SIGNALFORGE_BUILD=Object.freeze({version:'2.30.44',release:'reliability-reconciliation',shell:'v30-44'});
