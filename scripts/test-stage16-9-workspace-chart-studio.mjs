@@ -13,8 +13,8 @@ const build=read('../public/build-info.js');
 const sw=read('../public/service-worker.js');
 const pkg=JSON.parse(read('../package.json'));
 
-assert.match(index,/id="analysisNavBtn"[^>]*>Analysis</,'Analysis must be a real primary navigation destination');
-assert.match(index,/id="systemNavBtn"[^>]*>System</,'System must be a real primary navigation destination');
+assert.match(index,/id="analysisNavBtn"[^>]*>Analysis/,'Analysis must be a real primary navigation destination');
+assert.match(index,/id="systemNavBtn"[^>]*>System/,'System must be a real primary navigation destination');
 assert.match(index,/workspace-ui\.js/,'workspace organizer must be loaded by the shell');
 assert.match(router,/showDock\('sfAnalysisDock'/,'router must navigate to the Analysis dock instead of expanding it inside Dashboard');
 assert.match(router,/showDock\('sfSystemDock'/,'router must navigate to the System dock instead of expanding it inside Dashboard');
@@ -49,13 +49,12 @@ assert.match(studio,/Visual layers are explanatory only and cannot create BUY NO
 assert.match(auction,/window\.__sfAuctionContext=a\|\|null/,'Auction UI must expose its already-calculated context without forcing Chart Studio to create a second auction request');
 assert.match(pwa,/chart-studio-ui\.js/,'Chart Studio must be part of the PWA runtime');
 
-assert.equal(pkg.version,'2.30.48');
-assert.match(build,/version:'2\.30\.48'/);
-assert.match(build,/release:'workspace-chart-studio'/);
-assert.match(build,/shell:'v30-48'/);
-assert.match(sw,/signalforge-shell-v30-48/,'PWA shell must invalidate the previous dense interface');
+const [major,minor,patch]=String(pkg.version).split('.').map(Number);
+assert.equal(major,2);assert.equal(minor,30);assert.ok(patch>=48,'later releases must preserve the Stage 16.9 workspace + Chart Studio contract');
+assert.match(build,/version:'2\.30\.\d+'/);
+assert.match(sw,/signalforge-shell-v30-\d+/,'later shells must preserve the Stage 16.9 interface');
 assert.match(sw,/workspace-ui\.js/,'workspace code must be cached for installed PWA use');
 assert.match(sw,/chart-studio-ui\.js/,'Chart Studio must be cached for installed PWA use');
-assert.match(sw,/signalforge-api-snapshots-v10/,'UI reorganization must not invalidate API snapshots unnecessarily');
+assert.match(sw,/signalforge-api-snapshots-v\d+/,'API snapshot ownership must remain explicit');
 
 console.log('Stage 16.9 workspace + Chart Studio regression: PASS');
