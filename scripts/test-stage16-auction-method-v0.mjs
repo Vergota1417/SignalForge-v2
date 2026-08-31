@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { assessAuctionContext, AUCTION_METHOD_VERSION } from '../src/auction-context.js';
 
 function bars({days=5,start=1756114200000,trend=.18,vol=1000}={}){
@@ -32,4 +33,15 @@ const insufficient=assessAuctionContext(bars({days:1}),{symbol:'QQQ'});
 assert.equal(insufficient.status,'INSUFFICIENT');
 assert.equal(insufficient.affectsBuyNow,false);
 
+const entry=read('../src/entry.js'),policy=read('../public/api-request-policy.js'),html=read('../public/index.html'),sw=read('../public/service-worker.js'),wrangler=read('../wrangler.jsonc');
+assert.match(entry,/url\.pathname==='\/api\/auction-context'/,'existing production entry must own the auction endpoint');
+assert.match(entry,/assessAuctionContext/,'auction endpoint must call the auction engine');
+assert.match(entry,/auctionMethodAffectsBuyNow:false/,'health guardrails must state auction V0 cannot authorize BUY NOW');
+assert.match(policy,/['"]\/api\/auction-context['"]\s*:\s*FIVE_MINUTES/,'auction polling must be governed by central request policy');
+assert.match(html,/auction-method-ui\.js/,'PWA must load the auction panel');
+assert.match(sw,/\/auction-method-ui\.js/,'PWA shell must cache the auction panel');
+assert.match(wrangler,/"main": "src\/entry\.js"/,'auction V0 must preserve the sole production Worker entry owner');
+assert.equal(fs.existsSync(new URL('../src/auction-entry.js',import.meta.url)),false,'temporary competing Worker entry must stay removed');
+
 console.log('Stage 16 auction method V0 regression: PASS');
+function read(relative){return fs.readFileSync(new URL(relative,import.meta.url),'utf8');}
