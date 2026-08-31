@@ -1,0 +1,51 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+
+const twelve=read('../src/twelve-data-provider.js');
+const usage=read('../src/provider-usage.js');
+const operations=read('../src/operations.js');
+const scheduler=read('../src/scheduler.js');
+const entry=read('../src/entry.js');
+const trace=read('../src/execution-trace.js');
+const policy=read('../public/api-request-policy.js');
+const providerUi=read('../public/provider-health-ui.js');
+const operationsUi=read('../public/operations-ui.js');
+const rangeUi=read('../public/session-range-ui.js');
+const openingUi=read('../public/opening-range-ui.js');
+const traceUi=read('../public/execution-trace-ui.js');
+const build=read('../public/build-info.js');
+const sw=read('../public/service-worker.js');
+const pkg=JSON.parse(read('../package.json'));
+
+assert.match(twelve,/\[\$\{kind\}\]/,'Twelve Data errors must carry a machine-readable failure kind');
+assert.match(twelve,/SYMBOL_NOT_FOUND/,'Twelve Data must distinguish unsupported symbols from provider outages');
+assert.match(twelve,/error\.status=response\.status/,'Twelve Data HTTP status must survive into gateway quarantine/telemetry logic');
+assert.match(usage,/SELECT requests,updated_at AS updatedAt FROM provider_usage/,'provider health must reconcile against the canonical quota ledger');
+assert.match(usage,/canonicalRequestsToday/,'provider health snapshot must expose canonical request count');
+assert.match(usage,/SYMBOL_REJECTED/,'symbol rejection must not be displayed as a global provider outage');
+assert.match(providerUi,/SYMBOL REJECTED|SYMBOL_REJECTED/,'provider UI must distinguish a symbol rejection');
+assert.match(operations,/operation_error_events/,'operations must retain timestamped error events going forward');
+assert.match(operations,/recent24h/,'operations status must expose recent 24-hour error count');
+assert.match(operations,/recent7d/,'operations status must expose recent 7-day error count');
+assert.match(operations,/byOperation/,'operations status must break historical errors down by owner');
+assert.match(operationsUi,/Errors · 24h \/ 7d/,'operations UI must show recent error windows');
+assert.match(operationsUi,/analysis-outcome-tracker/,'operations UI must expose the ANALYSIS outcome worker');
+assert.match(scheduler,/runOutcomeTracker\(env,\{now,maxSymbols:2,observationType:'ANALYSIS',requiredHorizon:20\}\)/,'scheduler must mature ANALYSIS observations independently');
+assert.match(scheduler,/analysis-outcome-tracker/,'ANALYSIS maturation must have its own operation proof');
+assert.match(scheduler,/WEEKLY_RESEARCH_SCHEDULE\.batchSize/,'reliability work must preserve weekly research schedule ownership');
+assert.match(entry,/\/api\/execution-shadow/,'selected symbols must have a live execution-shadow endpoint');
+assert.match(entry,/executionShadowAffectsBuyNow:false/,'execution shadow must remain unable to authorize BUY NOW');
+assert.match(policy,/\/api\/execution-shadow/,'execution shadow reads must use central request policy');
+assert.match(rangeUi,/\/api\/execution-shadow\?symbol=/,'room-to-run UI must calculate for selected symbols rather than waiting only on radar promotion');
+assert.match(openingUi,/\/api\/execution-shadow\?symbol=/,'opening structure UI must calculate for selected symbols');
+assert.match(trace,/discoveryState=quote\?'COMPLETE':\(signal\|\|latestMarket\)\?'SKIPPED':'NOT_RUN'/,'direct/manual loads must not be mislabeled as broken discovery');
+assert.match(trace,/observation_type='ANALYSIS'/,'decision outcome trace must use ANALYSIS evidence, not arbitrary latest evidence');
+assert.match(traceUi,/SKIPPED/,'trace UI must explain intentionally skipped stages');
+assert.equal(pkg.version,'2.30.44');
+assert.match(build,/version:'2\.30\.44'/);
+assert.match(build,/shell:'v30-44'/);
+assert.match(sw,/signalforge-shell-v30-44/);
+assert.match(sw,/signalforge-api-snapshots-v8/,'reliability reconciliation must invalidate old API snapshots');
+
+console.log('Stage 16.5 reliability reconciliation regression: PASS');
+function read(relative){return fs.readFileSync(new URL(relative,import.meta.url),'utf8');}
