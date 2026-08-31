@@ -79,12 +79,17 @@
     root.querySelector('[data-sf-system-copy]').textContent=!known?'Loading backend status…':`Market ${stateOk(market)?'✓':'⚠'} · Scanner ${stateOk(scanner)?'✓':'⚠'} · Errors ${errors||'—'}`;
   }
 
+  function ensureVisualDashboard(){
+    if(document.getElementById('sfVisualDashboardLoader'))return;
+    const script=document.createElement('script');script.id='sfVisualDashboardLoader';script.src='visual-dashboard-ui.js';script.defer=true;document.head.appendChild(script);
+  }
+
   function retireLegacyExpansion(){
     try{localStorage.setItem('signalforge_cockpit_analysis_v1','0');localStorage.setItem('signalforge_cockpit_system_v1','0');localStorage.setItem('signalforge_show_details_v1','0');}catch{}
     document.body.classList.remove('sf-analysis-open','sf-system-open');
   }
 
-  function organize(){injectStyles();retireLegacyExpansion();organizeDocks();ensureRadarMore();ensureChartDetails();updateTradePlan();updateSystemMini();}
+  function organize(){injectStyles();retireLegacyExpansion();organizeDocks();ensureRadarMore();ensureChartDetails();updateTradePlan();updateSystemMini();ensureVisualDashboard();}
   function schedule(){clearTimeout(organizeTimer);organizeTimer=setTimeout(organize,60);}
   function escapeHtml(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 
