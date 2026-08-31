@@ -29,7 +29,7 @@
         <section class="status-strip" aria-label="Status legend"><span class="legend-label">STATUS LEGEND</span><span class="pill buy">BUY NOW</span><span class="pill setup">SETUP — READY SOON</span><span class="pill pullback">WAIT FOR PULLBACK</span><span class="pill wait">WAIT — SETUP NOT READY</span><span class="pill avoid">AVOID</span><span class="pill sell">SELL / EXIT</span></section>
         <section class="dashboard-row"><div class="chart-card"><div class="chart-head"><div><div class="eyebrow">Price + decision zones</div><h2 id="chartTitle">XOM chart</h2></div><div id="timeframeTabs" class="timeframe-tabs" role="tablist" aria-label="Chart timeframe"></div></div><div class="chart-meta"><span id="candleResolution">Resolution: —</span><span id="chartDataSource">Data: —</span></div><div class="canvas-wrap"><canvas id="priceChart" aria-label="Price chart with preferred entry, overextension and thesis break levels"></canvas></div><div class="level-legend"><div><span class="dot entry"></span><strong>Preferred Entry</strong><span id="entryLevel">—</span></div><div><span class="dot over"></span><strong>Overextension / Don’t Chase</strong><span id="overLevel">—</span></div><div><span class="dot stop"></span><strong>Thesis Break / Stop</strong><span id="stopLevel">—</span></div></div></div><aside class="decision-card"><div class="readiness-wrap"><div class="readiness-gauge" id="readinessGauge"><div class="gauge-inner"><div id="readinessValue" class="gauge-value">—%</div><div id="readinessLabel" class="gauge-label">Analyzing</div></div></div><div class="readiness-copy"><div class="eyebrow">Confidence / readiness</div><div id="checkSummary" class="big-copy">—</div><div id="gateSummary" class="muted">—</div></div></div><div class="divider"></div><div class="why-box"><h3>Why this is not a BUY yet</h3><div id="whyList" class="why-list"></div></div></aside></section>
         <section class="engine-section"><div class="section-head"><div><div class="eyebrow">Critical decision gates</div><h2>Four-engine confirmation</h2></div><div class="gate-note">BUY requires all critical gates to clear.</div></div><div id="engineGrid" class="engine-grid"></div></section>
-        <section class="bottom-grid"><div class="panel"><div class="panel-head"><div><div class="eyebrow">Trigger map</div><h2>What changes the signal?</h2></div></div><div id="triggerMap" class="trigger-map"></div></div><div class="panel"><div class="panel-head"><div><div class="eyebrow">Model transparency</div><h2>How the decision is made</h2></div></div><div class="transparency-list"><p><strong>Trend</strong> decides whether the symbol deserves attention.</p><p><strong>Entry</strong> decides whether the current price is attractive instead of chased.</p><p><strong>Probability</strong> runs a lightweight walk-forward check on the loaded series.</p><p><strong>Risk / Reward</strong> requires a favorable target-to-stop relationship.</p><p class="muted">SignalForge is a decision-support tool, not investment advice.</p></div></div></section>
+        <section class="bottom-grid"><div class="panel"><div class="panel-head"><div><div class="eyebrow">Trigger map</div><h2>What changes the signal?</h2></div></div><div id="triggerMap" class="trigger-map"></div></div><div class="panel"><div class="panel-head"><div><div class="eyebrow">Model transparency</div><h2>How the decision is made</h2></div></div><div class="transparency-list"><p><strong>Trend</strong> decides whether the symbol deserves attention.</p><p><strong>Entry</strong> decides whether the current price is attractive instead of chased.</p><p><strong>Probability</strong> runs a lightweight walk-forward check on the loaded series.</p><p><strong>Risk / Reward</strong> requires a favorable target-to-stop relationship with a structurally meaningful stop distance.</p><p class="muted">SignalForge is a decision-support tool, not investment advice.</p></div></div></section>
       </main>
     </div>
   </div>
@@ -51,7 +51,7 @@
   <script src="watchlist-ui.js"></script>
   <script src="gate-ui.js"></script>
   <script src="screener-ui.js"></script>
-  <script src="marketpulse-opportunities-ui.js"></script>
+  <script src="signalforge-opportunities-ui.js"></script>
   <script src="weekend-ui.js"></script>
   <script src="simulation-capital-ui.js"></script>
   <script src="telemetry-ui.js"></script>
@@ -59,6 +59,7 @@
   <script src="operations-ui.js"></script>
   <script src="self-test-ui.js"></script>
   <script src="unified-action-ui.js"></script>
+  <script src="signal-integrity-ui.js"></script>
   <script src="ui-router.js"></script>
   <script src="pwa.js"></script>
 </body>
