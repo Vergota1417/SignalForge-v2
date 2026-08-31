@@ -1,0 +1,37 @@
+import { assessAuctionContext } from './auction-context.js';
+
+export async function getExecutionTrace(env,{symbol,now=Date.now()}={}){
+  const s=sanitizeSymbol(symbol);if(!s)throw new Error('Valid symbol is required.');
+  const [radar,marketRows,signal,evidence,position,strategy,alert,outcomeRows]=await Promise.all([
+    env.DB.prepare(`SELECT payload,updated_at AS updatedAt FROM radar_quotes WHERE symbol=?`).bind(s).first(),
+    env.DB.prepare(`SELECT timeframe,source,fetched_at AS fetchedAt,payload FROM market_cache WHERE symbol=? ORDER BY fetched_at DESC`).bind(s).all(),
+    env.DB.prepare(`SELECT status,readiness,price,reason,analysis_json AS analysisJson,updated_at AS updatedAt FROM signal_state WHERE symbol=?`).bind(s).first(),
+    env.DB.prepare(`SELECT id,observation_type AS observationType,source,timeframe,status,readiness,observed_at AS observedAt,payload_json AS payloadJson FROM evidence_observations WHERE symbol=? ORDER BY observed_at DESC,id DESC LIMIT 1`).bind(s).first().catch(()=>null),
+    env.DB.prepare(`SELECT entry_price AS entryPrice,shares,bought_at AS boughtAt,updated_at AS updatedAt FROM portfolio_positions WHERE symbol=?`).bind(s).first(),
+    env.DB.prepare(`SELECT state,reason,strategy_json AS strategyJson,updated_at AS updatedAt FROM portfolio_strategy_state WHERE symbol=?`).bind(s).first(),
+    env.DB.prepare(`SELECT id,status,previous_status AS previousStatus,reason,created_at AS createdAt FROM signal_events WHERE symbol=? ORDER BY created_at DESC,id DESC LIMIT 1`).bind(s).first(),
+    env.DB.prepare(`SELECT o.horizon_sessions AS horizonSessions,o.forward_return AS forwardReturn,o.first_hit AS firstHit,o.evaluated_at AS evaluatedAt FROM evidence_outcomes o JOIN evidence_observations e ON e.id=o.observation_id WHERE e.symbol=? ORDER BY o.evaluated_at DESC,o.horizon_sessions`).bind(s).all().catch(()=>({results:[]}))
+  ]);
+  const market=(marketRows.results||[]).map(row=>({...row,fetchedAt:Number(row.fetchedAt)||0,candles:parse(row.payload,[])}));
+  const latestMarket=market[0]||null,auctionMarket=market.find(x=>x.timeframe==='5D')||null;
+  const quote=radar?parse(radar.payload,{}):null,analysis=signal?parse(signal.analysisJson,{}):null,evidencePayload=evidence?parse(evidence.payloadJson,{}):null;
+  let auction=null;if(auctionMarket?.candles?.length>=30)auction=assessAuctionContext(auctionMarket.candles,{symbol:s,currentPrice:auctionMarket.candles.at(-1)?.close});
+  const outcomes=(outcomeRows.results||[]).map(x=>({horizonSessions:Number(x.horizonSessions)||0,forwardReturn:num(x.forwardReturn),firstHit:String(x.firstHit||'NONE'),evaluatedAt:Number(x.evaluatedAt)||0}));
+  const engines=analysis?.engines||{},gateRows=Object.values(engines).filter(Boolean),gatesReady=gateRows.filter(x=>x.ready).length,gateTotal=gateRows.length;
+  const stages=[
+    stage('discovery',quote?'COMPLETE':'NOT_RUN',{updatedAt:Number(radar?.updatedAt)||0,score:num(quote?.rollingDiscoveryScore??quote?.discoveryScore??quote?.score),relativeVolume:num(quote?.relativeVolume),source:quote?.source||'radar'}),
+    stage('market_data',latestMarket?'COMPLETE':'NOT_RUN',{updatedAt:latestMarket?.fetchedAt||0,provider:latestMarket?.source||null,timeframe:latestMarket?.timeframe||null,bars:latestMarket?.candles?.length||0,cachedProof:true}),
+    stage('auction_method',auction?(auction.status==='INSUFFICIENT'?'WARNING':'COMPLETE'):(latestMarket?'PENDING':'BLOCKED'),{updatedAt:auctionMarket?.fetchedAt||0,shadowOnly:true,score:auction?.score??null,status:auction?.status||null,environment:auction?.environment||null,location:auction?.location?{state:auction.location.state,premiumDiscount:auction.location.premiumDiscount,VAH:auction.location.VAH,VAL:auction.location.VAL,poc:auction.location.poc}:null,confirmation:auction?.confirmation||null,reason:auction?.reason||'No cached 5D series is available yet for Auction Method proof.'}),
+    stage('signalforge_validation',analysis?'COMPLETE':'BLOCKED',{updatedAt:Number(signal?.updatedAt)||0,status:analysis?.status||signal?.status||null,readiness:num(analysis?.readiness??signal?.readiness),gatesReady,gatesTotal:gateTotal,criticalFailed:Array.isArray(analysis?.criticalFailed)?analysis.criticalFailed:[],walkForward:{sample:Number(analysis?.wf?.sample)||0,winRate:num(analysis?.wf?.winRate),avgReturn:num(analysis?.wf?.avgReturn)},riskReward:num(analysis?.rr),hardBuyGuardrails:analysis?.hardBuyGuardrails||null,participation:analysis?.intradayConfirmation||null}),
+    stage('final_decision',signal?'COMPLETE':'BLOCKED',{updatedAt:Number(signal?.updatedAt)||0,status:signal?.status||analysis?.status||null,readiness:num(signal?.readiness??analysis?.readiness),price:num(signal?.price??analysis?.latest?.close),reason:signal?.reason||analysis?.reason||null,lastTransition:alert?{from:alert.previousStatus||null,to:alert.status,at:Number(alert.createdAt)||0}:null}),
+    stage('portfolio_alerts',signal?'COMPLETE':'BLOCKED',{updatedAt:Math.max(Number(position?.updatedAt)||0,Number(strategy?.updatedAt)||0,Number(alert?.createdAt)||0),owned:Boolean(position),position:position?{entryPrice:num(position.entryPrice),shares:num(position.shares),boughtAt:Number(position.boughtAt)||0}:null,managementState:strategy?.state||null,lastAlert:alert?{status:alert.status,previousStatus:alert.previousStatus||null,at:Number(alert.createdAt)||0,reason:alert.reason||''}:null}),
+    stage('outcome_tracking',evidence?(outcomes.length?'COMPLETE':'PENDING'):'NOT_RUN',{updatedAt:Math.max(Number(evidence?.observedAt)||0,...outcomes.map(x=>x.evaluatedAt)),observation:evidence?{id:Number(evidence.id),type:evidence.observationType,source:evidence.source,timeframe:evidence.timeframe,status:evidence.status,readiness:num(evidence.readiness),observedAt:Number(evidence.observedAt)||0}:null,outcomes})
+  ];
+  const completed=stages.filter(x=>x.state==='COMPLETE').length,blocked=stages.filter(x=>x.state==='BLOCKED').length,warnings=stages.filter(x=>['WARNING','PENDING'].includes(x.state)).length;
+  const traceAt=Math.max(...stages.map(x=>Number(x.updatedAt)||0),0),traceId=`SF-${s}-${traceAt||now}`;
+  return{traceId,symbol:s,generatedAt:now,traceAt,observationalOnly:true,affectsBuyNow:false,summary:{completed,total:stages.length,blocked,warnings,finalStatus:signal?.status||analysis?.status||'NOT ANALYZED',provider:latestMarket?.source||null,lastDataAt:latestMarket?.fetchedAt||0,evidenceObserved:Boolean(evidence)},stages,evidencePayload:evidencePayload?{reason:evidencePayload.reason||'',criticalFailed:evidencePayload.criticalFailed||[]}:null};
+}
+function stage(id,state,detail){return{id,label:({discovery:'Market Discovery',market_data:'Real Market Data',auction_method:'Auction Method',signalforge_validation:'SignalForge Validation',final_decision:'Final Decision',portfolio_alerts:'Portfolio + Alerts',outcome_tracking:'Outcome Tracking'})[id]||id,state,updatedAt:Number(detail?.updatedAt)||0,detail};}
+function parse(v,fallback){try{return v?JSON.parse(v):fallback;}catch{return fallback;}}
+function num(v){const n=Number(v);return Number.isFinite(n)?n:null;}
+function sanitizeSymbol(v){const s=String(v||'').trim().toUpperCase().replace(/[^A-Z.]/g,'').slice(0,6);return/^[A-Z]{1,5}(?:\.[A-Z])?$/.test(s)?s:'';}
