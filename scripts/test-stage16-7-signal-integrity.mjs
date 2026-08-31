@@ -53,12 +53,15 @@ assert.match(index,/signal-integrity-ui\.js/,'app must load integrity presentati
 assert.doesNotMatch(index,/marketpulse-opportunities-ui\.js/,'retired MarketPulse module must not be loaded');
 assert.equal(fs.existsSync(new URL('../public/marketpulse-opportunities-ui.js',import.meta.url)),false,'retired MarketPulse UI file must be removed');
 
-assert.equal(pkg.version,'2.30.46');
-assert.match(build,/version:'2\.30\.46'/);
-assert.match(build,/release:'signal-integrity'/);
-assert.match(build,/shell:'v30-46'/);
-assert.match(sw,/signalforge-shell-v30-46/);
-assert.match(sw,/signalforge-api-snapshots-v10/,'integrity release must invalidate stale API snapshots');
+const patch=Number(String(pkg.version).split('.')[2]);
+const buildPatch=Number(build.match(/version:'2\.30\.(\d+)'/)?.[1]);
+const shellPatch=Number(build.match(/shell:'v30-(\d+)'/)?.[1]);
+const swShell=Number(sw.match(/signalforge-shell-v30-(\d+)/)?.[1]);
+const apiVersion=Number(sw.match(/signalforge-api-snapshots-v(\d+)/)?.[1]);
+assert.ok(patch>=46&&buildPatch>=46&&shellPatch>=46&&swShell>=46,'Stage 16.7 integrity protections must survive later 2.30.x releases');
+assert.equal(buildPatch,patch,'visible build and package versions must match');
+assert.equal(shellPatch,swShell,'visible shell and service-worker shell must match');
+assert.ok(apiVersion>=10,'Stage 16.7 integrity release must retain API snapshot v10 or newer');
 assert.match(sw,/signalforge-opportunities-ui\.js/);
 assert.match(sw,/signal-integrity-ui\.js/);
 assert.doesNotMatch(sw,/marketpulse-opportunities-ui\.js/);
