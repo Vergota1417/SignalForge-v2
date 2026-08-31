@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { evaluateHardBuyGuardrails, MIN_BUY_REWARD_RISK } from '../src/hard-guardrails.js';
+import { evaluateHardBuyGuardrails, MIN_BUY_REWARD_RISK, MIN_BUY_STOP_DISTANCE_PCT, MIN_BUY_STOP_DISTANCE_ATR } from '../src/hard-guardrails.js';
 import { HISTORICAL_DISABLED_TESTS, PRODUCTION_GUARDRAIL_TESTS } from './suite-manifest.mjs';
 await import('../public/api-request-policy.js');
 const requestPolicy=globalThis.SignalForgeApiRequestPolicy;
@@ -11,7 +11,9 @@ const allGood={
   thesisIntact:true,
   overextended:false,
   higherTimeframeReady:true,
-  intradayConfirmation:{pass:true,participationPass:true}
+  intradayConfirmation:{pass:true,participationPass:true},
+  riskPct:MIN_BUY_STOP_DISTANCE_PCT+.01,
+  riskAtr:MIN_BUY_STOP_DISTANCE_ATR+.5
 };
 
 assert.equal(evaluateHardBuyGuardrails(allGood).pass,true,'1.80:1 with every hard gate passing must be eligible');
@@ -23,6 +25,8 @@ assert.equal(evaluateHardBuyGuardrails({...allGood,overextended:true}).pass,fals
 assert.equal(evaluateHardBuyGuardrails({...allGood,higherTimeframeReady:false}).pass,false,'uncleared higher-timeframe gates must hard-block BUY');
 assert.equal(evaluateHardBuyGuardrails({...allGood,intradayConfirmation:{pass:false,participationPass:true}}).pass,false,'failed final execution confirmation must hard-block BUY');
 assert.equal(evaluateHardBuyGuardrails({...allGood,intradayConfirmation:{pass:true,participationPass:false}}).pass,false,'failed participation core must hard-block BUY');
+assert.equal(evaluateHardBuyGuardrails({...allGood,rewardRisk:12,riskPct:MIN_BUY_STOP_DISTANCE_PCT-.0001}).pass,false,'an ultra-tight percentage stop must block BUY even with huge raw R/R');
+assert.equal(evaluateHardBuyGuardrails({...allGood,rewardRisk:12,riskAtr:MIN_BUY_STOP_DISTANCE_ATR-.01}).pass,false,'an ultra-tight ATR stop must block BUY even with huge raw R/R');
 
 const analysis=fs.readFileSync(new URL('../src/analysis.js',import.meta.url),'utf8');
 const entry=fs.readFileSync(new URL('../src/entry.js',import.meta.url),'utf8');
@@ -36,6 +40,7 @@ const runner=fs.readFileSync(new URL('./run-reliability-guardrails.mjs',import.m
 
 assert.match(analysis,/dailyGatesReady&&hardBuyGuardrails\.pass\)\{status='BUY NOW'/,'BUY NOW must be directly gated by hardBuyGuardrails.pass');
 assert.match(analysis,/!hardBuyGuardrails\.rules\.rewardRisk\.pass/,'analysis must explicitly block a failed R/R hard guardrail');
+assert.match(analysis,/!hardBuyGuardrails\.rules\.stopQuality\.pass/,'analysis must explicitly block an untrustworthy ultra-tight stop');
 assert.match(analysis,/hardBuyGuardrails/,'hard guardrail state must be returned with analysis');
 assert.match(entry,/minBuyRewardRisk:MIN_BUY_REWARD_RISK/,'health must expose the production minimum R/R');
 assert.match(entry,/patternNetworkUiEnabled:false/,'health must prove the risky pattern network UI is disabled');
