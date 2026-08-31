@@ -1,1 +1,1 @@
-window.SIGNALFORGE_BUILD=Object.freeze({version:'2.30.41',release:'provider-api-health',shell:'v30-41'});
+window.SIGNALFORGE_BUILD=Object.freeze({version:'2.30.42',release:'provider-health-settle-states',shell:'v30-42'});

@@ -24,14 +24,15 @@ assert.match(entry,/getProviderHealthSnapshot/,'provider health endpoint must re
 assert.match(policy,/\/api\/provider-health/,'provider health polling must use the central request policy');
 assert.match(ui,/API \/ Data Health/,'dashboard must visibly identify the API health panel');
 assert.match(ui,/Requests today/,'dashboard must show per-provider request counts');
-assert.match(ui,/Success \/ errors/,'dashboard must show per-provider success/error counts');
+assert.match(ui,/Success \/ errors/,'dashboard must retain success/error visibility');
 assert.match(ui,/Last success/,'dashboard must show the last successful upstream contact');
 assert.match(index,/provider-health-ui\.js/,'app shell must load provider health UI');
 assert.match(sw,/provider-health-ui\.js/,'PWA shell must cache provider health UI');
-assert.match(sw,/signalforge-shell-v30-41/,'provider health release must bump PWA shell');
-assert.equal(pkg.version,'2.30.41');
-assert.match(build,/version:'2\.30\.41'/);
-assert.match(build,/shell:'v30-41'/);
+const shell=sw.match(/signalforge-shell-v30-(\d+)/),buildShell=build.match(/shell:'v30-(\d+)'/),version=build.match(/version:'2\.30\.(\d+)'/);
+assert.ok(shell&&buildShell&&version,'provider health release must expose a versioned shell and build');
+assert.ok(Number(shell[1])>=41,'provider health PWA shell must never regress below v30-41');
+assert.equal(shell[1],buildShell[1],'service worker and visible build shell must match');
+assert.equal(Number(version[1]),Number(pkg.version.split('.')[2]),'visible build and package patch version must match');
 
 console.log('Stage 16.2 provider API health regression: PASS');
 function read(relative){return fs.readFileSync(new URL(relative,import.meta.url),'utf8');}
