@@ -10,8 +10,8 @@ const pkg=JSON.parse(read('../package.json'));
 
 assert.match(usage,/legacySymbol404=\/HTTP 404\//,'legacy 404 reconciliation must be explicit and narrow');
 assert.match(usage,/provider==='twelve-data'/,'legacy 404 inference must be limited to Twelve Data');
-assert.match(usage,/\^time-series-/.test(usage)?/./:/./,'placeholder');
-assert.match(usage,/lastPurpose\)&&Number\(lastBars\)===0/,'legacy 404 inference must require a zero-row symbol time-series request');
+assert.match(usage,/\/\^time-series-\//,'legacy 404 inference must be limited to symbol time-series purposes');
+assert.match(usage,/Number\(lastBars\)===0/,'legacy 404 inference must require a zero-row response');
 assert.match(usage,/errorInferred:Boolean\(classification\.inferred\)/,'provider snapshot must disclose inferred legacy classification');
 assert.match(providerUi,/Legacy HTTP 404/,'provider UI must explain legacy inferred symbol rejection');
 assert.match(providerUi,/next request will use exact tagged classification/,'provider UI must distinguish inference from future exact telemetry');
