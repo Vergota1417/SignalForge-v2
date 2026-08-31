@@ -138,7 +138,7 @@ async function runAfterHoursCycle(env,{now,weekday,minutes}){
 }
 
 async function runWeeklyResearchCycle(env,{now}){
-  const result=await runWeeklyResearchBatch(env,{batchSize:6,now});
+  const result=await runWeeklyResearchBatch(env,{batchSize:WEEKLY_RESEARCH_SCHEDULE.batchSize,now});
   console.log(JSON.stringify({event:'weekly_research_batch',weekKey:result.weekKey,scanned:result.scanned,cursor:result.cursor,universeSize:result.universeSize,completed:result.completed,schedule:'SATURDAY'}));
   if(result.completed&&result.scanned.length){
     const[snapshot,positions]=await Promise.all([getWeeklyStrategySnapshot(env),listPortfolioPositions(env)]),top=rankOpportunities(snapshot.ranked,positions)[0];
