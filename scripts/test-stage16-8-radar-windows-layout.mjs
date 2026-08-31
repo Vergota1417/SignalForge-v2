@@ -22,6 +22,6 @@ const [major,minor,patch]=String(pkg.version).split('.').map(Number);assert.ok(m
 assert.match(build,/version:'2\.30\.\d+'/);
 const shell=Number(build.match(/shell:'v30-(\d+)'/)?.[1]||0);assert.ok(shell>=47,'later PWA shells must preserve the Stage 16.8 desktop layout');
 assert.match(sw,/signalforge-shell-v30-\d+/,'PWA shell must continue versioning Windows layout changes');
-assert.match(sw,/signalforge-api-snapshots-v10/,'UI-only releases must not unnecessarily invalidate API snapshots');
+const apiSnapshot=Number(sw.match(/signalforge-api-snapshots-v(\d+)/)?.[1]||0);assert.ok(apiSnapshot>=10,'later releases may bump API snapshots when a backend response contract changes');
 
 console.log('Stage 16.8 Windows Opportunity Radar layout regression: PASS');
