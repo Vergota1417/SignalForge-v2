@@ -101,6 +101,7 @@ run_codex_agent() {
   local base_ref="$3"
   local prompt_rel="$4"
   local expected_file="$5"
+  local commit_message="$6"
 
   local wt="$RUNTIME_ROOT/worktrees/$name"
   local log="$RUNTIME_ROOT/logs/$name.log"
@@ -113,46 +114,54 @@ run_codex_agent() {
   (
     cd "$wt"
 
-    # Give the agent a deliberately minimal environment. In particular, do not
-    # expose Codespaces/GitHub tokens or production/provider secrets to Codex.
+    # Codex gets only the worktree and a deliberately minimal environment.
+    # It does not receive Codespaces/GitHub tokens or provider/production secrets.
+    # The agent is not trusted to commit or push; the launcher does that only
+    # after exact-file scope validation.
     env -i \
       HOME="$HOME" \
       USER="${USER:-node}" \
       PATH="$PATH" \
       LANG="${LANG:-C.UTF-8}" \
-      LC_ALL="${LC_ALL:-}" \
       TERM="${TERM:-dumb}" \
       SIGNALFORGE_SANDBOX="1" \
       CODEX_HOME="${CODEX_HOME:-$HOME/.codex}" \
       codex exec --ephemeral --sandbox workspace-write < "$REPO_ROOT/$prompt_rel" \
       >"$log" 2>&1
 
-    if [[ -n "$(git status --porcelain)" ]]; then
-      echo "Agent left an uncommitted worktree; refusing automatic integration." >>"$log"
-      exit 31
-    fi
-
-    local head_sha
-    head_sha="$(git rev-parse HEAD)"
-    if [[ "$head_sha" == "$start_sha" ]]; then
-      echo "Agent produced no commit." >>"$log"
-      exit 32
-    fi
-
-    mapfile -t changed_files < <(git diff --name-only "$start_sha"..HEAD)
+    mapfile -t changed_files < <(git status --porcelain=v1 | sed -E 's/^.. //')
     if (( ${#changed_files[@]} != 1 )) || [[ "${changed_files[0]}" != "$expected_file" ]]; then
       {
-        echo "Scope violation. Expected exactly: $expected_file"
-        echo "Changed files:"
+        echo "Scope violation. Expected exactly one changed file: $expected_file"
+        echo "Observed worktree changes:"
         printf '  %s\n' "${changed_files[@]}"
       } >>"$log"
-      exit 33
+      exit 31
     fi
 
     [[ -f "$expected_file" ]] || {
       echo "Expected output file missing: $expected_file" >>"$log"
-      exit 34
+      exit 32
     }
+
+    # Trusted launcher commits only the pre-approved file. Hooks are disabled.
+    git add -- "$expected_file"
+    git -c core.hooksPath=/dev/null commit -q -m "$commit_message"
+
+    [[ -z "$(git status --porcelain)" ]] || {
+      echo "Worktree was not clean after trusted commit." >>"$log"
+      exit 33
+    }
+
+    mapfile -t committed_files < <(git diff --name-only "$start_sha"..HEAD)
+    if (( ${#committed_files[@]} != 1 )) || [[ "${committed_files[0]}" != "$expected_file" ]]; then
+      {
+        echo "Post-commit scope violation. Expected exactly: $expected_file"
+        echo "Committed files:"
+        printf '  %s\n' "${committed_files[@]}"
+      } >>"$log"
+      exit 34
+    fi
   )
 }
 
@@ -192,16 +201,20 @@ BR_INT="agent/stage0-$RUN_ID-integration"
 # Wave 1: independent architecture research that can run concurrently.
 run_codex_agent "investment-architect" "$BR_INV" "$BASE_SHA" \
   "docs/agent-team/prompts/stage0-investment-architect.md" \
-  "docs/agent-team/research/investment-architecture.md" & PID_INV=$!
+  "docs/agent-team/research/investment-architecture.md" \
+  "Stage0: investment architecture review" & PID_INV=$!
 run_codex_agent "video-method-auditor" "$BR_VIDEO" "$BASE_SHA" \
   "docs/agent-team/prompts/stage0-video-method-auditor.md" \
-  "docs/agent-team/research/video-method-audit.md" & PID_VIDEO=$!
+  "docs/agent-team/research/video-method-audit.md" \
+  "Stage0: video methodology audit" & PID_VIDEO=$!
 run_codex_agent "data-feasibility" "$BR_DATA" "$BASE_SHA" \
   "docs/agent-team/prompts/stage0-data-feasibility.md" \
-  "docs/agent-team/research/data-feasibility.md" & PID_DATA=$!
+  "docs/agent-team/research/data-feasibility.md" \
+  "Stage0: data feasibility audit" & PID_DATA=$!
 run_codex_agent "beginner-ux" "$BR_UX" "$BASE_SHA" \
   "docs/agent-team/prompts/stage0-beginner-ux-auditor.md" \
-  "docs/agent-team/research/beginner-usability-audit.md" & PID_UX=$!
+  "docs/agent-team/research/beginner-usability-audit.md" \
+  "Stage0: beginner usability audit" & PID_UX=$!
 
 wait_group "Wave 1" \
   "investment-architect:$PID_INV" \
@@ -217,10 +230,12 @@ push_checked_branch "beginner-ux" "$BR_UX"
 # Wave 2: independent challengers intentionally see the architect's proposal.
 run_codex_agent "quant-challenger" "$BR_QUANT" "$BR_INV" \
   "docs/agent-team/prompts/stage0-quant-challenger.md" \
-  "docs/agent-team/research/quant-strategy-challenge.md" & PID_QUANT=$!
+  "docs/agent-team/research/quant-strategy-challenge.md" \
+  "Stage0: quant strategy challenge" & PID_QUANT=$!
 run_codex_agent "risk-officer" "$BR_RISK" "$BR_INV" \
   "docs/agent-team/prompts/stage0-risk-officer.md" \
-  "docs/agent-team/research/risk-of-ruin-review.md" & PID_RISK=$!
+  "docs/agent-team/research/risk-of-ruin-review.md" \
+  "Stage0: risk of ruin review" & PID_RISK=$!
 
 wait_group "Wave 2" \
   "quant-challenger:$PID_QUANT" \
@@ -240,8 +255,6 @@ sed \
   -e "s|agent/stage0-risk-officer|$BR_RISK|g" \
   "$REPO_ROOT/docs/agent-team/prompts/stage0-integrator.md" > "$INT_PROMPT"
 
-# The integrator prompt is runtime-generated, so copy it into the expected prompt
-# location for this invocation only; no repository file is modified.
 WT_INT="$RUNTIME_ROOT/worktrees/integration"
 make_worktree "$BR_INT" "$BASE_SHA" "$WT_INT"
 LOG_INT="$RUNTIME_ROOT/logs/integration.log"
@@ -254,18 +267,29 @@ info "Launching Stage-0 integration lead"
     USER="${USER:-node}" \
     PATH="$PATH" \
     LANG="${LANG:-C.UTF-8}" \
-    LC_ALL="${LC_ALL:-}" \
     TERM="${TERM:-dumb}" \
     SIGNALFORGE_SANDBOX="1" \
     CODEX_HOME="${CODEX_HOME:-$HOME/.codex}" \
     codex exec --ephemeral --sandbox workspace-write < "$INT_PROMPT" \
     >"$LOG_INT" 2>&1
 
-  [[ -z "$(git status --porcelain)" ]] || exit 41
-  [[ "$(git rev-parse HEAD)" != "$BASE_SHA" ]] || exit 42
+  mapfile -t int_changes < <(git status --porcelain=v1 | sed -E 's/^.. //')
+  if (( ${#int_changes[@]} != 1 )) || [[ "${int_changes[0]}" != "docs/agent-team/STAGE0-ARCHITECTURE-REVIEW.md" ]]; then
+    {
+      echo "Integration scope violation."
+      printf '  %s\n' "${int_changes[@]}"
+    } >>"$LOG_INT"
+    exit 41
+  fi
+
+  [[ -f "docs/agent-team/STAGE0-ARCHITECTURE-REVIEW.md" ]] || exit 42
+  git add -- "docs/agent-team/STAGE0-ARCHITECTURE-REVIEW.md"
+  git -c core.hooksPath=/dev/null commit -q -m "Stage0: integrate architecture research"
+
+  [[ -z "$(git status --porcelain)" ]] || exit 43
   mapfile -t int_files < <(git diff --name-only "$BASE_SHA"..HEAD)
   if (( ${#int_files[@]} != 1 )) || [[ "${int_files[0]}" != "docs/agent-team/STAGE0-ARCHITECTURE-REVIEW.md" ]]; then
-    exit 43
+    exit 44
   fi
 )
 
