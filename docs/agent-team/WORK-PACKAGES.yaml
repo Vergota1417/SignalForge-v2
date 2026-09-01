@@ -1,0 +1,331 @@
+version: 1
+program: signalforge-master-rebuild
+method: "Environment -> Location -> Path -> Confirmation -> Execution"
+
+program_rules:
+  direct_main_writes: false
+  user_reviews_routine_code: false
+  integration_agent_is_merge_owner: true
+  unrelated_changes: reject
+  missing_data_policy: explicit_not_available
+  dashboard_provider_requests: forbidden
+  fabricate_unavailable_microstructure: forbidden
+  production_buy_guardrail_changes: forbidden_unless_separately_approved
+  chart_timeframe_changes_decision_dataset: forbidden
+  require_full_baseline_before_release: true
+  require_production_reliability_before_release: true
+
+protected_owners:
+  hard_buy_policy: src/hard-guardrails.js
+  scheduler: src/scheduler.js
+  schedule_policy: src/scanner-schedule.js
+  browser_request_policy: public/api-request-policy.js
+  test_manifest: scripts/suite-manifest.mjs
+  production_entry: src/entry.js
+  main_api_router: src/index.js
+  pwa_shell: public/service-worker.js
+  release_identity: public/build-info.js
+
+work_packages:
+  - id: WP-00
+    name: governance-contract
+    role: architect
+    status: active
+    dependencies: []
+    allowed_paths:
+      - AGENTS.md
+      - docs/agent-team/**
+    forbidden_paths:
+      - src/**
+      - public/**
+      - wrangler.jsonc
+    deliverables:
+      - agent governance
+      - master architecture
+      - work package graph
+    acceptance:
+      - no runtime code changed
+      - all later packages have explicit scope and dependencies
+
+  - id: WP-10
+    name: master-symbol-data-contract
+    role: data-architecture-agent
+    status: planned
+    dependencies: [WP-00]
+    allowed_paths:
+      - src/master/**
+      - scripts/test-master-data-contract*.mjs
+      - docs/agent-team/contracts/master-symbol-snapshot.md
+    forbidden_paths:
+      - src/hard-guardrails.js
+      - src/scheduler.js
+      - src/scanner-schedule.js
+      - public/**
+      - wrangler.jsonc
+    deliverables:
+      - canonical MasterSymbolSnapshot schema
+      - ANALYSIS EXECUTION BENCHMARK CHART dataset roles
+      - provenance/freshness/missing-input schema
+      - pure snapshot validation helpers
+    acceptance:
+      - no provider request added
+      - no API route added
+      - chart role cannot mutate analysis/execution roles
+      - missing values remain null/not-available rather than zero
+
+  - id: WP-20
+    name: environment-engine
+    role: environment-agent
+    status: planned
+    dependencies: [WP-10]
+    allowed_paths:
+      - src/method/environment/**
+      - scripts/test-environment-engine*.mjs
+      - docs/agent-team/contracts/environment.md
+    forbidden_paths:
+      - src/hard-guardrails.js
+      - src/analysis.js
+      - src/scheduler.js
+      - src/index.js
+      - src/entry.js
+      - public/**
+    deliverables:
+      - pure Environment engine
+      - evidence coverage/missing inputs
+      - deterministic tests
+    acceptance:
+      - input is MasterSymbolSnapshot only
+      - zero provider/network calls
+      - does not authorize BUY NOW
+      - insufficient input fails closed/partial explicitly
+
+  - id: WP-30
+    name: location-engine
+    role: location-agent
+    status: planned
+    dependencies: [WP-10]
+    allowed_paths:
+      - src/method/location/**
+      - scripts/test-location-engine*.mjs
+      - docs/agent-team/contracts/location.md
+    forbidden_paths:
+      - src/hard-guardrails.js
+      - src/analysis.js
+      - src/scheduler.js
+      - src/index.js
+      - src/entry.js
+      - public/**
+    deliverables:
+      - pure Location engine
+      - structural/auction references from available snapshot inputs
+      - distance and evidence metrics
+    acceptance:
+      - input is MasterSymbolSnapshot only
+      - zero provider/network calls
+      - no fabricated POC/VAH/VAL when required volume data is absent
+      - does not authorize BUY NOW
+
+  - id: WP-40
+    name: path-engine
+    role: path-agent
+    status: planned
+    dependencies: [WP-10]
+    allowed_paths:
+      - src/method/path/**
+      - scripts/test-path-engine*.mjs
+      - docs/agent-team/contracts/path.md
+    forbidden_paths:
+      - src/hard-guardrails.js
+      - src/analysis.js
+      - src/scheduler.js
+      - src/index.js
+      - src/entry.js
+      - public/**
+    deliverables:
+      - pure Path engine
+      - obstacle/room-to-run model
+      - deterministic tests
+    acceptance:
+      - input is MasterSymbolSnapshot plus approved upstream stage results only
+      - zero provider/network calls
+      - cannot convert insufficient room into executable permission
+      - does not authorize BUY NOW
+
+  - id: WP-50
+    name: confirmation-engine
+    role: confirmation-agent
+    status: planned
+    dependencies: [WP-10]
+    allowed_paths:
+      - src/method/confirmation/**
+      - scripts/test-confirmation-engine*.mjs
+      - docs/agent-team/contracts/confirmation.md
+    forbidden_paths:
+      - src/hard-guardrails.js
+      - src/analysis.js
+      - src/scheduler.js
+      - src/index.js
+      - src/entry.js
+      - public/**
+    deliverables:
+      - pure Confirmation engine
+      - completed-bar participation/acceptance evidence
+      - explicit unavailable evidence list
+    acceptance:
+      - input is MasterSymbolSnapshot plus approved upstream stage results only
+      - zero provider/network calls
+      - no synthetic footprint delta absorption GEX L2 or MBO
+      - confirmation freshness is explicit
+      - does not independently authorize BUY NOW
+
+  - id: WP-60
+    name: execution-engine-adapter
+    role: execution-agent
+    status: planned
+    dependencies: [WP-20, WP-30, WP-40, WP-50]
+    allowed_paths:
+      - src/method/execution/**
+      - scripts/test-execution-method-adapter*.mjs
+      - docs/agent-team/contracts/execution.md
+    forbidden_paths:
+      - src/hard-guardrails.js
+      - src/scheduler.js
+      - src/scanner-schedule.js
+      - public/**
+    deliverables:
+      - ordered method pipeline adapter
+      - authoritative hard-guardrail consumer
+      - explicit blockers and permission state
+    acceptance:
+      - imports authoritative hard guardrails rather than redefining thresholds
+      - fails closed without required upstream evidence
+      - BUY NOW impossible without existing hard authorization
+      - zero provider/network calls
+
+  - id: WP-70
+    name: calculated-master-state-service
+    role: integration-backend-agent
+    status: planned
+    dependencies: [WP-10, WP-20, WP-30, WP-40, WP-50, WP-60]
+    allowed_paths:
+      - src/master/**
+      - src/method/**
+      - src/index.js
+      - src/entry.js
+      - scripts/test-calculated-master-state*.mjs
+      - docs/agent-team/contracts/calculated-master-state.md
+    forbidden_paths:
+      - src/hard-guardrails.js
+      - src/scheduler.js
+      - src/scanner-schedule.js
+      - wrangler.jsonc
+    deliverables:
+      - one browser-facing symbol-state read path
+      - one coherent snapshot ID across method results
+      - cache-first assembly from existing centralized data owners
+      - refresh/provenance status
+    acceptance:
+      - does not create one provider request per block
+      - existing provider budgets remain authoritative
+      - all method stages share the same active symbol/snapshot identity
+      - route response exposes provenance freshness missing inputs and calculation timestamps
+
+  - id: WP-80
+    name: dashboard-block-renderers
+    role: dashboard-agent
+    status: planned
+    dependencies: [WP-70]
+    allowed_paths:
+      - public/dashboard/**
+      - public/index.html
+      - public/dashboard-blueprint.css
+      - scripts/test-dashboard-blocks*.mjs
+      - docs/agent-team/contracts/dashboard-blocks.md
+    forbidden_paths:
+      - src/**
+      - public/api-request-policy.js
+      - public/api-request-coordinator.js
+      - public/service-worker.js
+      - public/build-info.js
+    deliverables:
+      - Block 00 through Block 09 renderers
+      - passive master-state consumption
+      - per-block READY PARTIAL STALE ERROR NOT_AVAILABLE states
+    acceptance:
+      - no direct provider calls
+      - no independent market-data route per block
+      - all visible stock-dependent blocks verify same snapshot ID before rendering
+      - chart timeframe remains visualization-only
+      - Block 09 proves data used by upper blocks
+
+  - id: WP-90
+    name: calibration-and-outcome-audit
+    role: validation-agent
+    status: planned
+    dependencies: [WP-20, WP-30, WP-40, WP-50, WP-60]
+    allowed_paths:
+      - src/research/method-validation/**
+      - scripts/test-method-validation*.mjs
+      - docs/agent-team/contracts/method-validation.md
+    forbidden_paths:
+      - src/hard-guardrails.js
+      - src/strategy.js
+      - src/analysis.js
+      - src/scheduler.js
+      - public/**
+    deliverables:
+      - outcome measurement per method stage
+      - calibration diagnostics
+      - no automatic production promotion
+    acceptance:
+      - research remains observational/shadow
+      - no production threshold changes
+      - no evidence duplication/inflation
+      - zero UI/provider polling introduced
+
+  - id: WP-95
+    name: adversarial-qa
+    role: qa-agent
+    status: planned
+    dependencies: [WP-70, WP-80, WP-90]
+    allowed_paths:
+      - scripts/test-master-rebuild-*.mjs
+      - docs/agent-team/QA-REPORT.md
+    forbidden_paths:
+      - src/**
+      - public/**
+      - wrangler.jsonc
+    deliverables:
+      - stale-symbol contamination tests
+      - snapshot consistency tests
+      - provider-amplification tests
+      - fake-data tests
+      - hard-buy bypass tests
+      - chart/decision timeframe separation tests
+    acceptance:
+      - QA may fail work but may not modify implementation to make tests pass
+      - any discovered implementation issue returns to owning package
+
+  - id: WP-99
+    name: integration-release
+    role: lead-integration-agent
+    status: planned
+    dependencies: [WP-70, WP-80, WP-90, WP-95]
+    allowed_paths:
+      - '**'
+    forbidden_paths: []
+    deliverables:
+      - scope audit of every package
+      - integration conflict resolution using authority hierarchy
+      - release identity/PWA wiring only after integrated tests pass
+      - final acceptance report
+    acceptance:
+      - reject unrelated diffs
+      - all package acceptance checks green
+      - full baseline suite green
+      - full production reliability suite green
+      - no unbudgeted provider request increase
+      - no production BUY policy weakening
+      - no fabricated unavailable evidence
+      - final Dashboard consumes centralized state
+      - user receives one release-level report rather than per-agent code review
