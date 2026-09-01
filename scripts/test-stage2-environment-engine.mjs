@@ -11,6 +11,14 @@ function dailySeries({count=140,start=100,step=.35,rangePct=.012,startTime=Date.
   return rows;
 }
 
+function withVolatilitySpike(rows,{bars=1,rangePct=.08}={}){
+  return rows.map((row,index)=>{
+    if(index<rows.length-bars)return{...row};
+    const range=row.close*rangePct;
+    return{...row,high:Math.max(row.open,row.close)+range,low:Math.max(.01,Math.min(row.open,row.close)-range)};
+  });
+}
+
 const stock=dailySeries({start:80,step:.42});
 const benchmark=dailySeries({start:500,step:.7});
 const supportive=evaluateEnvironment({symbol:'TEST',stockCandles:stock,benchmarkCandles:benchmark});
@@ -23,7 +31,15 @@ assert.equal(supportive.blocking,false);
 assert.deepEqual(supportive.evidenceCoverage.optionalMissing,['sectorContext']);
 assert.equal(supportive.stockTrend.state,'BULLISH');
 assert.notEqual(supportive.marketTrend.state,'BEARISH');
+assert.equal(supportive.volatility.state,'NORMAL','smooth percentage volatility must not be mislabeled elevated from a tiny percentile edge');
 assert.ok(supportive.metrics.some(metric=>metric.key==='sectorContext'&&metric.state==='NOT_AVAILABLE'));
+
+const volatilitySpike=evaluateEnvironment({symbol:'TEST',stockCandles:withVolatilitySpike(stock),benchmarkCandles:benchmark});
+assert.equal(volatilitySpike.gateState,'WARN','a material ATR/price jump should warn Environment');
+assert.equal(volatilitySpike.state,'PARTIAL','missing optional sector context remains explicit during a volatility warning');
+assert.equal(volatilitySpike.volatility.state,'ELEVATED');
+assert.ok(volatilitySpike.volatility.medianMultiple>=ENVIRONMENT_ENGINE_POLICY.volatilityElevatedMedianMultiplier);
+assert.match(volatilitySpike.reason,/volatility is materially elevated/i);
 
 const riskOffBenchmark=dailySeries({start:600,step:-1.1});
 const riskOff=evaluateEnvironment({symbol:'TEST',stockCandles:stock,benchmarkCandles:riskOffBenchmark});
@@ -69,5 +85,6 @@ assert.equal(method.affectsProductionGuardrails,false);
 assert.equal(ENVIRONMENT_ENGINE_POLICY.affectsExecution,false);
 assert.equal(ENVIRONMENT_ENGINE_POLICY.shadowOnly,true);
 assert.equal(ENVIRONMENT_ENGINE_POLICY.minDailyBars,100);
+assert.equal(ENVIRONMENT_ENGINE_POLICY.volatilityElevatedMedianMultiplier,1.15);
 
 console.log('Stage 2 dedicated Environment engine regression: PASS');
