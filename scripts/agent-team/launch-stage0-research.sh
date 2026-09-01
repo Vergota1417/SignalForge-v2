@@ -95,6 +95,21 @@ make_worktree() {
   git worktree add -q -b "$branch" "$path" "$base_ref"
 }
 
+build_agent_prompt() {
+  local name="$1"
+  local prompt_rel="$2"
+  local resolved="$RUNTIME_ROOT/prompts/$name-resolved.md"
+
+  cat "$REPO_ROOT/$prompt_rel" > "$resolved"
+  cat >> "$resolved" <<'EOF'
+
+---
+## Launcher safety override — authoritative for this run
+Do **not** run `git add`, `git commit`, `git push`, `gh`, deployment commands, or any command that writes Git metadata. Leave exactly the one assigned output file as an uncommitted worktree change. The trusted launcher will verify the exact path, commit that single file with hooks disabled, and push the isolated branch only after scope validation.
+EOF
+  printf '%s\n' "$resolved"
+}
+
 run_codex_agent() {
   local name="$1"
   local branch="$2"
@@ -105,6 +120,8 @@ run_codex_agent() {
 
   local wt="$RUNTIME_ROOT/worktrees/$name"
   local log="$RUNTIME_ROOT/logs/$name.log"
+  local resolved_prompt
+  resolved_prompt="$(build_agent_prompt "$name" "$prompt_rel")"
   local start_sha
   start_sha="$(git rev-parse "$base_ref")"
 
@@ -126,7 +143,7 @@ run_codex_agent() {
       TERM="${TERM:-dumb}" \
       SIGNALFORGE_SANDBOX="1" \
       CODEX_HOME="${CODEX_HOME:-$HOME/.codex}" \
-      codex exec --ephemeral --sandbox workspace-write < "$REPO_ROOT/$prompt_rel" \
+      codex exec --ephemeral --sandbox workspace-write < "$resolved_prompt" \
       >"$log" 2>&1
 
     mapfile -t changed_files < <(git status --porcelain=v1 | sed -E 's/^.. //')
@@ -254,6 +271,12 @@ sed \
   -e "s|agent/stage0-quant-challenger|$BR_QUANT|g" \
   -e "s|agent/stage0-risk-officer|$BR_RISK|g" \
   "$REPO_ROOT/docs/agent-team/prompts/stage0-integrator.md" > "$INT_PROMPT"
+cat >> "$INT_PROMPT" <<'EOF'
+
+---
+## Launcher safety override — authoritative for this run
+Do **not** run `git add`, `git commit`, `git push`, `gh`, deployment commands, or any command that writes Git metadata. Leave exactly `docs/agent-team/STAGE0-ARCHITECTURE-REVIEW.md` as an uncommitted worktree change. The trusted launcher performs exact-path validation, commit, and isolated-branch push after you exit.
+EOF
 
 WT_INT="$RUNTIME_ROOT/worktrees/integration"
 make_worktree "$BR_INT" "$BASE_SHA" "$WT_INT"
