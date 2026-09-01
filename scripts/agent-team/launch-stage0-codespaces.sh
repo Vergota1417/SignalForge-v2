@@ -31,10 +31,14 @@ RUNTIME_LAUNCHER="$RUNTIME_DIR/launch-stage0-codespaces-runtime.sh"
 
 # Codex workspace-write currently fails in Codespaces with:
 #   bwrap: No permissions to create new namespace
-# Replace only the Codex inner sandbox mode at runtime. The repository launcher
-# remains unchanged and continues to enforce secret checks, isolated worktrees,
-# exact output-path validation, trusted commits, and no production deployment.
-sed 's/--sandbox workspace-write/--sandbox danger-full-access/g' \
+# Replace only the Codex inner sandbox mode at runtime.
+# Also force Git to expand untracked directories to individual files. Without
+# -uall, a newly-created report under a previously absent directory appears as
+# `docs/agent-team/research/`, causing a false scope violation even when the
+# agent changed exactly one approved report file.
+sed \
+  -e 's/--sandbox workspace-write/--sandbox danger-full-access/g' \
+  -e 's/git status --porcelain=v1/git status --porcelain=v1 -uall/g' \
   "$SOURCE" > "$RUNTIME_LAUNCHER"
 chmod 700 "$RUNTIME_LAUNCHER"
 
@@ -44,6 +48,10 @@ fi
 
 if ! grep -q -- '--sandbox danger-full-access' "$RUNTIME_LAUNCHER"; then
   fail "Runtime launcher does not contain the expected Codespaces fallback."
+fi
+
+if grep -q 'git status --porcelain=v1 |' "$RUNTIME_LAUNCHER"; then
+  fail "Runtime launcher still contains collapsed untracked-file scope checks."
 fi
 
 info "Using GitHub Codespace as the outer sandbox boundary."
