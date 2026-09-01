@@ -14,6 +14,7 @@ import { getExecutionTrace } from './execution-trace.js';
 import { analyze, assessIntradayConfirmation } from './analysis.js';
 import { assessSessionRange } from './session-range.js';
 import { buildFiveStageAlpha } from './method/five-stage-alpha.js';
+import { evaluateEnvironment } from './method/environment/environment-engine.js';
 
 const SELF_TEST_COOLDOWN_MS=60_000;
 const EXECUTION_SHADOW_CACHE_MAX_AGE_MS=7*86_400_000;
@@ -35,11 +36,13 @@ export default {
         const benchmarkMarket=symbol==='SPY'?analysisMarket:await getMarketData(env,'SPY','6M',false,{completedOnly:true,purpose:'symbol-master-benchmark'});
         const confirmation=assessIntradayConfirmation(executionMarket.candles);
         const analysis=analyze(analysisMarket.candles,symbol,{benchmarkCandles:benchmarkMarket?.candles||null,intradayConfirmation:confirmation});
-        const method=buildFiveStageAlpha(analysis),snapshotId=['sf-alpha',symbol,analysisMarket.fetchedAt||0,executionMarket.fetchedAt||0,benchmarkMarket?.fetchedAt||0].join(':');
+        const environmentState=evaluateEnvironment({symbol,stockCandles:analysisMarket.candles,benchmarkCandles:benchmarkMarket?.candles||[],sectorContext:null,asOf:Math.min(Number(analysisMarket.fetchedAt)||Date.now(),Number(benchmarkMarket?.fetchedAt)||Date.now())});
+        const method=buildFiveStageAlpha(analysis,{environment:environmentState}),snapshotId=['sf-alpha',symbol,analysisMarket.fetchedAt||0,executionMarket.fetchedAt||0,benchmarkMarket?.fetchedAt||0].join(':');
         return json({
           symbol,
           snapshotId,
           method,
+          environment:environmentState,
           analysis,
           candles:analysisMarket.candles,
           datasets:{
@@ -48,8 +51,8 @@ export default {
             benchmark:{role:'BENCHMARK',symbol:'SPY',timeframe:'6M',source:benchmarkMarket?.source||analysisMarket.source,cached:Boolean(benchmarkMarket?.cached),fetchedAt:benchmarkMarket?.fetchedAt||analysisMarket.fetchedAt,completedOnly:true},
             chart:{role:'CHART',timeframe:'6M',visualizationOnly:true}
           },
-          unsupported:{investmentQuality:true,portfolioAllocation:true,portfolioRisk:true,nativeFootprint:true,executedDelta:true,absorption:true,gex:true,l2:true,mbo:true},
-          release:{alpha:true,releaseEligible:false,reason:'Visible tactical alpha. Full release remains blocked until dedicated method contracts plus Investment Quality, Portfolio Allocation, Portfolio Risk, validation, and QA are complete.'}
+          unsupported:{sectorContext:true,investmentQuality:true,portfolioAllocation:true,portfolioRisk:true,nativeFootprint:true,executedDelta:true,absorption:true,gex:true,l2:true,mbo:true},
+          release:{alpha:true,releaseEligible:false,reason:'Visible tactical alpha. Dedicated Environment is shadow-only until validated. Full release remains blocked until the remaining method engines plus Investment Quality, Portfolio Allocation, Portfolio Risk, validation, and QA are complete.'}
         });
       }
       catch(error){console.error(JSON.stringify({event:'symbol_master_request_error',message:error?.message||String(error)}));return json({error:'Selected-symbol master state is temporarily unavailable.'},500);}

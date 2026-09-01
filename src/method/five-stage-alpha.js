@@ -11,24 +11,46 @@ function stateFromEngine(engine){
 }
 
 function stage(key,label,state,reason,details={}){
-  return{key,label,state,pass:state==='PASS',reason:String(reason||''),...details};
+  return{key,label,state,pass:state==='PASS',blocking:details.blocking!==false,reason:String(reason||''),...details};
 }
 
-export function buildFiveStageAlpha(analysis){
+export function buildFiveStageAlpha(analysis,context={}){
   const trend=safeEngine(analysis,'trend');
   const entry=safeEngine(analysis,'entry');
   const riskReward=safeEngine(analysis,'riskReward');
   const confirmation=analysis?.intradayConfirmation||null;
   const hard=analysis?.hardBuyGuardrails||null;
   const benchmark=analysis?.benchmark||null;
+  const dedicatedEnvironment=context?.environment||null;
 
   let environmentState=stateFromEngine(trend);
   if(benchmark?.riskOff)environmentState='FAIL';
-  const environmentReason=benchmark?.riskOff
+  let environmentReason=benchmark?.riskOff
     ?'Broad-market context is risk-off, so Environment blocks a new long setup.'
     :trend.ready
       ?`Trend structure is aligned${benchmark?.bull?' and the broad market is supportive':''}.`
       :'Trend or market context is not strong enough yet.';
+  let environmentDetails={passes:trend.passes,total:trend.total,metrics:trend.metrics||[],benchmark,blocking:true,affectsExecution:true,source:'legacy-analysis-adapter'};
+  if(dedicatedEnvironment){
+    environmentState=dedicatedEnvironment.state||dedicatedEnvironment.gateState||'NOT_AVAILABLE';
+    environmentReason=dedicatedEnvironment.reason||environmentReason;
+    environmentDetails={
+      passes:(dedicatedEnvironment.metrics||[]).filter(metric=>metric.state==='PASS'||metric.state==='BULLISH'||metric.state==='NORMAL'||metric.state==='QUIET').length,
+      total:(dedicatedEnvironment.metrics||[]).length,
+      metrics:dedicatedEnvironment.metrics||[],
+      benchmark:dedicatedEnvironment.marketTrend||benchmark,
+      classification:dedicatedEnvironment.classification||null,
+      gateState:dedicatedEnvironment.gateState||null,
+      evidenceCoverage:dedicatedEnvironment.evidenceCoverage||null,
+      missingInputs:dedicatedEnvironment.missingInputs||[],
+      nextCondition:dedicatedEnvironment.nextCondition||null,
+      engineVersion:dedicatedEnvironment.version||null,
+      blocking:Boolean(dedicatedEnvironment.blocking),
+      affectsExecution:Boolean(dedicatedEnvironment.affectsExecution),
+      shadowOnly:Boolean(dedicatedEnvironment.shadowOnly),
+      source:'dedicated-environment-engine'
+    };
+  }
 
   let locationState=stateFromEngine(entry);
   if(Number(analysis?.latest?.close)>Number(analysis?.overextension)||Number(analysis?.rsi)>=76)locationState='FAIL';
@@ -40,7 +62,7 @@ export function buildFiveStageAlpha(analysis){
 
   const targetResolved=Boolean(hard?.rules?.targetResolved?.pass&&analysis?.target);
   const rewardRiskPass=Boolean(hard?.rules?.rewardRisk?.pass);
-  let pathState=targetResolved&&rewardRiskPass?'PASS':riskReward.state==='WARN'?'WARN':'FAIL';
+  const pathState=targetResolved&&rewardRiskPass?'PASS':riskReward.state==='WARN'?'WARN':'FAIL';
   const pathReason=!targetResolved
     ?'No defensible destination is resolved, so room-to-run cannot be authorized.'
     :!rewardRiskPass
@@ -60,17 +82,17 @@ export function buildFiveStageAlpha(analysis){
     :analysis?.reason||hard?.reason||'Execution remains locked by an authoritative production guardrail.';
 
   const stages=[
-    stage('environment','Environment',environmentState,environmentReason,{passes:trend.passes,total:trend.total,metrics:trend.metrics||[],benchmark}),
+    stage('environment','Environment',environmentState,environmentReason,environmentDetails),
     stage('location','Location',locationState,locationReason,{passes:entry.passes,total:entry.total,metrics:entry.metrics||[],preferredEntryLow:analysis?.preferredEntryLow??null,preferredEntryHigh:analysis?.preferredEntryHigh??null,overextension:analysis?.overextension??null}),
     stage('path','Path',pathState,pathReason,{passes:riskReward.passes,total:riskReward.total,metrics:riskReward.metrics||[],target:analysis?.target??null,rewardRisk:analysis?.rr??null}),
     stage('confirmation','Confirmation',confirmationState,confirmationReason,{passes:confirmation?.passes??0,total:confirmation?.total??0,metrics:confirmation?.metrics||[],relativeVolume:confirmation?.relativeVolume??null,latestTime:confirmation?.latestTime??null}),
     stage('execution','Execution',executionState,executionReason,{hardBuyGuardrails:hard,status:analysis?.status||'WAIT — SETUP NOT READY',readiness:analysis?.readiness??null})
   ];
 
-  const bottleneck=stages.find(item=>item.state!=='PASS')||null;
+  const bottleneck=stages.find(item=>item.blocking!==false&&item.state!=='PASS')||null;
   return{
-    version:'five-stage-alpha-1',
-    adapter:'existing-analysis-to-five-stage',
+    version:dedicatedEnvironment?'five-stage-alpha-2':'five-stage-alpha-1',
+    adapter:dedicatedEnvironment?'dedicated-environment-plus-existing-analysis':'existing-analysis-to-five-stage',
     interim:true,
     affectsProductionGuardrails:false,
     releaseEligible:false,
