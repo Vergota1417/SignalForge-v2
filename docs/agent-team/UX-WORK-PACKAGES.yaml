@@ -1,0 +1,69 @@
+version: 1
+program: signalforge-master-rebuild-ux-extension
+authority: docs/agent-team/USER-EXPERIENCE-TEACHING.md
+
+work_packages:
+  - id: WP-75
+    name: beginner-experience-contract
+    role: ux-teaching-architect
+    status: planned
+    dependencies: [WP-70]
+    allowed_paths:
+      - docs/agent-team/USER-EXPERIENCE-TEACHING.md
+      - docs/agent-team/contracts/beginner-experience.md
+      - scripts/test-beginner-experience-contract*.mjs
+    forbidden_paths:
+      - src/**
+      - public/**
+      - wrangler.jsonc
+    deliverables:
+      - plain-language contract for all five method stages
+      - action-first information hierarchy
+      - glossary/definition rules
+      - missing-data explanation rules
+      - onboarding and contextual-teaching requirements
+      - beginner comprehension acceptance tests
+    acceptance:
+      - no runtime behavior changed
+      - every stage answers what is happening why it matters what to do next and what would change it
+      - technical terminology remains available but is not required for basic operation
+      - missing stale and unsupported states are explicitly teachable
+
+  - id: WP-85
+    name: usability-and-teaching-implementation
+    role: ux-teaching-agent
+    status: planned
+    dependencies: [WP-75, WP-80]
+    allowed_paths:
+      - public/dashboard/**
+      - public/help/**
+      - public/onboarding/**
+      - docs/user-guide/**
+      - scripts/test-user-comprehension*.mjs
+    forbidden_paths:
+      - src/**
+      - public/api-request-policy.js
+      - public/api-request-coordinator.js
+      - public/service-worker.js
+      - public/build-info.js
+      - wrangler.jsonc
+    deliverables:
+      - beginner-friendly labels and explanations
+      - contextual Why / What next / Why blocked interactions
+      - glossary/help surfaces
+      - skippable replayable onboarding
+      - progressive disclosure from simple to technical to validation
+      - usability audit report
+    acceptance:
+      - zero provider/network requests added
+      - no trading calculation or status semantics changed
+      - no unavailable evidence hidden or fabricated
+      - primary Dashboard answers action reason next condition risk and freshness without requiring technical jargon
+      - technical evidence remains accessible on demand
+      - beginner comprehension tests pass
+
+integration_requirements:
+  - WP-80 must consume WP-75 before Dashboard copy and interaction hierarchy are frozen
+  - WP-85 is mandatory before WP-95 adversarial QA is considered complete
+  - integration agent must reject user-facing stages that expose unexplained jargon as the only interpretation
+  - integration agent must reject UX changes that alter trading truth or hide missing/stale evidence
