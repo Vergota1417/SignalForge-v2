@@ -58,6 +58,29 @@ if [[ ! -d "$logs_dir" ]]; then
   exit 0
 fi
 
+expected_output_for_agent() {
+  case "$1" in
+    investment-architect) echo "docs/agent-team/research/investment-architecture.md" ;;
+    video-method-auditor) echo "docs/agent-team/research/video-method-audit.md" ;;
+    data-feasibility) echo "docs/agent-team/research/data-feasibility.md" ;;
+    beginner-ux) echo "docs/agent-team/research/beginner-usability-audit.md" ;;
+    quant-challenger) echo "docs/agent-team/research/quant-strategy-challenge.md" ;;
+    risk-officer) echo "docs/agent-team/research/risk-of-ruin-review.md" ;;
+    integration) echo "docs/agent-team/STAGE0-ARCHITECTURE-REVIEW.md" ;;
+    *) echo "" ;;
+  esac
+}
+
+strong_failure_in_log() {
+  local log="$1"
+  # Match launcher/infrastructure failures only. Do NOT classify generic words
+  # such as "failed" or "error" because research reports legitimately discuss
+  # failed tests, failure modes, and error conditions.
+  grep -Eqi \
+    'Scope violation\.|Post-commit scope violation\.|Integration scope violation\.|bwrap: No permissions|Not logged in$|Unauthorized|authentication did not complete|panic:|fatal:|Agent produced no commit|Expected output file missing|Worktree was not clean after trusted commit' \
+    "$log"
+}
+
 shopt -s nullglob
 logs=("$logs_dir"/*.log)
 if (( ${#logs[@]} == 0 )); then
@@ -68,14 +91,23 @@ fi
 
 for log in "${logs[@]}"; do
   name="$(basename "$log" .log)"
+  expected_rel="$(expected_output_for_agent "$name")"
+  expected_abs=""
+  if [[ -n "$expected_rel" ]]; then
+    expected_abs="$latest_run/worktrees/$name/$expected_rel"
+  fi
+
   echo "------------------------------------------------------------"
   echo "AGENT: $name"
   echo "LOG:   $log"
 
-  if grep -Eqi 'scope violation|error|failed|not logged in|unauthorized|authentication|panic|fatal|bwrap:' "$log"; then
+  if strong_failure_in_log "$log"; then
     echo "STATE: FAILED / NEEDS ATTENTION"
-  elif grep -Eqi 'complete|completed|final answer|done' "$log"; then
-    echo "STATE: OUTPUT PRESENT"
+  elif [[ -n "$expected_abs" && -s "$expected_abs" ]]; then
+    echo "STATE: OUTPUT CREATED / VALIDATING"
+    echo "OUTPUT: $expected_rel"
+  elif grep -Eqi 'Completed the Stage-0|completed the Stage-0|Final recommendation|final answer' "$log"; then
+    echo "STATE: OUTPUT REPORTED / VALIDATING"
   elif [[ -s "$log" ]]; then
     echo "STATE: WORKING / OUTPUT STREAM ACTIVE"
   else
@@ -88,6 +120,12 @@ for log in "${logs[@]}"; do
  done
 
 echo "============================================================"
+echo "Status meanings:"
+echo "  WORKING                  = agent is producing log activity"
+echo "  OUTPUT CREATED/REPORTED  = agent finished its draft; launcher still validates it"
+echo "  FAILED                   = launcher/infrastructure failure detected"
+echo "  FINAL STATUS             = entire Stage-0 run completed"
+echo
 echo "Refresh any time with:"
 echo "  bash scripts/agent-team/stage0-status.sh"
 echo "Or live refresh every 5 seconds with:"
