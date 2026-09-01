@@ -17,6 +17,8 @@ REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 cd "$REPO_ROOT"
 
 [[ "${SIGNALFORGE_SANDBOX:-}" == "1" ]] || fail "Refusing to run outside the SignalForge Codespace sandbox."
+[[ "${CODESPACES:-}" == "true" ]] || fail "Stage-0 autonomous launch is allowed only inside GitHub Codespaces."
+[[ "$REPO_ROOT" == /workspaces/* ]] || fail "Repository is not under /workspaces."
 [[ "$(git branch --show-current)" == "$BASE_BRANCH" ]] || fail "Expected branch $BASE_BRANCH."
 
 if ! command -v codex >/dev/null 2>&1; then
@@ -43,5 +45,6 @@ if ! grep -Eqi '^Logged in([[:space:]]|$)' <<<"$login_status"; then
 fi
 
 info "$login_status"
-info "Authentication gate passed. Launching Stage-0 research swarm."
-exec bash "$REPO_ROOT/scripts/agent-team/launch-stage0-research.sh"
+info "Authentication gate passed."
+info "Starting Codespaces-safe Stage-0 launcher."
+exec bash "$REPO_ROOT/scripts/agent-team/launch-stage0-codespaces.sh"
