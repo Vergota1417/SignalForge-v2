@@ -3,9 +3,16 @@ const MOMENTUM_SHORT_BARS=20;
 const MOMENTUM_LONG_BARS=63;
 const VOLATILITY_LOOKBACK=60;
 const VOLATILITY_ELEVATED_PERCENTILE=.90;
+const VOLATILITY_ELEVATED_MEDIAN_MULTIPLIER=1.15;
 
 const finite=value=>Number.isFinite(Number(value));
 const average=values=>values.length?values.reduce((sum,value)=>sum+value,0)/values.length:null;
+
+function median(values){
+  if(!values.length)return null;
+  const sorted=values.slice().sort((a,b)=>a-b),middle=Math.floor(sorted.length/2);
+  return sorted.length%2?sorted[middle]:(sorted[middle-1]+sorted[middle])/2;
+}
 
 function sma(values,period,end=values.length-1){
   if(end+1<period)return null;
@@ -38,7 +45,7 @@ function wildersAtrAt(candles,end,period=14){
 
 function volatilityContext(candles){
   const end=candles.length-1,currentAtr=wildersAtrAt(candles,end,14),latest=Number(candles.at(-1)?.close);
-  if(!(currentAtr>0)&&!(latest>0))return{state:'NOT_AVAILABLE',atr:null,atrPct:null,percentile:null};
+  if(!(currentAtr>0)&&!(latest>0))return{state:'NOT_AVAILABLE',atr:null,atrPct:null,percentile:null,medianPct:null,medianMultiple:null};
   const currentPct=currentAtr/latest;
   const history=[];
   const first=Math.max(14,end-VOLATILITY_LOOKBACK);
@@ -47,8 +54,11 @@ function volatilityContext(candles){
     if(atr>0&&close>0)history.push(atr/close);
   }
   const percentile=history.length?history.filter(value=>value<=currentPct).length/history.length:null;
-  const state=percentile==null?'UNKNOWN':percentile>=VOLATILITY_ELEVATED_PERCENTILE?'ELEVATED':percentile<=.20?'QUIET':'NORMAL';
-  return{state,atr:currentAtr,atrPct:currentPct,percentile,sample:history.length};
+  const medianPct=median(history),medianMultiple=medianPct>0?currentPct/medianPct:null;
+  const materiallyElevated=percentile!=null&&percentile>=VOLATILITY_ELEVATED_PERCENTILE&&finite(medianMultiple)&&medianMultiple>=VOLATILITY_ELEVATED_MEDIAN_MULTIPLIER;
+  const materiallyQuiet=percentile!=null&&percentile<=.20&&finite(medianMultiple)&&medianMultiple<=.85;
+  const state=percentile==null?'UNKNOWN':materiallyElevated?'ELEVATED':materiallyQuiet?'QUIET':'NORMAL';
+  return{state,atr:currentAtr,atrPct:currentPct,percentile,medianPct,medianMultiple,sample:history.length};
 }
 
 function trendContext(candles){
@@ -95,7 +105,7 @@ export function evaluateEnvironment({symbol,stockCandles,benchmarkCandles,sector
   let gateState='PASS',classification='SUPPORTIVE',reason='Stock and broad-market structure are supportive for a long tactical setup.';
   if(marketRiskOff){gateState='FAIL';classification='RISK_OFF';reason='Broad-market structure is risk-off, so Environment is not supportive for a new long tactical setup.';}
   else if(stockBearish){gateState='FAIL';classification='UNFAVORABLE';reason='The stock trend is bearish even though the broad market is not fully risk-off.';}
-  else if(stockMixed||volatilityElevated){gateState='WARN';classification='MIXED';reason=volatilityElevated?'Trend is not fully hostile, but stock volatility is elevated versus its own recent history.':'Stock structure is mixed and does not yet show broad trend agreement.';}
+  else if(stockMixed||volatilityElevated){gateState='WARN';classification='MIXED';reason=volatilityElevated?'Trend is not fully hostile, but stock volatility is materially elevated versus its own recent history.':'Stock structure is mixed and does not yet show broad trend agreement.';}
 
   const state=optionalMissing.length&&gateState!=='FAIL'?'PARTIAL':gateState;
   const nextCondition=gateState==='FAIL'
@@ -109,7 +119,7 @@ export function evaluateEnvironment({symbol,stockCandles,benchmarkCandles,sector
     {key:'marketTrend',label:'Broad-market structure',state:marketRiskOff?'RISK_OFF':marketTrend.state,value:`${marketTrend.supportive}/${marketTrend.total} supportive checks`,required:true},
     {key:'stockMomentum20',label:'20-day stock momentum',state:stockTrend.checks.shortMomentum?'PASS':'FAIL',value:pct(stockTrend.momentum20),required:true},
     {key:'stockMomentum63',label:'63-day stock momentum',state:stockTrend.checks.mediumMomentum?'PASS':'FAIL',value:pct(stockTrend.momentum63),required:true},
-    {key:'volatility',label:'ATR volatility regime',state:volatility.state,value:`${pct(volatility.atrPct,2)} ATR/price · percentile ${finite(volatility.percentile)?Math.round(volatility.percentile*100):'NA'}%`,required:false},
+    {key:'volatility',label:'ATR volatility regime',state:volatility.state,value:`${pct(volatility.atrPct,2)} ATR/price · percentile ${finite(volatility.percentile)?Math.round(volatility.percentile*100):'NA'}% · ${finite(volatility.medianMultiple)?volatility.medianMultiple.toFixed(2):'NA'}x recent median`,required:false},
     {key:'sectorContext',label:'Sector context',state:sectorAvailable?String(sectorContext.state):'NOT_AVAILABLE',value:sectorAvailable?String(sectorContext.reason||sectorContext.state):'No validated sector dataset connected',required:false}
   ];
 
@@ -119,7 +129,7 @@ export function evaluateEnvironment({symbol,stockCandles,benchmarkCandles,sector
     nextCondition,asOf:asOf??Number(stock.at(-1)?.time)??null,
     stockTrend,marketTrend,volatility,sectorContext:sectorAvailable?sectorContext:null,
     evidenceCoverage:{available:sectorAvailable?5:4,required:4,optionalMissing},missingInputs:optionalMissing.slice(),metrics,
-    researchPolicy:{equityAdaptation:true,validatedForExecution:false,volatilityElevatedPercentile:VOLATILITY_ELEVATED_PERCENTILE,minDailyBars:MIN_DAILY_BARS}
+    researchPolicy:{equityAdaptation:true,validatedForExecution:false,volatilityElevatedPercentile:VOLATILITY_ELEVATED_PERCENTILE,volatilityElevatedMedianMultiplier:VOLATILITY_ELEVATED_MEDIAN_MULTIPLIER,minDailyBars:MIN_DAILY_BARS}
   };
 }
 
@@ -127,6 +137,7 @@ export const ENVIRONMENT_ENGINE_POLICY=Object.freeze({
   minDailyBars:MIN_DAILY_BARS,
   volatilityLookback:VOLATILITY_LOOKBACK,
   volatilityElevatedPercentile:VOLATILITY_ELEVATED_PERCENTILE,
+  volatilityElevatedMedianMultiplier:VOLATILITY_ELEVATED_MEDIAN_MULTIPLIER,
   affectsExecution:false,
   shadowOnly:true
 });
