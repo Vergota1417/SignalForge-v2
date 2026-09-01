@@ -64,7 +64,8 @@ export const BASELINE_TESTS=Object.freeze([
   'scripts/test-stage16-7-signal-integrity.mjs',
   'scripts/test-stage16-8-radar-windows-layout.mjs',
   'scripts/test-stage16-10-twelve-data-minute-guard.mjs',
-  'scripts/test-stage1-visible-dashboard-alpha.mjs'
+  'scripts/test-stage1-visible-dashboard-alpha.mjs',
+  'scripts/test-stage2-environment-engine.mjs'
 ]);
 
 export const PRODUCTION_GUARDRAIL_TESTS=Object.freeze([
