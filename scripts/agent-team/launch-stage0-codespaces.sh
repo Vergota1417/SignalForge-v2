@@ -57,9 +57,13 @@ info "The normal Stage-0 secret checks, isolated worktrees, and exact-file valid
 PREFLIGHT_DIR="$RUNTIME_DIR/preflight-$(date -u +%Y%m%dT%H%M%SZ)"
 mkdir -p "$PREFLIGHT_DIR"
 PREFLIGHT_LOG="$PREFLIGHT_DIR/preflight.log"
+PREFLIGHT_TIMEOUT_SECONDS=180
 
 info "Running one small Codex read/write preflight before launching the swarm..."
-(
+info "Preflight timeout: ${PREFLIGHT_TIMEOUT_SECONDS}s"
+info "Preflight log: $PREFLIGHT_LOG"
+
+if ! (
   cd "$PREFLIGHT_DIR"
   env -i \
     HOME="$HOME" \
@@ -69,10 +73,14 @@ info "Running one small Codex read/write preflight before launching the swarm...
     TERM="${TERM:-dumb}" \
     SIGNALFORGE_SANDBOX="1" \
     CODEX_HOME="${CODEX_HOME:-$HOME/.codex}" \
-    codex exec --ephemeral --sandbox danger-full-access \
+    timeout --signal=TERM "${PREFLIGHT_TIMEOUT_SECONDS}s" \
+      codex exec --ephemeral --sandbox danger-full-access \
       "This is a capability preflight in a disposable empty directory. Do not access the repository, Git, GitHub, providers, or the network except what Codex itself requires. Create exactly one file named preflight-ok.txt containing exactly SIGNALFORGE_STAGE0_PREFLIGHT_OK and then stop." \
       >"$PREFLIGHT_LOG" 2>&1
-)
+); then
+  tail -n 40 "$PREFLIGHT_LOG" >&2 || true
+  fail "Codex preflight command failed or timed out after ${PREFLIGHT_TIMEOUT_SECONDS}s. No research agents were launched."
+fi
 
 [[ -f "$PREFLIGHT_DIR/preflight-ok.txt" ]] || {
   tail -n 40 "$PREFLIGHT_LOG" >&2 || true
