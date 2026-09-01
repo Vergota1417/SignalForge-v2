@@ -1,0 +1,94 @@
+version: 1
+program: signalforge-capital-growth-review
+authority: docs/agent-team/CAPITAL-GROWTH-STRATEGY.md
+
+work_packages:
+  - id: WP-05
+    name: capital-growth-strategy-review
+    role: chief-investment-architect
+    status: planned
+    dependencies: [WP-00]
+    allowed_paths:
+      - docs/agent-team/CAPITAL-GROWTH-STRATEGY.md
+      - docs/agent-team/research/**
+      - scripts/research-capital-growth-*.mjs
+      - scripts/test-capital-growth-contract*.mjs
+    forbidden_paths:
+      - src/**
+      - public/**
+      - wrangler.jsonc
+    deliverables:
+      - assessment of SignalForge current investment horizon
+      - recommended long-term wealth operating model
+      - portfolio/capital-allocation requirements
+      - benchmark and challenger strategy matrix
+      - risk-of-ruin and drawdown research limits
+      - KEEP MODIFY or REJECT recommendation for the current strategic approach
+    acceptance:
+      - does not assume SignalForge is superior
+      - does not optimize raw return without drawdown and risk-of-ruin analysis
+      - does not treat day trading as required
+      - considers swing position long-term and hybrid approaches
+      - does not change runtime or production trading policy
+      - extreme wealth targets are treated as aspirational scenarios not expected outcomes
+
+  - id: WP-06
+    name: quant-strategy-challenger
+    role: quantitative-challenger
+    status: planned
+    dependencies: [WP-05]
+    allowed_paths:
+      - docs/agent-team/research/**
+      - src/research/capital-growth/**
+      - scripts/research-capital-growth-*.mjs
+      - scripts/test-capital-growth-research*.mjs
+    forbidden_paths:
+      - src/hard-guardrails.js
+      - src/strategy.js
+      - src/analysis.js
+      - src/scheduler.js
+      - public/**
+    deliverables:
+      - benchmark/challenger definitions
+      - portfolio-level backtest plan
+      - regime and horizon comparisons
+      - cost/tax/slippage sensitivity plan
+      - Monte Carlo and robustness plan where evidence supports it
+    acceptance:
+      - research only
+      - no production threshold changes
+      - no automatic strategy promotion
+      - reports uncertainty and sample limitations
+
+  - id: WP-07
+    name: risk-of-ruin-review
+    role: capital-risk-officer
+    status: planned
+    dependencies: [WP-05]
+    allowed_paths:
+      - docs/agent-team/research/**
+      - src/research/capital-growth/**
+      - scripts/research-risk-of-ruin-*.mjs
+    forbidden_paths:
+      - src/hard-guardrails.js
+      - src/strategy.js
+      - src/analysis.js
+      - src/scheduler.js
+      - public/**
+    deliverables:
+      - drawdown constraints
+      - concentration-risk review
+      - position-sizing research requirements
+      - leverage prohibition/default caps recommendation
+      - capital reserve and de-risking policy research
+    acceptance:
+      - rejects strategies that reach high terminal wealth mainly through unacceptable ruin probability
+      - no runtime changes
+      - no production leverage or sizing changes
+
+integration_requirements:
+  - WP-05 must complete before the master method contracts are frozen
+  - WP-06 and WP-07 challenge WP-05 rather than merely endorse it
+  - the lead integration agent resolves strategy recommendations using evidence not agent seniority
+  - any proposed production portfolio rule requires a later separately scoped implementation package
+  - wealth-strategy agents cannot weaken BUY authorization or fabricate expected returns

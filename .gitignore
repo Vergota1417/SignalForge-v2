@@ -1,0 +1,20 @@
+# Local dependencies
+node_modules/
+
+# Cloudflare/Wrangler local state
+.wrangler/
+.dev.vars
+.dev.vars.*
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# Test/tool output
+coverage/
+*.log
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
