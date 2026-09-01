@@ -51,4 +51,47 @@ info "Codex inner mode: danger-full-access INSIDE THIS CODESPACE ONLY."
 info "Local PC access: NO. Production deployment: NO. Main merge: NO."
 info "The normal Stage-0 secret checks, isolated worktrees, and exact-file validation remain active."
 
+# Tiny one-agent capability probe before spending a full research wave.
+# It runs in a disposable empty directory outside the repository and must create
+# exactly one marker file. If this fails, no research agents are launched.
+PREFLIGHT_DIR="$RUNTIME_DIR/preflight-$(date -u +%Y%m%dT%H%M%SZ)"
+mkdir -p "$PREFLIGHT_DIR"
+PREFLIGHT_LOG="$PREFLIGHT_DIR/preflight.log"
+
+info "Running one small Codex read/write preflight before launching the swarm..."
+(
+  cd "$PREFLIGHT_DIR"
+  env -i \
+    HOME="$HOME" \
+    USER="${USER:-node}" \
+    PATH="$PATH" \
+    LANG="${LANG:-C.UTF-8}" \
+    TERM="${TERM:-dumb}" \
+    SIGNALFORGE_SANDBOX="1" \
+    CODEX_HOME="${CODEX_HOME:-$HOME/.codex}" \
+    codex exec --ephemeral --sandbox danger-full-access \
+      "This is a capability preflight in a disposable empty directory. Do not access the repository, Git, GitHub, providers, or the network except what Codex itself requires. Create exactly one file named preflight-ok.txt containing exactly SIGNALFORGE_STAGE0_PREFLIGHT_OK and then stop." \
+      >"$PREFLIGHT_LOG" 2>&1
+)
+
+[[ -f "$PREFLIGHT_DIR/preflight-ok.txt" ]] || {
+  tail -n 40 "$PREFLIGHT_LOG" >&2 || true
+  fail "Codex preflight did not create preflight-ok.txt. No research agents were launched."
+}
+
+[[ "$(tr -d '\r\n' < "$PREFLIGHT_DIR/preflight-ok.txt")" == "SIGNALFORGE_STAGE0_PREFLIGHT_OK" ]] || {
+  tail -n 40 "$PREFLIGHT_LOG" >&2 || true
+  fail "Codex preflight marker content was incorrect. No research agents were launched."
+}
+
+mapfile -t PREFLIGHT_FILES < <(find "$PREFLIGHT_DIR" -maxdepth 1 -type f -printf '%f\n' | sort)
+# preflight.log is written by the trusted wrapper; preflight-ok.txt is the only
+# file the agent is expected to create.
+if (( ${#PREFLIGHT_FILES[@]} != 2 )) || [[ "${PREFLIGHT_FILES[0]}" != "preflight-ok.txt" ]] || [[ "${PREFLIGHT_FILES[1]}" != "preflight.log" ]]; then
+  printf '[Stage0Codespaces][ERROR] Unexpected preflight files:\n' >&2
+  printf '  %s\n' "${PREFLIGHT_FILES[@]}" >&2
+  fail "Codex preflight exceeded its disposable-file scope. No research agents were launched."
+fi
+
+info "Codex preflight PASSED. Starting research swarm."
 exec bash "$RUNTIME_LAUNCHER"
