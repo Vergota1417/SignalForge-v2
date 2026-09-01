@@ -52,8 +52,9 @@ info "Local PC access: NO. Production deployment: NO. Main merge: NO."
 info "The normal Stage-0 secret checks, isolated worktrees, and exact-file validation remain active."
 
 # Tiny one-agent capability probe before spending a full research wave.
-# It runs in a disposable empty directory outside the repository and must create
-# exactly one marker file. If this fails, no research agents are launched.
+# It intentionally runs in a disposable NON-git directory, so this one probe
+# must skip Codex's git-repository trust check. The research agents themselves
+# still run in isolated Git worktrees and do not use this trust-check bypass.
 PREFLIGHT_DIR="$RUNTIME_DIR/preflight-$(date -u +%Y%m%dT%H%M%SZ)"
 mkdir -p "$PREFLIGHT_DIR"
 PREFLIGHT_LOG="$PREFLIGHT_DIR/preflight.log"
@@ -74,7 +75,7 @@ if ! (
     SIGNALFORGE_SANDBOX="1" \
     CODEX_HOME="${CODEX_HOME:-$HOME/.codex}" \
     timeout --signal=TERM "${PREFLIGHT_TIMEOUT_SECONDS}s" \
-      codex exec --ephemeral --sandbox danger-full-access \
+      codex exec --ephemeral --sandbox danger-full-access --skip-git-repo-check \
       "This is a capability preflight in a disposable empty directory. Do not access the repository, Git, GitHub, providers, or the network except what Codex itself requires. Create exactly one file named preflight-ok.txt containing exactly SIGNALFORGE_STAGE0_PREFLIGHT_OK and then stop." \
       >"$PREFLIGHT_LOG" 2>&1
 ); then
