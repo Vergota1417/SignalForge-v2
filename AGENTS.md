@@ -10,9 +10,10 @@ Read these before making changes:
 2. `README.md` — current production architecture and source-of-truth ownership.
 3. `docs/agent-team/MASTER-ARCHITECTURE.md` — target rebuild architecture and Dashboard block contracts.
 4. `docs/agent-team/USER-EXPERIENCE-TEACHING.md` — mandatory beginner experience, teaching, terminology, and progressive-disclosure contract for user-facing work.
-5. `docs/agent-team/WORK-PACKAGES.yaml` — explicit core work ownership, dependencies, and acceptance tests.
-6. `docs/agent-team/UX-WORK-PACKAGES.yaml` — mandatory UX/Teaching architecture and usability-audit work packages.
-7. Authoritative source files named by `README.md` such as `src/hard-guardrails.js`, `src/scheduler.js`, and `public/api-request-policy.js`.
+5. `docs/agent-team/SANDBOX-OPERATIONS.md` — mandatory isolated execution and secret/deployment boundaries for autonomous agent work.
+6. `docs/agent-team/WORK-PACKAGES.yaml` — explicit core work ownership, dependencies, and acceptance tests.
+7. `docs/agent-team/UX-WORK-PACKAGES.yaml` — mandatory UX/Teaching architecture and usability-audit work packages.
+8. Authoritative source files named by `README.md` such as `src/hard-guardrails.js`, `src/scheduler.js`, and `public/api-request-policy.js`.
 
 If instructions conflict, stop and report the conflict to the integration agent. Do not invent a compromise.
 
@@ -76,6 +77,19 @@ Before coding:
 3. read the owning architecture documents;
 4. list the exact files that will be changed;
 5. compare the list to the work package `allowed_paths`.
+
+### 4.1 Remote sandbox is mandatory for autonomous work
+
+Autonomous/semi-autonomous agent work should execute in the approved remote sandbox defined by `.devcontainer/devcontainer.json` and `docs/agent-team/SANDBOX-OPERATIONS.md`, not directly against the user's Windows filesystem.
+
+Agents MUST NOT:
+
+- mount the user's local Windows drives, home directory, SSH keys, browser profiles, password stores, personal documents, or cloud-sync folders;
+- request production Cloudflare, brokerage, financial-account, or unrestricted database credentials for ordinary implementation work;
+- deploy production from a normal work-package sandbox;
+- treat access to a Codespace repository token as permission to write directly to `main`.
+
+The sandbox is disposable. Durable work belongs in the assigned branch; secrets and production deployment authority remain outside ordinary implementation sandboxes.
 
 ## 5. Data architecture rules
 
@@ -193,6 +207,7 @@ It must:
 - require WP-85 usability/teaching acceptance before final adversarial QA/release;
 - reject a user-facing implementation whose basic action/reason cannot be understood without unexplained jargon;
 - ensure UX explanations never change the authoritative trading result or hide missing/stale evidence;
+- verify autonomous work stayed inside the approved remote sandbox/deployment boundary;
 - resolve conflicts by source-of-truth hierarchy, not by averaging agent opinions;
 - refuse merge if any required acceptance test is red.
 
@@ -227,6 +242,7 @@ Stop the work package instead of guessing when:
 - the requested feature would fabricate evidence;
 - the change would create an unbudgeted provider workload;
 - another agent already owns the same write surface;
-- making the UX easier would require changing the underlying trading meaning rather than merely explaining it.
+- making the UX easier would require changing the underlying trading meaning rather than merely explaining it;
+- production credentials or local-PC access would be required for ordinary implementation work.
 
 A clean blocker is preferable to an incorrect autonomous change.
