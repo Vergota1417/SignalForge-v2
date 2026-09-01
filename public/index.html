@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#07101b" />
-  <title>SignalForge — Dashboard Blueprint</title>
+  <title>SignalForge — Five-Stage Dashboard Alpha</title>
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/icons/signalforge-icon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="/dashboard-blueprint.css" />
@@ -14,7 +14,7 @@
     <header class="sf-zero-topbar">
       <div class="sf-zero-brand">
         <div class="sf-zero-mark" aria-hidden="true">SF</div>
-        <div><strong>SignalForge</strong><small>Dashboard blueprint · zero data</small></div>
+        <div><strong>SignalForge</strong><small>Five-stage dashboard · tactical alpha</small></div>
       </div>
       <nav class="sf-zero-nav" aria-label="Application sections">
         <button class="active" type="button">Dashboard</button>
@@ -23,75 +23,81 @@
         <button type="button" disabled>Portfolio</button>
         <button type="button" disabled>System</button>
       </nav>
-      <div class="sf-zero-search">Stock selector will be connected later</div>
+      <form class="symbol-form" id="symbol-form" autocomplete="off">
+        <input id="symbol-input" name="symbol" maxlength="6" inputmode="text" autocapitalize="characters" placeholder="Enter ticker" aria-label="Stock ticker" />
+        <button id="symbol-load" type="submit">Load</button>
+      </form>
     </header>
 
     <main class="sf-zero-main">
-      <div class="sf-zero-note"><strong>Layout-only stage.</strong> No stock API, no chart data, no scanner, no calculations, no live status and no provider requests are connected to this Dashboard.</div>
+      <div class="sf-zero-note" id="page-status" data-state="idle"><strong>Working alpha.</strong> Search a ticker to load live SignalForge market data. Tactical decisions use existing production hard guardrails; Investment Quality, Portfolio Allocation, and Portfolio Risk are still release blockers.</div>
 
-      <section class="sf-zero-grid" aria-label="SignalForge dashboard blueprint">
+      <section class="sf-zero-grid" aria-label="SignalForge dashboard">
         <section class="sf-zero-card sf-zero-profile" data-block="stock-header">
           <div>
-            <div class="sf-zero-example">RandomSTOCKASAN FIXed example</div>
-            <div class="sf-zero-example-sub">Fixed layout placeholder only · this will later change whenever a user opens a stock</div>
+            <div class="sf-zero-example" id="profile-symbol">RandomSTOCKASAN FIXed example</div>
+            <div class="sf-zero-example-sub" id="profile-sub">Select a stock above to replace this fixed placeholder</div>
           </div>
-          <div class="sf-zero-profile-slots" aria-label="Future stock profile fields">
-            <div class="sf-zero-slot">Company identity</div>
-            <div class="sf-zero-slot">Listing / sector</div>
-            <div class="sf-zero-slot">Refresh status</div>
+          <div class="sf-zero-profile-slots" aria-label="Selected stock summary">
+            <div class="sf-zero-slot live-slot" id="profile-price"><span>Current price</span><strong>Not loaded</strong></div>
+            <div class="sf-zero-slot live-slot" id="profile-context"><span>Market context</span><strong>Not loaded</strong></div>
+            <div class="sf-zero-slot live-slot" id="profile-refresh"><span>Refresh status</span><strong>Not loaded</strong></div>
           </div>
         </section>
 
         <aside class="sf-zero-left">
           <section class="sf-zero-card sf-zero-recent" data-block="recently-viewed">
             <div class="sf-zero-card-head"><strong>Recently Viewed</strong><span class="sf-zero-block-id">BLOCK 01</span></div>
-            <div class="sf-zero-empty"><span>Empty layout surface</span></div>
+            <div class="panel-body" id="recent-body"></div>
           </section>
 
           <section class="sf-zero-card sf-zero-decision" data-block="decision">
             <div class="sf-zero-card-head"><strong>What Should I Do?</strong><span class="sf-zero-block-id">BLOCK 02</span></div>
-            <div class="sf-zero-empty"><span>Decision logic will be designed later</span></div>
+            <div class="panel-body decision-body" id="decision-body">
+              <div class="not-available"><strong>No stock selected</strong><span>The five-stage decision will appear here.</span></div>
+            </div>
           </section>
         </aside>
 
         <section class="sf-zero-card sf-zero-chart" data-block="main-chart">
-          <div class="sf-zero-card-head"><strong>Main Chart</strong><span class="sf-zero-block-id">BLOCK 03</span></div>
-          <div class="sf-zero-empty"><span>Chart surface only · no candles loaded</span></div>
+          <div class="sf-zero-card-head"><strong>Main Chart</strong><span class="sf-zero-block-id">BLOCK 03 · 6M analysis view</span></div>
+          <div class="chart-body" id="chart-body"><div class="not-available"><strong>No chart loaded</strong><span>Select a ticker to load completed market data.</span></div></div>
         </section>
 
         <aside class="sf-zero-right">
           <section class="sf-zero-card sf-zero-levels" data-block="price-levels">
             <div class="sf-zero-card-head"><strong>Current Price + Levels</strong><span class="sf-zero-block-id">BLOCK 04</span></div>
-            <div class="sf-zero-empty"><span>Empty layout surface</span></div>
+            <div class="panel-body" id="levels-body"><div class="not-available"><strong>No levels loaded</strong></div></div>
           </section>
 
           <section class="sf-zero-card sf-zero-structure" data-block="pattern-structure">
             <div class="sf-zero-card-head"><strong>Pattern + Structure</strong><span class="sf-zero-block-id">BLOCK 05</span></div>
-            <div class="sf-zero-empty"><span>Empty layout surface</span></div>
+            <div class="panel-body" id="structure-body"><div class="not-available"><strong>No structure loaded</strong></div></div>
           </section>
 
           <section class="sf-zero-card sf-zero-peers" data-block="related-companies">
-            <div class="sf-zero-card-head"><strong>Related Companies</strong><span class="sf-zero-block-id">BLOCK 07</span></div>
-            <div class="sf-zero-empty"><span>Empty layout surface</span></div>
+            <div class="sf-zero-card-head"><strong>Investment Quality</strong><span class="sf-zero-block-id">BLOCK 07</span></div>
+            <div class="panel-body" id="peers-body"><div class="not-available"><strong>Not connected yet</strong><span>This will become the fundamentals/business-quality authority.</span></div></div>
           </section>
 
           <section class="sf-zero-card sf-zero-news" data-block="news-catalysts">
             <div class="sf-zero-card-head"><strong>News + Catalysts</strong><span class="sf-zero-block-id">BLOCK 08</span></div>
-            <div class="sf-zero-empty"><span>Empty layout surface</span></div>
+            <div class="panel-body" id="news-body"><div class="not-available"><strong>Not connected yet</strong></div></div>
           </section>
         </aside>
 
         <section class="sf-zero-card sf-zero-volume" data-block="volume-pressure">
-          <div class="sf-zero-card-head"><strong>Volume + Market Pressure</strong><span class="sf-zero-block-id">BLOCK 06</span></div>
-          <div class="sf-zero-empty"><span>Empty layout surface</span></div>
+          <div class="sf-zero-card-head"><strong>Volume + Market Pressure</strong><span class="sf-zero-block-id">BLOCK 06 · Confirmation</span></div>
+          <div class="panel-body" id="volume-body"><div class="not-available"><strong>No confirmation loaded</strong><span>15-minute execution evidence will appear here.</span></div></div>
         </section>
 
         <details class="sf-zero-validation" data-block="data-validation">
           <summary><strong>Data Validation · Prove What Was Pulled</strong><span>BLOCK 09 · collapsed by default</span></summary>
-          <div class="sf-zero-validation-body">No validation logic is connected yet. This drawer will eventually prove the exact master snapshot, source, freshness and inputs used by every block above.</div>
+          <div class="sf-zero-validation-body" id="validation-body">Select a stock to see the exact analysis, execution, benchmark, and chart datasets used above.</div>
         </details>
       </section>
     </main>
   </div>
+  <script src="/dashboard-alpha.js" defer></script>
 </body>
 </html>
