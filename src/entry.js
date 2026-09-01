@@ -11,8 +11,9 @@ import { getOpportunityValidation, OPPORTUNITY_EPISODE_START_SCORE, OPPORTUNITY_
 import { assessAuctionContext } from './auction-context.js';
 import { getProviderHealthSnapshot } from './provider-usage.js';
 import { getExecutionTrace } from './execution-trace.js';
-import { assessIntradayConfirmation } from './analysis.js';
+import { analyze, assessIntradayConfirmation } from './analysis.js';
 import { assessSessionRange } from './session-range.js';
+import { buildFiveStageAlpha } from './method/five-stage-alpha.js';
 
 const SELF_TEST_COOLDOWN_MS=60_000;
 const EXECUTION_SHADOW_CACHE_MAX_AGE_MS=7*86_400_000;
@@ -24,6 +25,34 @@ export default {
       if(request.method!=='GET')return json({error:'Method not allowed.'},405);
       try{await ensureSchema(env);const symbol=sanitizeSymbol(url.searchParams.get('symbol'));if(!symbol)return json({error:'Valid symbol is required.'},400);const saved=await getSignalAnalysis(env,symbol);if(!saved?.analysis)return json({error:'No saved SignalForge analysis exists for this symbol yet.'},404);const plan=buildTradePlan(saved.analysis);return json({symbol,updatedAt:saved.updatedAt,status:saved.analysis.status,readiness:saved.analysis.readiness,plan});}
       catch(error){console.error(JSON.stringify({event:'trade_plan_request_error',message:error?.message||String(error)}));return json({error:'Trade plan is temporarily unavailable.'},500);}
+    }
+    if(url.pathname==='/api/symbol-master'){
+      if(request.method!=='GET')return json({error:'Method not allowed.'},405);
+      try{
+        await ensureSchema(env);const symbol=sanitizeSymbol(url.searchParams.get('symbol'));if(!symbol)return json({error:'Valid symbol is required.'},400);
+        const analysisMarket=await getMarketData(env,symbol,'6M',false,{completedOnly:true,purpose:'symbol-master-analysis'});
+        const executionMarket=await getMarketData(env,symbol,'5D',false,{completedOnly:false,purpose:'symbol-master-execution'});
+        const benchmarkMarket=symbol==='SPY'?analysisMarket:await getMarketData(env,'SPY','6M',false,{completedOnly:true,purpose:'symbol-master-benchmark'});
+        const confirmation=assessIntradayConfirmation(executionMarket.candles);
+        const analysis=analyze(analysisMarket.candles,symbol,{benchmarkCandles:benchmarkMarket?.candles||null,intradayConfirmation:confirmation});
+        const method=buildFiveStageAlpha(analysis),snapshotId=['sf-alpha',symbol,analysisMarket.fetchedAt||0,executionMarket.fetchedAt||0,benchmarkMarket?.fetchedAt||0].join(':');
+        return json({
+          symbol,
+          snapshotId,
+          method,
+          analysis,
+          candles:analysisMarket.candles,
+          datasets:{
+            analysis:{role:'ANALYSIS',timeframe:'6M',source:analysisMarket.source,cached:Boolean(analysisMarket.cached),fetchedAt:analysisMarket.fetchedAt,completedOnly:true},
+            execution:{role:'EXECUTION',timeframe:'5D',source:executionMarket.source,cached:Boolean(executionMarket.cached),fetchedAt:executionMarket.fetchedAt,completedOnly:false},
+            benchmark:{role:'BENCHMARK',symbol:'SPY',timeframe:'6M',source:benchmarkMarket?.source||analysisMarket.source,cached:Boolean(benchmarkMarket?.cached),fetchedAt:benchmarkMarket?.fetchedAt||analysisMarket.fetchedAt,completedOnly:true},
+            chart:{role:'CHART',timeframe:'6M',visualizationOnly:true}
+          },
+          unsupported:{investmentQuality:true,portfolioAllocation:true,portfolioRisk:true,nativeFootprint:true,executedDelta:true,absorption:true,gex:true,l2:true,mbo:true},
+          release:{alpha:true,releaseEligible:false,reason:'Visible tactical alpha. Full release remains blocked until dedicated method contracts plus Investment Quality, Portfolio Allocation, Portfolio Risk, validation, and QA are complete.'}
+        });
+      }
+      catch(error){console.error(JSON.stringify({event:'symbol_master_request_error',message:error?.message||String(error)}));return json({error:'Selected-symbol master state is temporarily unavailable.'},500);}
     }
     if(url.pathname==='/api/opportunity-validation'){
       if(request.method!=='GET')return json({error:'Method not allowed.'},405);
@@ -62,7 +91,7 @@ export default {
     if(url.pathname==='/api/health'&&request.method==='GET'){
       const response=await app.fetch(request,env,ctx);if(!response.ok)return response;
       const body=await response.json(),marketDataProviders=configuredProviders(env),marketDataConfigured=Boolean(marketDataProviders.alpaca||marketDataProviders.twelveData),discovery=await getDiscoveryStatus(env),providerDailyCap=Number(env.MAX_PROVIDER_REQUESTS_PER_DAY)||700;
-      return json({...body,marketDataConfigured,marketDataProviders,providerHealthEndpoint:'/api/provider-health',executionTraceEndpoint:'/api/execution-trace',executionShadowEndpoint:'/api/execution-shadow',discoveryPoolSize:discovery.configuredPoolSize,discoveryCoverage:{weekKey:discovery.weekKey,configuredPoolSize:discovery.configuredPoolSize,currentWeeklyPoolSize:discovery.currentWeeklyPoolSize,poolFillPct:discovery.poolFillPct,catalogSize:discovery.catalogSize,scannedSymbols:discovery.scannedSymbols,lastScanned:discovery.lastScanned,catalogUpdatedAt:discovery.catalogUpdatedAt},scheduler:scheduledCoverage(),tradePlan:true,auctionMethod:{version:'marketpulse-auction-v0',enabled:true,shadowOnly:true,affectsBuyNow:false,endpoint:'/api/auction-context'},postBuyManager:true,portfolioPricePulseMinutes:5,partialProfitManagement:true,opportunityScoreValidation:{enabled:true,shadowOnly:true,affectsBuyNow:false,episodeStartScore:OPPORTUNITY_EPISODE_START_SCORE,reviewMinSample:OPPORTUNITY_REVIEW_MIN_SAMPLE,endpoint:'/api/opportunity-validation'},guardrails:{hardBuyAuthorization:true,minBuyRewardRisk:MIN_BUY_REWARD_RISK,participationRequired:true,thesisMustRemainIntact:true,overextensionHardBlock:true,backgroundUiReadMinutes:5,cacheOnlyChartReadMinutes:30,patternNetworkUiEnabled:false,opportunityScoreAffectsBuyNow:false,auctionMethodAffectsBuyNow:false,executionTraceAffectsBuyNow:false,executionShadowAffectsBuyNow:false,executionShadowProviderFree:true,providerDailyCap,reliabilityCiWorkflow:true}});
+      return json({...body,marketDataConfigured,marketDataProviders,symbolMasterEndpoint:'/api/symbol-master',providerHealthEndpoint:'/api/provider-health',executionTraceEndpoint:'/api/execution-trace',executionShadowEndpoint:'/api/execution-shadow',discoveryPoolSize:discovery.configuredPoolSize,discoveryCoverage:{weekKey:discovery.weekKey,configuredPoolSize:discovery.configuredPoolSize,currentWeeklyPoolSize:discovery.currentWeeklyPoolSize,poolFillPct:discovery.poolFillPct,catalogSize:discovery.catalogSize,scannedSymbols:discovery.scannedSymbols,lastScanned:discovery.lastScanned,catalogUpdatedAt:discovery.catalogUpdatedAt},scheduler:scheduledCoverage(),tradePlan:true,auctionMethod:{version:'marketpulse-auction-v0',enabled:true,shadowOnly:true,affectsBuyNow:false,endpoint:'/api/auction-context'},postBuyManager:true,portfolioPricePulseMinutes:5,partialProfitManagement:true,opportunityScoreValidation:{enabled:true,shadowOnly:true,affectsBuyNow:false,episodeStartScore:OPPORTUNITY_EPISODE_START_SCORE,reviewMinSample:OPPORTUNITY_REVIEW_MIN_SAMPLE,endpoint:'/api/opportunity-validation'},guardrails:{hardBuyAuthorization:true,minBuyRewardRisk:MIN_BUY_REWARD_RISK,participationRequired:true,thesisMustRemainIntact:true,overextensionHardBlock:true,backgroundUiReadMinutes:5,cacheOnlyChartReadMinutes:30,patternNetworkUiEnabled:false,opportunityScoreAffectsBuyNow:false,auctionMethodAffectsBuyNow:false,executionTraceAffectsBuyNow:false,executionShadowAffectsBuyNow:false,executionShadowProviderFree:true,providerDailyCap,reliabilityCiWorkflow:true}});
     }
     if(url.pathname!=='/api/backend-self-test')return app.fetch(request,env,ctx);
     if(request.method!=='POST')return json({error:'Method not allowed.'},405);
