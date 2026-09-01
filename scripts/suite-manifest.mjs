@@ -64,7 +64,7 @@ export const BASELINE_TESTS=Object.freeze([
   'scripts/test-stage16-7-signal-integrity.mjs',
   'scripts/test-stage16-8-radar-windows-layout.mjs',
   'scripts/test-stage16-10-twelve-data-minute-guard.mjs',
-  'scripts/test-stage16-12-dashboard-zero-layout.mjs'
+  'scripts/test-stage1-visible-dashboard-alpha.mjs'
 ]);
 
 export const PRODUCTION_GUARDRAIL_TESTS=Object.freeze([
@@ -88,7 +88,8 @@ export const HISTORICAL_DISABLED_TESTS=Object.freeze([
   'scripts/test-stage14-30-pattern-overlay-controls.mjs',
   'scripts/test-stage14-31-live-pattern-context-bridge.mjs',
   'scripts/test-stage16-9-workspace-chart-studio.mjs',
-  'scripts/test-stage16-11-visual-dashboard-layout.mjs'
+  'scripts/test-stage16-11-visual-dashboard-layout.mjs',
+  'scripts/test-stage16-12-dashboard-zero-layout.mjs'
 ]);
 
 export const TEST_GROUPS=Object.freeze({baseline:BASELINE_TESTS,reliability:PRODUCTION_GUARDRAIL_TESTS,historical:HISTORICAL_DISABLED_TESTS});
