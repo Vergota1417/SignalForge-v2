@@ -29,7 +29,7 @@ assert.match(entry,/url\.pathname==='\/api\/symbol-master'/,'entry must expose t
 assert.match(entry,/getMarketData\(env,symbol,'6M'/,'master endpoint must use the analysis dataset');
 assert.match(entry,/getMarketData\(env,symbol,'5D'/,'master endpoint must use the execution dataset');
 assert.match(entry,/getMarketData\(env,'SPY','6M'/,'master endpoint must use the benchmark dataset');
-assert.match(entry,/buildFiveStageAlpha\(analysis\)/,'master endpoint must produce the five-stage view');
+assert.match(entry,/buildFiveStageAlpha\(analysis(?:,[^)]+)?\)/,'master endpoint must produce the five-stage view');
 assert.match(entry,/investmentQuality:true,portfolioAllocation:true,portfolioRisk:true/,'unimplemented wealth authorities must be explicit rather than fabricated');
 assert.match(entry,/releaseEligible:false/,'working alpha must remain blocked from final release');
 
